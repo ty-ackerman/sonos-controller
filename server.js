@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loadTokens, saveTokens, clearTokens } from './tokenStore.js';
 
 dotenv.config();
 
@@ -30,11 +31,7 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-const tokens = {
-  accessToken: null,
-  refreshToken: null,
-  expiresAt: 0
-};
+let tokens = await loadTokens();
 
 const activeFavoritesByGroup = new Map();
 
@@ -82,6 +79,35 @@ app.get('/auth/sonos/callback', async (req, res) => {
     console.error('Failed to exchange code for tokens', err);
     res.redirect('/?auth=error');
   }
+});
+
+app.get('/auth/status', async (_req, res) => {
+  try {
+    let loggedIn = Boolean(tokens.access_token) && Date.now() < (tokens.expires_at || 0);
+
+    if (loggedIn) {
+      try {
+        await sonosRequest('/households');
+      } catch (error) {
+        if (error.status === 401) {
+          tokens = await clearTokens();
+          loggedIn = false;
+        } else {
+          console.warn('Failed to verify token during status check:', error?.message ?? error);
+        }
+      }
+    }
+
+    res.json({ loggedIn, expiresAt: loggedIn ? tokens.expires_at || 0 : 0 });
+  } catch (error) {
+    console.error('Auth status check failed:', error?.message ?? error);
+    res.json({ loggedIn: false });
+  }
+});
+
+app.post('/auth/signout', async (_req, res) => {
+  tokens = await clearTokens();
+  res.json({ ok: true });
 });
 
 app.get('/api/households', async (_req, res) => {
@@ -574,25 +600,25 @@ async function exchangeCodeForTokens(code) {
 
   const payload = await response.json();
   storeTokens(payload);
+  await saveTokens(tokens);
 }
 
 function storeTokens(tokenResponse) {
-  tokens.accessToken = tokenResponse.access_token;
-  tokens.refreshToken = tokenResponse.refresh_token ?? tokens.refreshToken;
-
+  tokens.access_token = tokenResponse.access_token ?? tokens.access_token ?? null;
+  tokens.refresh_token = tokenResponse.refresh_token ?? tokens.refresh_token ?? null;
   const expiresIn = Number(tokenResponse.expires_in ?? 0);
   const bufferMs = 60 * 1000;
-  tokens.expiresAt = Date.now() + Math.max(expiresIn * 1000 - bufferMs, bufferMs);
+  tokens.expires_at = Date.now() + Math.max(expiresIn * 1000 - bufferMs, bufferMs);
 }
 
 async function refreshAccessToken() {
-  if (!tokens.refreshToken) {
+  if (!tokens.refresh_token) {
     throw Object.assign(new Error('Missing refresh token'), { status: 401 });
   }
 
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
-    refresh_token: tokens.refreshToken
+    refresh_token: tokens.refresh_token
   });
 
   const response = await fetch(`${SONOS_AUTH_BASE}/login/v3/oauth/access`, {
@@ -605,21 +631,22 @@ async function refreshAccessToken() {
   });
 
   if (!response.ok) {
-    tokens.accessToken = null;
+    tokens = await clearTokens();
     const text = await response.text();
     throw Object.assign(new Error(`Token refresh failed: ${text}`), { status: response.status });
   }
 
   const payload = await response.json();
   storeTokens(payload);
+  await saveTokens(tokens);
 }
 
 async function ensureValidAccessToken() {
-  if (!tokens.accessToken) {
+  if (!tokens.access_token) {
     throw Object.assign(new Error('Not authenticated with Sonos'), { status: 401 });
   }
 
-  if (Date.now() >= tokens.expiresAt) {
+  if (Date.now() >= tokens.expires_at) {
     await refreshAccessToken();
   }
 }
@@ -640,16 +667,20 @@ async function sonosRequest(endpoint, options = {}) {
     ...options,
     headers: {
       ...initialHeaders,
-      Authorization: `Bearer ${tokens.accessToken}`
+      Authorization: `Bearer ${tokens.access_token}`
     }
   };
 
   let response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
 
-  if (response.status === 401 && tokens.refreshToken) {
+  if (response.status === 401 && tokens.refresh_token) {
     await refreshAccessToken();
-    requestOptions.headers.Authorization = `Bearer ${tokens.accessToken}`;
+    requestOptions.headers.Authorization = `Bearer ${tokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
+    if (response.status === 401) {
+      tokens = await clearTokens();
+      throw Object.assign(new Error('Unauthorized request after refresh'), { status: 401 });
+    }
   }
 
   if (!response.ok) {
@@ -665,7 +696,9 @@ function handleProxyError(res, error) {
   const message = error.message ?? 'Unexpected error';
 
   if (status === 401) {
-    tokens.accessToken = null;
+    tokens.access_token = null;
+    tokens.expires_at = 0;
+    tokens.refresh_token = null;
   }
 
   res.status(status).json({ error: message });

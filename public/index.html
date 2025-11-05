@@ -339,9 +339,10 @@
       <p id="status" class="status disconnected">Checking connection…</p>
       <div id="feedback" class="feedback"></div>
 
-      <section id="auth-section">
-        <button id="login-btn">Login with Sonos</button>
-      </section>
+      <div id="auth-bar" style="margin-bottom: 12px">
+        <button id="signin-btn" onclick="login()">Sign in with Sonos</button>
+        <button id="signout-btn" class="hidden" onclick="signout()">Sign out</button>
+      </div>
 
       <section id="controller" class="hidden">
         <div class="select-group">
@@ -391,10 +392,10 @@
       const LOADING_MESSAGE = 'Loading…';
       const FAVORITE_SUCCESS_TOAST = 'Favorite loaded with shuffle, repeat, crossfade.';
 
-      const loginButton = document.getElementById('login-btn');
       const statusLabel = document.getElementById('status');
       const feedbackLabel = document.getElementById('feedback');
-      const authSection = document.getElementById('auth-section');
+      const signinButton = document.getElementById('signin-btn');
+      const signoutButton = document.getElementById('signout-btn');
       const controllerSection = document.getElementById('controller');
       const householdSelect = document.getElementById('households');
       const activeGroupChip = document.getElementById('group-chip');
@@ -416,9 +417,46 @@
       const volumeSliderMap = new Map();
       let refreshTimer = null;
 
-      loginButton.addEventListener('click', () => {
+      function login() {
         window.location.href = '/auth/sonos/login';
-      });
+      }
+
+      async function signout() {
+        try {
+          await fetch('/auth/signout', { method: 'POST' });
+        } catch (error) {
+          console.error('Sign out failed:', error);
+        }
+        setAuthUI(false);
+        showFeedback('Signed out of Sonos.');
+      }
+
+      function setAuthUI(loggedIn) {
+        signinButton.classList.toggle('hidden', loggedIn);
+        signoutButton.classList.toggle('hidden', !loggedIn);
+        controllerSection.classList.toggle('hidden', !loggedIn);
+        updateConnectionStatus(loggedIn);
+      }
+
+      async function checkAuthAndInit() {
+        try {
+          const response = await fetch('/auth/status');
+          if (!response.ok) {
+            throw new Error('Failed to check auth status');
+          }
+
+          const state = await response.json();
+          const loggedIn = Boolean(state.loggedIn);
+          setAuthUI(loggedIn);
+
+          if (loggedIn) {
+            await refreshUI();
+          }
+        } catch (error) {
+          console.error('Auth status check failed:', error);
+          setAuthUI(false);
+        }
+      }
 
       householdSelect.addEventListener('change', async (event) => {
         const householdId = event.target.value;
@@ -472,11 +510,11 @@
         statusLabel.classList.toggle('connected', connected);
         statusLabel.classList.toggle('disconnected', !connected);
         statusLabel.textContent = connected ? 'Connected to Sonos' : 'Not connected';
-        authSection.classList.toggle('hidden', connected);
-        controllerSection.classList.toggle('hidden', !connected);
         isSonosConnected = connected;
 
         if (!connected) {
+          householdSelect.innerHTML = '';
+          currentHouseholdId = null;
           setVolumeControlAvailability(false);
           favoritesStatus.textContent = 'Login required to load favorites.';
           roomsContainer.innerHTML = '';
@@ -519,7 +557,7 @@
           const response = await fetch('/api/households');
 
           if (response.status === 401) {
-            updateConnectionStatus(false);
+            setAuthUI(false);
             showFeedback('Login required to load Sonos households.', true);
             favoritesStatus.textContent = 'Login required to load favorites.';
             return;
@@ -533,7 +571,7 @@
           const households = Array.isArray(data.households) ? data.households : [];
 
           if (!households.length) {
-            updateConnectionStatus(true);
+            setAuthUI(true);
             showFeedback('No households returned for this account.', true);
             householdSelect.innerHTML = '';
             currentHouseholdId = null;
@@ -555,7 +593,7 @@
             )
             .join('');
 
-          updateConnectionStatus(true);
+          setAuthUI(true);
           showFeedback('Households loaded. Choose one to continue.');
 
           currentHouseholdId = householdSelect.value || null;
@@ -571,7 +609,7 @@
         } catch (error) {
           console.error('Failed to load households:', error);
           showFeedback('Could not load households. Please try again.', true);
-          updateConnectionStatus(false);
+          setAuthUI(false);
           favoritesStatus.textContent = 'Unable to load favorites.';
         }
       }
@@ -600,7 +638,7 @@
           const response = await fetch(`/api/favorites?${params.toString()}`);
 
           if (response.status === 401) {
-            updateConnectionStatus(false);
+            setAuthUI(false);
             favoritesStatus.textContent = 'Login required to load favorites.';
             return;
           }
@@ -869,7 +907,7 @@
           });
 
           if (response.status === 401) {
-            updateConnectionStatus(false);
+            setAuthUI(false);
             showFeedback('Session expired. Please login again.', true);
             return false;
           }
@@ -938,7 +976,7 @@
           const response = await fetch(`/api/households/${encodeURIComponent(householdId)}/players`);
 
           if (response.status === 401) {
-            updateConnectionStatus(false);
+            setAuthUI(false);
             favoritesStatus.textContent = 'Login required to load favorites.';
             roomsContainer.innerHTML = '';
             setVolumeControlAvailability(false);
@@ -1233,8 +1271,17 @@
         }, 700);
       }
 
+      async function refreshUI() {
+        await loadHouseholds();
+      }
+
+      setVolumeControlAvailability(false);
+      evaluateFavoritesAvailability();
       updateActiveGroupDisplay();
-      loadHouseholds();
+      window.addEventListener('load', () => {
+        applyAuthFeedback();
+        checkAuthAndInit();
+      });
     </script>
 
 
