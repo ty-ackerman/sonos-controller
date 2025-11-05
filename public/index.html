@@ -771,6 +771,7 @@
         const commandPromise = sendCommand(
           `/api/groups/${encodeURIComponent(groupId)}/favorites/play`,
           {
+            householdId: currentHouseholdId || null,
             favoriteId: entry.favorite.id,
             shuffle: true,
             repeat: true,

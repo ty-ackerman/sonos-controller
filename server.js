@@ -239,7 +239,8 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
     favoriteId,
     shuffle = true,
     repeat = true,
-    crossfade = true
+    crossfade = true,
+    householdId: householdHint
   } = req.body ?? {};
 
   if (!favoriteId) {
@@ -249,6 +250,14 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
   const encodedGroupId = encodeURIComponent(groupId);
 
   try {
+    const autogroupResult = await autogroupGroupMembers(groupId, householdHint);
+    if (!autogroupResult.success) {
+      console.warn(
+        `Autogroup skipped for ${groupId}:`,
+        autogroupResult.error ?? 'no household match'
+      );
+    }
+
     const clearResult = await clearGroupQueue(groupId);
     if (!clearResult.success && clearResult.supported) {
       console.warn(
@@ -435,7 +444,7 @@ app.post('/api/players/:playerId/volume', async (req, res) => {
 
 app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
   const { groupId } = req.params;
-  const { uri, shuffle, repeat, crossfade } = req.body ?? {};
+  const { uri, shuffle, repeat, crossfade, householdId: householdHint } = req.body ?? {};
 
   if (!uri) {
     return res.status(400).json({ error: 'Spotify playlist URI is required.' });
@@ -444,6 +453,14 @@ app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
   const encodedGroupId = encodeURIComponent(groupId);
 
   try {
+    const autogroupResult = await autogroupGroupMembers(groupId, householdHint);
+    if (!autogroupResult.success) {
+      console.warn(
+        `Autogroup skipped for ${groupId}:`,
+        autogroupResult.error ?? 'no household match'
+      );
+    }
+
     await sonosRequest(`/groups/${encodedGroupId}/playback/metadata`, {
       method: 'POST',
       body: JSON.stringify({ container: { id: uri, type: 'playlist' } })
@@ -506,6 +523,116 @@ async function resolveHouseholdId(candidateId) {
   }
 
   return first.id;
+}
+
+async function listHouseholds() {
+  const response = await sonosRequest('/households');
+  const payload = await response.json();
+  const households = Array.isArray(payload.households) ? payload.households : [];
+  return households.map((household) => household?.id).filter(Boolean);
+}
+
+async function getHouseholdSnapshot(householdId) {
+  const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/groups`);
+  return response.json();
+}
+
+async function findGroupContext(groupId, householdHint) {
+  const normalizedGroupId = groupId;
+  const households = await listHouseholds();
+  const hint =
+    typeof householdHint === 'string' && householdHint.trim().length > 0
+      ? householdHint.trim()
+      : null;
+
+  const ordered = [];
+  if (hint && households.includes(hint)) {
+    ordered.push(hint);
+  }
+  households.forEach((id) => {
+    if (!ordered.includes(id)) {
+      ordered.push(id);
+    }
+  });
+
+  for (const householdId of ordered) {
+    try {
+      const snapshot = await getHouseholdSnapshot(householdId);
+      const groups = Array.isArray(snapshot.groups) ? snapshot.groups : [];
+      const match = groups.find((group) => {
+        const identifiers = [
+          group?.id,
+          group?.groupId,
+          group?.coordinatorId
+        ].filter(Boolean);
+        return identifiers.includes(normalizedGroupId);
+      });
+
+      if (match) {
+        return {
+          householdId,
+          group: match,
+          snapshot
+        };
+      }
+    } catch (error) {
+      console.warn(
+        `Failed to inspect household ${householdId} when locating group ${groupId}:`,
+        error?.message ?? error
+      );
+    }
+  }
+
+  return null;
+}
+
+async function autogroupGroupMembers(groupId, householdHint) {
+  try {
+    const context = await findGroupContext(groupId, householdHint);
+    if (!context) {
+      return { success: false, error: 'group_not_found' };
+    }
+
+    const { householdId, snapshot } = context;
+    const players = Array.isArray(snapshot.players) ? snapshot.players : [];
+    const playerIds = players.map((player) => player?.id).filter(Boolean);
+
+    if (!playerIds.length) {
+      return { success: false, householdId, error: 'no_players' };
+    }
+
+    const encodedGroupId = encodeURIComponent(groupId);
+    await sonosRequest(`/groups/${encodedGroupId}/groups/setGroupMembers`, {
+      method: 'POST',
+      body: JSON.stringify({ playerIds })
+    });
+
+    const deadline = Date.now() + 3000;
+    while (Date.now() < deadline) {
+      try {
+        const current = await getHouseholdSnapshot(householdId);
+        const allPlayers = Array.isArray(current.players) ? current.players : [];
+        const everyoneInGroup = allPlayers.every(
+          (player) => !player?.id || player.groupId === groupId
+        );
+        if (everyoneInGroup) {
+          break;
+        }
+      } catch (error) {
+        console.warn(
+          `Failed to verify autogroup completion for ${groupId}:`,
+          error?.message ?? error
+        );
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+
+    return { success: true, householdId };
+  } catch (error) {
+    console.warn(`Autogroup failed for ${groupId}:`, error?.message ?? error);
+    return { success: false, error: error?.message ?? 'autogroup_failed' };
+  }
 }
 
 async function clearGroupQueue(groupId) {
