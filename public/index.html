@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sonos Controller</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        min-height: 100vh;
+        display: flex;
+        align-items: stretch;
+        justify-content: center;
+      }
+
+      .container {
+        width: min(480px, 100vw);
+        padding: 24px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      h1 {
+        font-size: 1.75rem;
+        margin: 0;
+        text-align: center;
+      }
+
+      p.status {
+        margin: 0;
+        text-align: center;
+        font-weight: 600;
+      }
+
+      p.status.connected {
+        color: #34d399;
+      }
+
+      p.status.disconnected {
+        color: #f87171;
+      }
+
+      .feedback {
+        min-height: 1.25rem;
+        text-align: center;
+        font-size: 0.95rem;
+        color: #cbd5f5;
+      }
+
+      .feedback.error {
+        color: #fca5a5;
+      }
+
+      section {
+        background: rgba(15, 23, 42, 0.6);
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.35);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      label {
+        font-size: 0.95rem;
+        font-weight: 600;
+      }
+
+      select {
+        padding: 12px;
+        border-radius: 12px;
+        border: none;
+        background: rgba(148, 163, 184, 0.15);
+        color: inherit;
+        font-size: 1rem;
+        appearance: none;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 12px 20px;
+        font-size: 1rem;
+        font-weight: 600;
+        background: #1d4ed8;
+        color: #e2e8f0;
+        cursor: pointer;
+        transition: transform 0.1s ease, background 0.2s ease;
+      }
+
+      button:active {
+        transform: scale(0.98);
+      }
+
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      button.secondary {
+        background: rgba(148, 163, 184, 0.2);
+      }
+
+      .controls,
+      .volume {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .control-buttons {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 12px;
+      }
+
+      .slider-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      input[type='range'] {
+        width: 100%;
+        accent-color: #1d4ed8;
+      }
+
+      .volume-value {
+        min-width: 3rem;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .group-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(30, 41, 59, 0.6);
+        font-size: 0.9rem;
+        font-weight: 600;
+        min-width: 140px;
+        justify-content: center;
+      }
+
+      .favorites {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .favorites-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 14px;
+      }
+
+      .favorites-status {
+        font-size: 0.9rem;
+        color: #cbd5f5;
+      }
+
+      .section-title {
+        font-size: 1rem;
+        font-weight: 600;
+      }
+
+      .playlist-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 14px 18px;
+        border-radius: 18px;
+        border: 1px solid rgba(37, 99, 235, 0.25);
+        background: linear-gradient(135deg, rgba(30, 64, 175, 0.45), rgba(15, 23, 42, 0.75));
+        color: inherit;
+        text-align: left;
+        box-shadow: 0 12px 24px rgba(15, 23, 42, 0.45);
+        transition: transform 0.12s ease, box-shadow 0.2s ease;
+      }
+
+      .playlist-card:not(:disabled):active {
+        transform: scale(0.98);
+      }
+
+      .playlist-card.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        box-shadow: none;
+      }
+
+      .playlist-card.loading {
+        cursor: progress;
+      }
+
+      .playlist-card.active {
+        border-color: #fbbf24;
+        box-shadow: 0 16px 34px rgba(251, 191, 36, 0.3);
+      }
+
+      .playlist-art-wrapper {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: radial-gradient(circle at 30% 30%, #1ed760 0%, #15803d 100%);
+        display: grid;
+        place-items: center;
+      }
+
+      .playlist-art {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .playlist-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: flex-start;
+      }
+
+      .playlist-placeholder {
+        font-size: 1.6rem;
+        color: #facc15;
+      }
+
+      .playlist-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #93c5fd;
+      }
+
+      .playlist-brand svg {
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
+      }
+
+      .playlist-name {
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+
+      .playlist-status {
+        font-size: 0.85rem;
+        color: #cbd5f5;
+      }
+
+      .rooms {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .room-card {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: rgba(30, 41, 59, 0.55);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        cursor: pointer;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .room-card:hover {
+        border-color: #38bdf8;
+        box-shadow: 0 12px 30px rgba(56, 189, 248, 0.15);
+      }
+
+      .room-card.active {
+        border-color: #38bdf8;
+        box-shadow: 0 12px 30px rgba(56, 189, 248, 0.3);
+      }
+
+      .room-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .room-name {
+        font-weight: 600;
+        font-size: 1.05rem;
+      }
+
+      .room-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .room-actions button {
+        font-size: 0.85rem;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.3);
+        border: 1px solid rgba(59, 130, 246, 0.5);
+      }
+
+      .volume-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .volume-row span {
+        font-size: 0.9rem;
+        min-width: 56px;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Sonos Controller</h1>
+      <p id="status" class="status disconnected">Checking connection…</p>
+      <div id="feedback" class="feedback"></div>
+
+      <section id="auth-section">
+        <button id="login-btn">Login with Sonos</button>
+      </section>
+
+      <section id="controller" class="hidden">
+        <div class="select-group">
+          <label for="households">Household</label>
+          <select id="households"></select>
+        </div>
+        <div class="select-group">
+          <label>Group</label>
+          <span id="group-chip" class="group-chip">No group selected</span>
+        </div>
+
+        <div class="controls">
+          <span>Playback</span>
+          <div class="control-buttons">
+            <button data-action="playpause">Play / Pause</button>
+            <button data-action="previous" class="secondary">Previous</button>
+            <button data-action="next" class="secondary">Next</button>
+          </div>
+        </div>
+
+        <div class="volume">
+          <span>Volume</span>
+          <div class="slider-row">
+            <input id="volume-slider" type="range" min="0" max="100" step="1" value="35" />
+            <span id="volume-value" class="volume-value">35%</span>
+          </div>
+        </div>
+
+        <div class="favorites">
+          <span class="section-title">Favorites</span>
+          <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
+          <div id="favorites-grid" class="favorites-grid"></div>
+        </div>
+
+        <div class="rooms">
+          <span class="section-title">Rooms</span>
+          <div id="rooms"></div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const SELECT_GROUP_MESSAGE = 'Select a group to play';
+      const READY_MESSAGE = 'Ready to play';
+      const FAVORITE_SUCCESS_MESSAGE = 'Loaded • Shuffle / Repeat / Crossfade ON';
+      const FAVORITE_ERROR_MESSAGE = 'Favorite failed to start';
+      const LOADING_MESSAGE = 'Loading…';
+      const FAVORITE_SUCCESS_TOAST = 'Favorite loaded with shuffle, repeat, crossfade.';
+
+      const loginButton = document.getElementById('login-btn');
+      const statusLabel = document.getElementById('status');
+      const feedbackLabel = document.getElementById('feedback');
+      const authSection = document.getElementById('auth-section');
+      const controllerSection = document.getElementById('controller');
+      const householdSelect = document.getElementById('households');
+      const activeGroupChip = document.getElementById('group-chip');
+      const volumeSlider = document.getElementById('volume-slider');
+      const volumeValue = document.getElementById('volume-value');
+      const favoritesGrid = document.getElementById('favorites-grid');
+      const favoritesStatus = document.getElementById('favorites-status');
+      const roomsContainer = document.getElementById('rooms');
+
+      let isSonosConnected = false;
+      let currentHouseholdId = null;
+      let currentGroupId = null;
+      let currentGroupName = 'No group selected';
+      let currentActiveFavoriteId = null;
+      const favoritesRegistry = new Map();
+      let latestPlayers = [];
+      let latestGroups = [];
+      const volumeLabelMap = new Map();
+      const volumeSliderMap = new Map();
+      let refreshTimer = null;
+
+      loginButton.addEventListener('click', () => {
+        window.location.href = '/auth/sonos/login';
+      });
+
+      householdSelect.addEventListener('change', async (event) => {
+        const householdId = event.target.value;
+        currentHouseholdId = householdId || null;
+
+        if (!householdId) {
+          currentGroupId = null;
+          currentGroupName = 'No group selected';
+          updateActiveGroupDisplay();
+          await loadFavorites(null);
+          await loadPlayers(null);
+          evaluateFavoritesAvailability();
+          setVolumeControlAvailability(false);
+          return;
+        }
+
+        showFeedback('Loading rooms…');
+        await loadPlayers(householdId);
+        await loadFavorites(householdId);
+        showFeedback('Rooms ready.');
+      });
+
+      document
+        .querySelectorAll('[data-action]')
+        .forEach((button) =>
+          button.addEventListener('click', () => handlePlaybackAction(button.dataset.action))
+        );
+
+      volumeSlider.addEventListener('input', () => updateVolumeDisplay(volumeSlider.value));
+      volumeSlider.addEventListener('change', () => setVolume(Number(volumeSlider.value)));
+      const authMessages = {
+        success: 'Sonos authorization complete. Ready to control playback.',
+        error: 'Authorization failed. Please try logging in again.',
+        missing_code: 'Login response missing authorization code.',
+        invalid_state: 'Login validation failed. Please retry.'
+      };
+
+      function applyAuthFeedback() {
+        const params = new URLSearchParams(window.location.search);
+        const state = params.get('auth');
+
+        if (state && authMessages[state]) {
+          showFeedback(authMessages[state], state !== 'success');
+          params.delete('auth');
+          const newUrl = window.location.pathname + (params.toString() ? `?${params}` : '');
+          window.history.replaceState({}, '', newUrl);
+        }
+      }
+
+      function updateConnectionStatus(connected) {
+        statusLabel.classList.toggle('connected', connected);
+        statusLabel.classList.toggle('disconnected', !connected);
+        statusLabel.textContent = connected ? 'Connected to Sonos' : 'Not connected';
+        authSection.classList.toggle('hidden', connected);
+        controllerSection.classList.toggle('hidden', !connected);
+        isSonosConnected = connected;
+
+        if (!connected) {
+          setVolumeControlAvailability(false);
+          favoritesStatus.textContent = 'Login required to load favorites.';
+          roomsContainer.innerHTML = '';
+          currentGroupId = null;
+          currentGroupName = 'No group selected';
+          updateActiveGroupDisplay();
+          currentActiveFavoriteId = null;
+        }
+
+        evaluateFavoritesAvailability();
+      }
+
+      function showFeedback(message, isError = false) {
+        feedbackLabel.textContent = message ?? '';
+        feedbackLabel.classList.toggle('error', Boolean(isError));
+      }
+
+      function getSelectedGroupId() {
+        return currentGroupId;
+      }
+
+      function updateActiveGroupDisplay() {
+        activeGroupChip.textContent = currentGroupName || 'No group selected';
+      }
+
+      function setActiveGroup(groupId, name, { refreshFavorites = false } = {}) {
+        currentGroupId = groupId || null;
+        currentGroupName = currentGroupId ? name || currentGroupName || 'Group' : 'No group selected';
+        updateActiveGroupDisplay();
+        evaluateFavoritesAvailability();
+        if (refreshFavorites && currentHouseholdId) {
+          loadFavorites(currentHouseholdId).catch((error) => {
+            console.error('Failed to refresh favorites', error);
+          });
+        }
+      }
+
+      async function loadHouseholds() {
+        try {
+          const response = await fetch('/api/households');
+
+          if (response.status === 401) {
+            updateConnectionStatus(false);
+            showFeedback('Login required to load Sonos households.', true);
+            favoritesStatus.textContent = 'Login required to load favorites.';
+            return;
+          }
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+          const households = Array.isArray(data.households) ? data.households : [];
+
+          if (!households.length) {
+            updateConnectionStatus(true);
+            showFeedback('No households returned for this account.', true);
+            householdSelect.innerHTML = '';
+            currentHouseholdId = null;
+            currentGroupId = null;
+            currentGroupName = 'No group selected';
+            currentActiveFavoriteId = null;
+            updateActiveGroupDisplay();
+            setVolumeControlAvailability(false);
+            await loadFavorites(null);
+            await loadPlayers(null);
+            evaluateFavoritesAvailability();
+            return;
+          }
+
+          householdSelect.innerHTML = households
+            .map(
+              (household) =>
+                `<option value="${household.id}">${household.name || household.id}</option>`
+            )
+            .join('');
+
+          updateConnectionStatus(true);
+          showFeedback('Households loaded. Choose one to continue.');
+
+          currentHouseholdId = householdSelect.value || null;
+
+          if (currentHouseholdId) {
+            await loadPlayers(currentHouseholdId);
+            await loadFavorites(currentHouseholdId);
+          } else {
+            await loadFavorites(null);
+            await loadPlayers(null);
+            evaluateFavoritesAvailability();
+          }
+        } catch (error) {
+          console.error('Failed to load households:', error);
+          showFeedback('Could not load households. Please try again.', true);
+          updateConnectionStatus(false);
+          favoritesStatus.textContent = 'Unable to load favorites.';
+        }
+      }
+
+      async function loadFavorites(householdId) {
+        favoritesRegistry.clear();
+        favoritesGrid.innerHTML = '';
+
+        if (!householdId) {
+          favoritesStatus.textContent = isSonosConnected
+            ? 'Select a household to load favorites.'
+            : 'Login required to load favorites.';
+          evaluateFavoritesAvailability();
+          return;
+        }
+
+        favoritesStatus.textContent = 'Loading favorites…';
+
+        try {
+          const params = new URLSearchParams({ householdId });
+          const activeGroupId = getSelectedGroupId();
+          if (activeGroupId) {
+            params.set('groupId', activeGroupId);
+          }
+
+          const response = await fetch(`/api/favorites?${params.toString()}`);
+
+          if (response.status === 401) {
+            updateConnectionStatus(false);
+            favoritesStatus.textContent = 'Login required to load favorites.';
+            return;
+          }
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+          const items = Array.isArray(data.items) ? data.items : [];
+          currentActiveFavoriteId = data.activeFavorite ?? null;
+
+          if (!items.length) {
+            favoritesStatus.textContent = 'No favorites found.';
+            evaluateFavoritesAvailability();
+            return;
+          }
+
+          favoritesStatus.textContent = '';
+
+          items.forEach((favorite) => {
+            const entry = createFavoriteCard(favorite);
+            favoritesRegistry.set(favorite.id, entry);
+            favoritesGrid.appendChild(entry.button);
+          });
+
+          evaluateFavoritesAvailability();
+          markActiveFavorite(currentActiveFavoriteId);
+        } catch (error) {
+          console.error('Failed to load favorites:', error);
+          favoritesStatus.textContent = 'Could not load favorites. Please try again.';
+          evaluateFavoritesAvailability();
+        }
+      }
+
+      function createFavoriteCard(favorite) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'playlist-card disabled';
+        button.disabled = true;
+        button.dataset.favoriteId = favorite.id;
+
+        const artWrapper = document.createElement('div');
+        artWrapper.className = 'playlist-art-wrapper';
+
+        const imageUrl =
+          favorite && favorite.imageUrl
+            ? favorite.imageUrl
+            : favorite && favorite.images && favorite.images.length && favorite.images[0].url
+              ? favorite.images[0].url
+              : favorite && favorite.container && favorite.container.imageUrl
+                ? favorite.container.imageUrl
+                : null;
+
+        if (imageUrl) {
+          const img = document.createElement('img');
+          img.className = 'playlist-art';
+          img.alt = `${favorite.name || 'Favorite'} cover art`;
+          img.loading = 'lazy';
+          img.src = imageUrl;
+          img.addEventListener('error', () => img.classList.add('hidden'));
+          artWrapper.appendChild(img);
+        } else {
+          const placeholder = document.createElement('span');
+          placeholder.className = 'playlist-placeholder';
+          placeholder.textContent = '★';
+          artWrapper.appendChild(placeholder);
+        }
+
+        const meta = document.createElement('div');
+        meta.className = 'playlist-meta';
+
+        const brand = document.createElement('span');
+        brand.className = 'playlist-brand';
+        const brandIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        brandIcon.setAttribute('viewBox', '0 0 24 24');
+        brandIcon.setAttribute('aria-hidden', 'true');
+        const brandPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        brandPath.setAttribute(
+          'd',
+          'M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.62L12 2 9.19 8.62 2 9.24l5.46 4.73L5.82 21z'
+        );
+        brandIcon.appendChild(brandPath);
+        brand.appendChild(brandIcon);
+        const serviceLabel =
+          favorite && favorite.service && favorite.service.name
+            ? favorite.service.name
+            : favorite && favorite.programType
+              ? favorite.programType
+              : 'Sonos Favorite';
+        brand.appendChild(document.createTextNode(' ' + serviceLabel));
+
+        const title = document.createElement('span');
+        title.className = 'playlist-name';
+        title.textContent = favorite.name || 'Unnamed Favorite';
+
+        const status = document.createElement('span');
+        status.className = 'playlist-status';
+        status.textContent = SELECT_GROUP_MESSAGE;
+
+        meta.appendChild(brand);
+        meta.appendChild(title);
+        meta.appendChild(status);
+
+        button.appendChild(artWrapper);
+        button.appendChild(meta);
+
+        const entry = {
+          favorite,
+          button,
+          statusEl: status,
+          loading: false,
+          statusMessage: SELECT_GROUP_MESSAGE
+        };
+
+        button.addEventListener('click', () => playFavorite(entry));
+
+        return entry;
+      }
+
+      async function playFavorite(entry) {
+        const groupId = getSelectedGroupId();
+        if (!groupId) {
+          showFeedback('Choose a group before starting the favorite.', true);
+          return;
+        }
+
+        setFavoriteLoading(entry, true);
+
+        const commandPromise = sendCommand(
+          `/api/groups/${encodeURIComponent(groupId)}/favorites/play`,
+          {
+            favoriteId: entry.favorite.id,
+            shuffle: true,
+            repeat: true,
+            crossfade: true
+          },
+          FAVORITE_SUCCESS_TOAST
+        );
+
+        const [success] = await Promise.all([commandPromise, delay(2000)]);
+        setFavoriteLoading(entry, false);
+
+        if (success) {
+          markActiveFavorite(entry.favorite.id);
+        } else {
+          updateFavoriteStatus(entry, FAVORITE_ERROR_MESSAGE);
+        }
+
+        evaluateFavoritesAvailability();
+      }
+
+      function setFavoriteLoading(entry, isLoading) {
+        entry.loading = isLoading;
+        entry.button.disabled = true;
+        if (isLoading) {
+          entry.button.classList.add('loading');
+          updateFavoriteStatus(entry, LOADING_MESSAGE);
+        } else {
+          entry.button.classList.remove('loading');
+        }
+      }
+
+      function updateFavoriteStatus(entry, message) {
+        entry.statusMessage = message;
+        entry.statusEl.textContent = message;
+      }
+
+      function evaluateFavoritesAvailability() {
+        const hasGroup = Boolean(getSelectedGroupId());
+        const enabled = isSonosConnected && hasGroup;
+
+        favoritesRegistry.forEach((entry) => {
+          if (entry.loading) {
+            return;
+          }
+
+          entry.button.disabled = !enabled;
+          entry.button.classList.toggle('disabled', !enabled);
+
+          if (!enabled) {
+            entry.button.classList.remove('active');
+            updateFavoriteStatus(entry, SELECT_GROUP_MESSAGE);
+          } else if (
+            entry.statusMessage === SELECT_GROUP_MESSAGE ||
+            entry.statusMessage === READY_MESSAGE ||
+            entry.statusMessage === ''
+          ) {
+            updateFavoriteStatus(entry, READY_MESSAGE);
+          }
+        });
+
+        if (enabled) {
+          markActiveFavorite(currentActiveFavoriteId);
+        }
+      }
+
+      function markActiveFavorite(favoriteId) {
+        currentActiveFavoriteId = favoriteId || null;
+
+        favoritesRegistry.forEach((entry) => {
+          if (entry.loading) {
+            return;
+          }
+
+          const isActive = Boolean(favoriteId) && entry.favorite.id === favoriteId;
+          entry.button.classList.toggle('active', isActive);
+
+          if (isActive) {
+            updateFavoriteStatus(entry, FAVORITE_SUCCESS_MESSAGE);
+          } else if (entry.statusMessage === FAVORITE_SUCCESS_MESSAGE) {
+            updateFavoriteStatus(entry, READY_MESSAGE);
+          }
+        });
+      }
+
+      async function handlePlaybackAction(action) {
+        const groupId = getSelectedGroupId();
+        if (!groupId) {
+          showFeedback('Choose a group before controlling playback.', true);
+          return;
+        }
+
+        const endpoints = {
+          playpause: `/api/groups/${encodeURIComponent(groupId)}/playpause`,
+          next: `/api/groups/${encodeURIComponent(groupId)}/next`,
+          previous: `/api/groups/${encodeURIComponent(groupId)}/previous`
+        };
+
+        const endpoint = endpoints[action];
+        if (!endpoint) {
+          console.warn(`Unknown playback action requested: ${action}`);
+          return;
+        }
+
+        await sendCommand(endpoint);
+      }
+
+      async function setVolume(level) {
+        const groupId = getSelectedGroupId();
+        if (!groupId) {
+          showFeedback('Choose a group before changing volume.', true);
+          return;
+        }
+
+        updateVolumeDisplay(level);
+        const success = await sendCommand(
+          `/api/groups/${encodeURIComponent(groupId)}/volume`,
+          {
+            volume: level
+          },
+          `Volume set to ${level}%.`
+        );
+
+        if (!success) {
+          showFeedback('Unable to update volume. Please try again.', true);
+        }
+      }
+
+      async function sendCommand(endpoint, body, successMessage = 'Command sent to Sonos.') {
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: body ? { 'Content-Type': 'application/json' } : undefined,
+            body: body ? JSON.stringify(body) : undefined
+          });
+
+          if (response.status === 401) {
+            updateConnectionStatus(false);
+            showFeedback('Session expired. Please login again.', true);
+            return false;
+          }
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          if (successMessage) {
+            showFeedback(successMessage);
+          }
+          return true;
+        } catch (error) {
+          console.error('Command failed:', error);
+          showFeedback('Unable to reach Sonos. Please try again.', true);
+          return false;
+        }
+      }
+
+      function delay(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function setVolumeControlAvailability(enabled) {
+        volumeSlider.disabled = !enabled;
+        if (!enabled) {
+          volumeValue.textContent = '--%';
+        } else {
+          updateVolumeDisplay(volumeSlider.value);
+        }
+      }
+
+      function updateVolumeDisplay(value) {
+        volumeValue.textContent = `${Number(value)}%`;
+      }
+
+      setVolumeControlAvailability(false);
+      evaluateFavoritesAvailability();
+      applyAuthFeedback();
+
+      async function refreshRooms() {
+        if (!currentHouseholdId) {
+          return;
+        }
+
+        try {
+          await loadPlayers(currentHouseholdId);
+        } catch (error) {
+          console.error('Failed to refresh rooms', error);
+        }
+      }
+
+      async function loadPlayers(householdId) {
+        if (!householdId) {
+          latestPlayers = [];
+          latestGroups = [];
+          roomsContainer.innerHTML = '';
+          setVolumeControlAvailability(false);
+          ensureActiveGroup([]);
+          return;
+        }
+
+        try {
+          clearTimeout(refreshTimer);
+          refreshTimer = null;
+          const response = await fetch(`/api/households/${encodeURIComponent(householdId)}/players`);
+
+          if (response.status === 401) {
+            updateConnectionStatus(false);
+            favoritesStatus.textContent = 'Login required to load favorites.';
+            roomsContainer.innerHTML = '';
+            setVolumeControlAvailability(false);
+            return;
+          }
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+          latestPlayers = Array.isArray(data.players) ? data.players : [];
+          latestGroups = Array.isArray(data.groups) ? data.groups : [];
+
+          ensureActiveGroup(latestPlayers);
+          renderRooms(latestPlayers, latestGroups);
+          setVolumeControlAvailability(Boolean(currentGroupId));
+        } catch (error) {
+          console.error('Failed to load players', error);
+          roomsContainer.innerHTML = '<p class="favorites-status">Unable to load rooms.</p>';
+          setVolumeControlAvailability(false);
+        }
+      }
+
+      function ensureActiveGroup(players) {
+        if (currentGroupId && players.some((player) => player.groupId === currentGroupId)) {
+          const active = players.find((player) => player.groupId === currentGroupId);
+          if (active) {
+            currentGroupName = active.groupName || active.name || currentGroupName;
+          }
+        } else {
+          const candidate = players.find((player) => player.groupId);
+          if (candidate) {
+            currentGroupId = candidate.groupId;
+            currentGroupName = candidate.groupName || candidate.name || 'Group';
+          } else {
+            currentGroupId = null;
+            currentGroupName = 'No group selected';
+          }
+        }
+        updateActiveGroupDisplay();
+        evaluateFavoritesAvailability();
+      }
+
+      function renderRooms(players = [], groups = []) {
+        volumeLabelMap.clear();
+        volumeSliderMap.clear();
+        roomsContainer.innerHTML = '';
+
+        if (!players.length) {
+          roomsContainer.innerHTML = '<p class="favorites-status">No rooms detected.</p>';
+          return;
+        }
+
+        const selectedGroupId = getSelectedGroupId();
+        const groupLookup = new Map();
+        groups.forEach((group) => {
+          if (!group) {
+            return;
+          }
+          const identifiers = [group.id, group.groupId, group.coordinatorId].filter(Boolean);
+          const resolvedName = group.name ?? group.displayName ?? identifiers[0] ?? 'Group';
+          identifiers.forEach((identifier) => {
+            if (!groupLookup.has(identifier)) {
+              groupLookup.set(identifier, { ...group, name: resolvedName });
+            }
+          });
+        });
+
+        let selectedGroup = selectedGroupId ? groupLookup.get(selectedGroupId) : null;
+        if (!selectedGroup && selectedGroupId) {
+          selectedGroup = groups.find((group) => group?.id === selectedGroupId) || null;
+        }
+
+        players.forEach((player) => {
+          let resolvedGroupId = player.groupId ?? null;
+          if (!resolvedGroupId) {
+            const fallback = groups.find(
+              (group) => Array.isArray(group.playerIds) && group.playerIds.includes(player.id)
+            );
+            if (fallback) {
+              resolvedGroupId = fallback.id ?? fallback.groupId ?? null;
+            }
+          }
+
+          const playerGroupInfo = resolvedGroupId ? groupLookup.get(resolvedGroupId) : null;
+
+          const card = document.createElement('div');
+          card.className = 'room-card';
+          if (resolvedGroupId && resolvedGroupId === currentGroupId) {
+            card.classList.add('active');
+          }
+
+          const header = document.createElement('div');
+          header.className = 'room-header';
+
+          const title = document.createElement('span');
+          title.className = 'room-name';
+          const displayName = player.name || player.id || 'Room';
+          title.textContent = displayName;
+
+          const groupLabel = document.createElement('span');
+          groupLabel.className = 'favorites-status';
+          groupLabel.textContent = playerGroupInfo
+            ? `Group: ${playerGroupInfo.name}`
+            : player.groupName
+              ? `Group: ${player.groupName}`
+              : 'Ungrouped';
+
+          header.appendChild(title);
+          header.appendChild(groupLabel);
+
+          const volumeRow = document.createElement('div');
+          volumeRow.className = 'volume-row';
+          const volumeLabel = document.createElement('span');
+          const initialVolume = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+          volumeLabel.textContent = `Vol ${initialVolume}%`;
+          const volumeSliderEl = document.createElement('input');
+          volumeSliderEl.type = 'range';
+          volumeSliderEl.min = '0';
+          volumeSliderEl.max = '100';
+          volumeSliderEl.value = initialVolume;
+          volumeSliderEl.addEventListener('input', (event) => {
+            volumeLabel.textContent = `Vol ${event.target.value}%`;
+          });
+          volumeSliderEl.addEventListener('change', (event) => {
+            setPlayerVolume(player.id, Number(event.target.value));
+          });
+          volumeSliderEl.addEventListener('pointerdown', (event) => event.stopPropagation());
+          volumeSliderEl.addEventListener('click', (event) => event.stopPropagation());
+          volumeLabelMap.set(player.id, volumeLabel);
+          volumeSliderMap.set(player.id, volumeSliderEl);
+          volumeRow.appendChild(volumeLabel);
+          volumeRow.appendChild(volumeSliderEl);
+
+          const actions = document.createElement('div');
+          actions.className = 'room-actions';
+
+          const otherPlayer = players.find(
+            (candidate) => candidate.id !== player.id && candidate.groupId && candidate.groupId !== resolvedGroupId
+          );
+
+          const joinButton = document.createElement('button');
+          if (selectedGroup && selectedGroup.id !== resolvedGroupId) {
+            joinButton.textContent = `Join ${selectedGroup.name}`;
+            joinButton.disabled = false;
+            joinButton.addEventListener('click', (event) => {
+              event.stopPropagation();
+              addToGroup(selectedGroup.id, player.id);
+            });
+          } else if (otherPlayer) {
+            const targetName = otherPlayer.groupName || otherPlayer.name || 'Group';
+            joinButton.textContent = `Join ${targetName}`;
+            joinButton.disabled = false;
+            joinButton.addEventListener('click', (event) => {
+              event.stopPropagation();
+              addToGroup(otherPlayer.groupId, player.id);
+            });
+          } else {
+            joinButton.textContent = 'Join Other Room';
+            joinButton.disabled = true;
+          }
+
+          const leaveButton = document.createElement('button');
+          leaveButton.textContent = 'Leave Group';
+          const groupEntry = groups.find((group) => group?.id === resolvedGroupId);
+          const memberCount = Array.isArray(groupEntry?.playerIds)
+            ? groupEntry.playerIds.length
+            : players.filter((candidate) => candidate.groupId === resolvedGroupId).length;
+          leaveButton.disabled = !resolvedGroupId || memberCount <= 1;
+          leaveButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (resolvedGroupId) {
+              removeFromGroup(resolvedGroupId, player.id);
+            }
+          });
+
+          actions.appendChild(joinButton);
+          actions.appendChild(leaveButton);
+
+          card.appendChild(header);
+          card.appendChild(volumeRow);
+          card.appendChild(actions);
+
+          card.addEventListener('click', () => {
+            if (resolvedGroupId) {
+              const resolvedName = playerGroupInfo?.name || player.groupName || displayName;
+              setActiveGroup(resolvedGroupId, resolvedName, { refreshFavorites: true });
+              renderRooms(latestPlayers, latestGroups);
+            }
+          });
+
+          roomsContainer.appendChild(card);
+        });
+      }
+
+      async function addToGroup(groupId, playerId) {
+        if (!groupId || !playerId) {
+          return;
+        }
+
+        const success = await sendCommand(
+          `/api/groups/${encodeURIComponent(groupId)}/addPlayer`,
+          { playerId },
+          'Room joined the selected group.'
+        );
+
+        if (success && currentHouseholdId) {
+          await loadPlayers(currentHouseholdId);
+          await loadFavorites(currentHouseholdId);
+          scheduleRefresh();
+        }
+      }
+
+      async function removeFromGroup(groupId, playerId) {
+        if (!groupId || !playerId) {
+          return;
+        }
+
+        const success = await sendCommand(
+          `/api/groups/${encodeURIComponent(groupId)}/removePlayer`,
+          { playerId },
+          'Room removed from its group.'
+        );
+
+        if (success && currentHouseholdId) {
+          await loadPlayers(currentHouseholdId);
+          await loadFavorites(currentHouseholdId);
+          scheduleRefresh();
+        }
+      }
+
+      async function setPlayerVolume(playerId, level) {
+        if (!playerId) {
+          return;
+        }
+
+        const numericLevel = Number(level);
+        const label = volumeLabelMap.get(playerId);
+        const slider = volumeSliderMap.get(playerId);
+
+        if (label) {
+          label.textContent = `Vol ${numericLevel}%`;
+        }
+        if (slider) {
+          slider.value = numericLevel;
+        }
+
+        try {
+          const postResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level: numericLevel })
+          });
+
+          if (!postResponse.ok) {
+            throw new Error(await postResponse.text());
+          }
+
+          const getResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume`);
+          if (getResponse.ok) {
+            const payload = await getResponse.json();
+            const updatedLevel = Number(
+              payload.volume ?? payload?.volume?.volume ?? payload.level ?? numericLevel
+            );
+            if (label) {
+              label.textContent = `Vol ${updatedLevel}%`;
+            }
+            if (slider) {
+              slider.value = updatedLevel;
+            }
+          }
+
+          scheduleRefresh();
+        } catch (error) {
+          console.error('Failed to update player volume:', error);
+          showFeedback('Unable to update room volume. Please try again.', true);
+          if (currentHouseholdId) {
+            loadPlayers(currentHouseholdId);
+          }
+        }
+      }
+
+      function scheduleRefresh() {
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => {
+          if (currentHouseholdId) {
+            loadPlayers(currentHouseholdId).catch((error) => {
+              console.error('Scheduled room refresh failed', error);
+            });
+          }
+        }, 700);
+      }
+
+      updateActiveGroupDisplay();
+      loadHouseholds();
+    </script>
+
+
+  </body>
+</html>
