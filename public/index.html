@@ -29,6 +29,32 @@
         gap: 16px;
       }
 
+      .app-tabs {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .tab-button {
+        padding: 10px 16px;
+        border-radius: 999px;
+        border: none;
+        background: rgba(30, 64, 175, 0.35);
+        color: inherit;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s ease, transform 0.1s ease;
+      }
+
+      .tab-button.active {
+        background: #2563eb;
+      }
+
+      .tab-button:active {
+        transform: scale(0.98);
+      }
+
       h1 {
         font-size: 1.75rem;
         margin: 0;
@@ -153,6 +179,17 @@
         justify-content: center;
       }
 
+      .settings-row {
+        display: grid;
+        grid-template-columns: 1fr auto auto;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 12px;
+        background: rgba(30, 41, 59, 0.4);
+        padding: 12px 14px;
+        border-radius: 12px;
+      }
+
       .favorites {
         display: flex;
         flex-direction: column;
@@ -263,6 +300,20 @@
         color: #cbd5f5;
       }
 
+      .settings-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+
+      .settings-status {
+        min-height: 1.2rem;
+        font-size: 0.9rem;
+        color: #cbd5f5;
+      }
+
       .rooms {
         display: flex;
         flex-direction: column;
@@ -344,44 +395,63 @@
         <button id="signout-btn" class="hidden" onclick="signout()">Sign out</button>
       </div>
 
-      <section id="controller" class="hidden">
-        <div class="select-group">
-          <label for="households">Household</label>
-          <select id="households"></select>
-        </div>
-        <div class="select-group">
-          <label>Group</label>
-          <span id="group-chip" class="group-chip">No group selected</span>
-        </div>
+      <div id="app-panels" class="hidden">
+        <nav class="app-tabs">
+          <button id="tab-control" class="tab-button active" type="button">Control</button>
+          <button id="tab-settings" class="tab-button" type="button">Settings</button>
+        </nav>
 
-        <div class="controls">
-          <span>Playback</span>
-          <div class="control-buttons">
-            <button data-action="playpause">Play / Pause</button>
-            <button data-action="previous" class="secondary">Previous</button>
-            <button data-action="next" class="secondary">Next</button>
+        <section id="panel-control">
+          <div class="select-group">
+            <label for="households">Household</label>
+            <select id="households"></select>
           </div>
-        </div>
-
-        <div class="volume">
-          <span>Volume</span>
-          <div class="slider-row">
-            <input id="volume-slider" type="range" min="0" max="100" step="1" value="35" />
-            <span id="volume-value" class="volume-value">35%</span>
+          <div class="select-group">
+            <label>Group</label>
+            <span id="group-chip" class="group-chip">No group selected</span>
           </div>
-        </div>
 
-        <div class="favorites">
-          <span class="section-title">Favorites</span>
-          <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
-          <div id="favorites-grid" class="favorites-grid"></div>
-        </div>
+          <div class="controls">
+            <span>Playback</span>
+            <div class="control-buttons">
+              <button data-action="playpause">Play / Pause</button>
+              <button data-action="previous" class="secondary">Previous</button>
+              <button data-action="next" class="secondary">Next</button>
+            </div>
+          </div>
 
-        <div class="rooms">
-          <span class="section-title">Rooms</span>
-          <div id="rooms"></div>
-        </div>
-      </section>
+          <div class="volume">
+            <span>Volume</span>
+            <div class="slider-row">
+              <input id="volume-slider" type="range" min="0" max="100" step="1" value="35" />
+              <span id="volume-value" class="volume-value">35%</span>
+            </div>
+          </div>
+
+          <div class="favorites">
+            <span class="section-title">Favorites</span>
+            <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
+            <div id="favorites-grid" class="favorites-grid"></div>
+          </div>
+
+          <div class="rooms">
+            <span class="section-title">Rooms</span>
+            <div id="rooms"></div>
+          </div>
+        </section>
+
+        <section id="panel-settings" class="hidden">
+          <h3 class="section-title">Default Volumes (on play)</h3>
+          <p id="settings-help" class="favorites-status">
+            Set a default launch volume for each speaker. Leave blank to keep its current level.
+          </p>
+          <div id="settings-players"></div>
+          <div class="settings-actions">
+            <button id="settings-save" type="button">Save Defaults</button>
+            <span id="settings-status" class="settings-status"></span>
+          </div>
+        </section>
+      </div>
     </main>
 
     <script>
@@ -396,7 +466,11 @@
       const feedbackLabel = document.getElementById('feedback');
       const signinButton = document.getElementById('signin-btn');
       const signoutButton = document.getElementById('signout-btn');
-      const controllerSection = document.getElementById('controller');
+      const panelsContainer = document.getElementById('app-panels');
+      const panelControl = document.getElementById('panel-control');
+      const panelSettings = document.getElementById('panel-settings');
+      const tabControlButton = document.getElementById('tab-control');
+      const tabSettingsButton = document.getElementById('tab-settings');
       const householdSelect = document.getElementById('households');
       const activeGroupChip = document.getElementById('group-chip');
       const volumeSlider = document.getElementById('volume-slider');
@@ -404,6 +478,13 @@
       const favoritesGrid = document.getElementById('favorites-grid');
       const favoritesStatus = document.getElementById('favorites-status');
       const roomsContainer = document.getElementById('rooms');
+const settingsPlayersWrap = document.getElementById('settings-players');
+const settingsSaveButton = document.getElementById('settings-save');
+const settingsStatusLabel = document.getElementById('settings-status');
+const settingsHelpLabel = document.getElementById('settings-help');
+
+settingsSaveButton.disabled = true;
+settingsStatusLabel.textContent = '';
 
       let isSonosConnected = false;
       let currentHouseholdId = null;
@@ -421,38 +502,59 @@
         window.location.href = '/auth/sonos/login';
       }
 
-      async function signout() {
-        try {
-          await fetch('/auth/signout', { method: 'POST' });
-        } catch (error) {
-          console.error('Sign out failed:', error);
-        }
-        setAuthUI(false);
-        showFeedback('Signed out of Sonos.');
-      }
+async function signout() {
+  try {
+    await fetch('/auth/signout', { method: 'POST' });
+  } catch (error) {
+    console.error('Sign out failed:', error);
+  }
+  setAuthUI(false);
+  showFeedback('Signed out of Sonos.');
+}
 
-      function setAuthUI(loggedIn) {
-        signinButton.classList.toggle('hidden', loggedIn);
-        signoutButton.classList.toggle('hidden', !loggedIn);
-        controllerSection.classList.toggle('hidden', !loggedIn);
-        updateConnectionStatus(loggedIn);
-      }
+function showTab(name) {
+  const isControl = name === 'control';
+  tabControlButton.classList.toggle('active', isControl);
+  tabSettingsButton.classList.toggle('active', !isControl);
+  panelControl.classList.toggle('hidden', !isControl);
+  panelSettings.classList.toggle('hidden', isControl);
+}
 
-      async function checkAuthAndInit() {
-        try {
-          const response = await fetch('/auth/status');
-          if (!response.ok) {
-            throw new Error('Failed to check auth status');
-          }
+tabControlButton.addEventListener('click', () => {
+  showTab('control');
+});
 
-          const state = await response.json();
-          const loggedIn = Boolean(state.loggedIn);
-          setAuthUI(loggedIn);
+tabSettingsButton.addEventListener('click', async () => {
+  showTab('settings');
+  await renderSettings();
+});
 
-          if (loggedIn) {
-            await refreshUI();
-          }
-        } catch (error) {
+function setAuthUI(loggedIn) {
+  signinButton.classList.toggle('hidden', loggedIn);
+  signoutButton.classList.toggle('hidden', !loggedIn);
+  panelsContainer.classList.toggle('hidden', !loggedIn);
+  if (!loggedIn) {
+    showTab('control');
+  }
+  updateConnectionStatus(loggedIn);
+}
+
+async function checkAuthAndInit() {
+  try {
+    const response = await fetch('/auth/status');
+    if (!response.ok) {
+      throw new Error('Failed to check auth status');
+    }
+
+    const state = await response.json();
+    const loggedIn = Boolean(state.loggedIn);
+    setAuthUI(loggedIn);
+    showTab('control');
+
+    if (loggedIn) {
+      await refreshUI();
+    }
+  } catch (error) {
           console.error('Auth status check failed:', error);
           setAuthUI(false);
         }
@@ -473,11 +575,14 @@
           return;
         }
 
-        showFeedback('Loading rooms…');
-        await loadPlayers(householdId);
-        await loadFavorites(householdId);
-        showFeedback('Rooms ready.');
-      });
+    showFeedback('Loading rooms…');
+    await loadPlayers(householdId);
+    await loadFavorites(householdId);
+    if (!panelSettings.classList.contains('hidden')) {
+      await renderSettings();
+    }
+    showFeedback('Rooms ready.');
+  });
 
       document
         .querySelectorAll('[data-action]')
@@ -522,8 +627,14 @@
           currentGroupName = 'No group selected';
           updateActiveGroupDisplay();
           currentActiveFavoriteId = null;
+          settingsPlayersWrap.innerHTML = '';
+          settingsStatusLabel.textContent = '';
+          if (settingsHelpLabel) {
+            settingsHelpLabel.textContent = 'Sign in to load speakers.';
+          }
         }
 
+        settingsSaveButton.disabled = !connected;
         evaluateFavoritesAvailability();
       }
 
@@ -606,11 +717,195 @@
             await loadPlayers(null);
             evaluateFavoritesAvailability();
           }
+
+          if (!panelSettings.classList.contains('hidden')) {
+            await renderSettings();
+          }
         } catch (error) {
           console.error('Failed to load households:', error);
           showFeedback('Could not load households. Please try again.', true);
           setAuthUI(false);
           favoritesStatus.textContent = 'Unable to load favorites.';
+      }
+    }
+
+      async function fetchGroupsPlayers(householdId) {
+        if (!householdId) {
+          return { groups: [], players: [] };
+        }
+
+        const response = await fetch(
+          `/api/households/${encodeURIComponent(householdId)}/groups-players`
+        );
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        return response.json();
+      }
+
+      async function renderSettings() {
+        if (panelSettings.classList.contains('hidden')) {
+          return;
+        }
+
+        settingsStatusLabel.textContent = '';
+
+        if (!isSonosConnected) {
+          settingsPlayersWrap.innerHTML = '';
+          if (settingsHelpLabel) {
+            settingsHelpLabel.textContent = 'Sign in to load speakers.';
+          }
+          settingsSaveButton.disabled = true;
+          settingsSaveButton.onclick = null;
+          return;
+        }
+
+        const householdId = householdSelect.value;
+        if (!householdId) {
+          settingsPlayersWrap.innerHTML = '';
+          if (settingsHelpLabel) {
+            settingsHelpLabel.textContent = 'Select a household to load speakers.';
+          }
+          settingsSaveButton.disabled = true;
+          settingsSaveButton.onclick = null;
+          return;
+        }
+
+        if (settingsHelpLabel) {
+          settingsHelpLabel.textContent =
+            'Set a default launch volume for each speaker. Leave blank to keep its current level.';
+        }
+
+        try {
+          const [snapshot, defaults] = await Promise.all([
+            fetchGroupsPlayers(householdId),
+            fetch('/api/settings/volumes').then((response) => {
+              if (!response.ok) {
+                throw new Error('Failed to load saved volumes');
+              }
+              return response.json();
+            })
+          ]);
+
+          const players = Array.isArray(snapshot.players) ? snapshot.players : [];
+          settingsPlayersWrap.innerHTML = '';
+
+          if (!players.length) {
+            settingsSaveButton.disabled = true;
+            settingsStatusLabel.textContent = 'No speakers found for this household.';
+            settingsSaveButton.onclick = null;
+            return;
+          }
+
+          players.forEach((player) => {
+            const row = document.createElement('div');
+            row.className = 'settings-row';
+            row.dataset.playerId = player.id;
+
+            const nameLabel = document.createElement('strong');
+            nameLabel.textContent = player.name || player.id || 'Speaker';
+
+            const rangeInput = document.createElement('input');
+            rangeInput.type = 'range';
+            rangeInput.min = '0';
+            rangeInput.max = '100';
+
+            const numberInput = document.createElement('input');
+            numberInput.type = 'number';
+            numberInput.min = '0';
+            numberInput.max = '100';
+            numberInput.placeholder = '—';
+
+            const defaultValue =
+              defaults && typeof defaults[player.id] === 'number'
+                ? Math.max(0, Math.min(100, Number(defaults[player.id])))
+                : null;
+
+            if (defaultValue === null || Number.isNaN(defaultValue)) {
+              rangeInput.value = '50';
+              numberInput.value = '';
+            } else {
+              rangeInput.value = String(defaultValue);
+              numberInput.value = String(defaultValue);
+            }
+
+            rangeInput.addEventListener('input', (event) => {
+              numberInput.value = event.target.value;
+            });
+
+            numberInput.addEventListener('input', (event) => {
+              const raw = event.target.value.trim();
+              if (raw === '') {
+                return;
+              }
+
+              let numeric = Number(raw);
+              if (Number.isNaN(numeric)) {
+                numeric = '';
+              } else {
+                numeric = Math.max(0, Math.min(100, numeric));
+              }
+
+              if (numeric === '') {
+                event.target.value = '';
+              } else {
+                event.target.value = String(numeric);
+                rangeInput.value = String(numeric);
+              }
+            });
+
+            row.appendChild(nameLabel);
+            row.appendChild(rangeInput);
+            row.appendChild(numberInput);
+            settingsPlayersWrap.appendChild(row);
+          });
+
+          settingsSaveButton.disabled = false;
+          settingsSaveButton.onclick = async () => {
+            try {
+              settingsSaveButton.disabled = true;
+              settingsStatusLabel.textContent = 'Saving…';
+
+              const payload = {};
+              settingsPlayersWrap.querySelectorAll('.settings-row').forEach((row) => {
+                const playerId = row.dataset.playerId;
+                const input = row.querySelector('input[type="number"]');
+                if (!playerId || !input) {
+                  return;
+                }
+
+                const value = input.value.trim();
+                if (value !== '') {
+                  payload[playerId] = Number(value);
+                }
+              });
+
+              const response = await fetch('/api/settings/volumes', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+
+              if (!response.ok) {
+                throw new Error(await response.text());
+              }
+
+              settingsStatusLabel.textContent = 'Saved defaults.';
+            } catch (error) {
+              console.error('Failed to save volume defaults:', error);
+              settingsStatusLabel.textContent = 'Failed to save defaults.';
+            } finally {
+              settingsSaveButton.disabled = false;
+            }
+          };
+        } catch (error) {
+          console.error('Failed to render settings:', error);
+          settingsPlayersWrap.innerHTML = '';
+          settingsStatusLabel.textContent = 'Failed to load speaker data.';
+          settingsSaveButton.disabled = true;
+          settingsSaveButton.onclick = null;
         }
       }
 
@@ -784,6 +1079,10 @@
         setFavoriteLoading(entry, false);
 
         if (success) {
+          if (currentHouseholdId) {
+            await loadPlayers(currentHouseholdId);
+          }
+          await refreshPrimaryGroup(currentHouseholdId || householdSelect.value || null);
           markActiveFavorite(entry.favorite.id);
         } else {
           updateFavoriteStatus(entry, FAVORITE_ERROR_MESSAGE);
@@ -945,11 +1244,12 @@
         volumeValue.textContent = `${Number(value)}%`;
       }
 
-      setVolumeControlAvailability(false);
-      evaluateFavoritesAvailability();
-      applyAuthFeedback();
+  setVolumeControlAvailability(false);
+  evaluateFavoritesAvailability();
+  applyAuthFeedback();
+  showTab('control');
 
-      async function refreshRooms() {
+  async function refreshRooms() {
         if (!currentHouseholdId) {
           return;
         }

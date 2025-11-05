@@ -2,3 +2,4 @@
 node_modules
 .tokens.json
 .appstate.json
+.speaker-volumes.json

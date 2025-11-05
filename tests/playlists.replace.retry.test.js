@@ -46,11 +46,13 @@ describe('Spotify playlist launch without household hint', () => {
       .get('/control/api/v1/households')
       .reply(200, { households: [{ id: 'HID' }] });
 
-    nock('https://api.ws.sonos.com')
-      .get('/control/api/v1/households/HID/groups')
-      .reply(200, initialSnapshot)
-      .get('/control/api/v1/households/HID/groups')
-      .reply(200, finalSnapshot);
+  nock('https://api.ws.sonos.com')
+    .get('/control/api/v1/households/HID/groups')
+    .reply(200, initialSnapshot)
+    .get('/control/api/v1/households/HID/groups')
+    .reply(200, finalSnapshot)
+    .get('/control/api/v1/households/HID/groups')
+    .reply(200, finalSnapshot);
 
     let setMembersPayload;
     nock('https://api.ws.sonos.com')

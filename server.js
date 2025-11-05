@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { loadTokens, saveTokens, clearTokens } from './tokenStore.js';
+import { loadSpeakerVolumes, saveSpeakerVolumes } from './settingsStore.js';
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 let tokens = await loadTokens();
+let speakerVolumes = await loadSpeakerVolumes();
 
 const activeFavoritesByGroup = new Map();
 
@@ -233,6 +235,31 @@ app.get('/api/favorites', async (req, res) => {
   }
 });
 
+app.get('/api/settings/volumes', (_req, res) => {
+  res.json(speakerVolumes);
+});
+
+app.put('/api/settings/volumes', async (req, res) => {
+  try {
+    const incoming = req.body ?? {};
+    const sanitized = {};
+    Object.entries(incoming).forEach(([playerId, value]) => {
+      const numeric = Number(value);
+      if (!Number.isNaN(numeric)) {
+        const normalized = Math.max(0, Math.min(100, numeric));
+        sanitized[playerId] = normalized;
+      }
+    });
+
+    speakerVolumes = await saveSpeakerVolumes(sanitized);
+    res.json(speakerVolumes);
+  } catch (error) {
+    res
+      .status(400)
+      .json({ error: 'settings_save_failed', detail: error?.message ?? String(error) });
+  }
+});
+
 app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
   const { groupId } = req.params;
   const {
@@ -256,6 +283,15 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
         `Autogroup skipped for ${groupId}:`,
         autogroupResult.error ?? 'no household match'
       );
+    }
+
+    const householdForVolumes =
+      autogroupResult.householdId ??
+      (typeof householdHint === 'string' && householdHint.trim().length > 0
+        ? householdHint.trim()
+        : null);
+    if (householdForVolumes) {
+      await applyDefaultVolumes(householdForVolumes);
     }
 
     const clearResult = await clearGroupQueue(groupId);
@@ -374,6 +410,19 @@ app.get('/api/households/:householdId/players', async (req, res) => {
   }
 });
 
+app.get('/api/households/:householdId/groups-players', async (req, res) => {
+  const { householdId } = req.params;
+
+  try {
+    const snapshot = await getHouseholdSnapshot(householdId);
+    const groups = Array.isArray(snapshot.groups) ? snapshot.groups : [];
+    const players = Array.isArray(snapshot.players) ? snapshot.players : [];
+    res.json({ groups, players });
+  } catch (error) {
+    handleProxyError(res, error);
+  }
+});
+
 app.post('/api/groups/:groupId/addPlayer', async (req, res) => {
   const { groupId } = req.params;
   const { playerId } = req.body ?? {};
@@ -459,6 +508,15 @@ app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
         `Autogroup skipped for ${groupId}:`,
         autogroupResult.error ?? 'no household match'
       );
+    }
+
+    const householdForVolumes =
+      autogroupResult.householdId ??
+      (typeof householdHint === 'string' && householdHint.trim().length > 0
+        ? householdHint.trim()
+        : null);
+    if (householdForVolumes) {
+      await applyDefaultVolumes(householdForVolumes);
     }
 
     await sonosRequest(`/groups/${encodedGroupId}/playback/metadata`, {
@@ -635,6 +693,44 @@ async function autogroupGroupMembers(groupId, householdHint) {
   }
 }
 
+async function applyDefaultVolumes(householdId) {
+  if (!householdId) {
+    return;
+  }
+
+  try {
+    const response = await sonosFetch(`/households/${encodeURIComponent(householdId)}/groups`);
+    if (!response.ok) {
+      return;
+    }
+
+    const payload = await response.json();
+    const players = Array.isArray(payload.players) ? payload.players : [];
+
+    const jobs = players
+      .map((player) => {
+        const target = speakerVolumes[player?.id];
+        if (typeof target === 'number' && Number.isFinite(target)) {
+          return sonosFetch(`/players/${encodeURIComponent(player.id)}/playerVolume`, {
+            method: 'POST',
+            body: JSON.stringify({ volume: target })
+          });
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    if (jobs.length) {
+      await Promise.allSettled(jobs);
+    }
+  } catch (error) {
+    console.warn(
+      `Failed to apply default volumes for household ${householdId}:`,
+      error?.message ?? error
+    );
+  }
+}
+
 async function clearGroupQueue(groupId) {
   const encodedGroupId = encodeURIComponent(groupId);
   const collectedIds = [];
@@ -776,6 +872,40 @@ async function ensureValidAccessToken() {
   if (Date.now() >= tokens.expires_at) {
     await refreshAccessToken();
   }
+}
+
+async function sonosFetch(endpoint, options = {}) {
+  await ensureValidAccessToken();
+
+  const initialHeaders = {
+    ...(options.headers ?? {})
+  };
+
+  if (options.body && !initialHeaders['Content-Type']) {
+    initialHeaders['Content-Type'] = 'application/json; charset=utf-8';
+  }
+
+  const requestOptions = {
+    ...options,
+    headers: {
+      ...initialHeaders,
+      Authorization: `Bearer ${tokens.access_token}`
+    }
+  };
+
+  let response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
+
+  if (response.status === 401 && tokens.refresh_token) {
+    await refreshAccessToken();
+    requestOptions.headers.Authorization = `Bearer ${tokens.access_token}`;
+    response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
+  }
+
+  if (response.status === 401) {
+    tokens = await clearTokens();
+  }
+
+  return response;
 }
 
 async function sonosRequest(endpoint, options = {}) {
