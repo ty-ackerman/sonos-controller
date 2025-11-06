@@ -195,6 +195,66 @@ app.post('/api/groups/:groupId/previous', async (req, res) => {
   }
 });
 
+app.get('/api/groups/:groupId/playback/status', async (req, res) => {
+  const { groupId } = req.params;
+
+  try {
+    const [statusResponse, metadataResponse] = await Promise.allSettled([
+      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackState`).catch(() => null),
+      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playbackMetadata`).catch(() => null)
+    ]);
+
+    const playbackState = statusResponse.status === 'fulfilled' && statusResponse.value
+      ? await statusResponse.value.json().catch(() => ({}))
+      : {};
+
+    const metadata = metadataResponse.status === 'fulfilled' && metadataResponse.value
+      ? await metadataResponse.value.json().catch(() => ({}))
+      : {};
+
+    const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`).catch(() => null);
+    const volume = volumeResponse ? await volumeResponse.json().catch(() => ({})) : {};
+
+    const currentItem = metadata.currentItem || metadata.item || null;
+    let track = null;
+    
+    if (currentItem) {
+      track = currentItem.track || currentItem.container?.metadata || currentItem;
+      
+      if (track && typeof track === 'object') {
+        const normalizeField = (field) => {
+          if (!field) return null;
+          if (typeof field === 'string') return field;
+          if (typeof field === 'object') {
+            return field.name || field.value || field.text || null;
+          }
+          return String(field);
+        };
+
+        track = {
+          name: normalizeField(track.name) || normalizeField(track.title),
+          artist: normalizeField(track.artist) || normalizeField(track.albumArtist) || normalizeField(track.creator),
+          album: normalizeField(track.album) || normalizeField(track.albumName),
+          imageUrl: normalizeField(track.imageUrl) || normalizeField(track.albumArtUri) || normalizeField(track.albumArtURL),
+          ...track
+        };
+      }
+    }
+
+    res.json({
+      playbackState: playbackState.playbackState || playbackState.state || 'STOPPED',
+      currentItem: currentItem ? { ...currentItem, track } : null,
+      item: currentItem ? { ...currentItem, track } : null,
+      track: track,
+      volume: volume.volume || volume.groupVolume || 0,
+      ...playbackState,
+      ...metadata
+    });
+  } catch (error) {
+    handleProxyError(res, error);
+  }
+});
+
 app.get('/api/players/:playerId/volume', async (req, res) => {
   const { playerId } = req.params;
 
@@ -206,6 +266,42 @@ app.get('/api/players/:playerId/volume', async (req, res) => {
     res.status(response.status).send(body);
   } catch (error) {
     handleProxyError(res, error);
+  }
+});
+
+app.get('/api/image-proxy', async (req, res) => {
+  const { url } = req.query;
+
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'URL parameter is required' });
+  }
+
+  try {
+    const imageUrl = decodeURIComponent(url);
+    
+    if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+      return res.status(400).json({ error: 'Invalid URL' });
+    }
+
+    const imageResponse = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Sonos-Controller/1.0'
+      }
+    });
+
+    if (!imageResponse.ok) {
+      return res.status(imageResponse.status).json({ error: 'Failed to fetch image' });
+    }
+
+    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    const imageBuffer = await imageResponse.arrayBuffer();
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(Buffer.from(imageBuffer));
+  } catch (error) {
+    console.error('Image proxy error:', error);
+    res.status(500).json({ error: 'Failed to proxy image' });
   }
 });
 

@@ -593,6 +593,195 @@
         flex-direction: column;
         gap: 8px;
       }
+
+      .currently-playing {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: var(--bg-primary);
+        border-top: 1px solid var(--border-color);
+        padding: 12px 16px;
+        display: none;
+        z-index: 100;
+        box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+      }
+
+      .currently-playing.visible {
+        display: block;
+      }
+
+      .currently-playing-content {
+        max-width: 480px;
+        margin: 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .currently-playing-art {
+        width: 56px;
+        height: 56px;
+        border-radius: 8px;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: var(--bg-tertiary);
+        display: grid;
+        place-items: center;
+      }
+
+      .currently-playing-art img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .currently-playing-art-placeholder {
+        font-size: 1.25rem;
+        color: var(--text-tertiary);
+      }
+
+      .currently-playing-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .currently-playing-location {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .currently-playing-title {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .currently-playing-artist {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .currently-playing-controls {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+      }
+
+      .currently-playing-group-indicator {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        display: grid;
+        place-items: center;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        position: relative;
+      }
+
+      .currently-playing-group-count {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: var(--bg-primary);
+        font-size: 0.625rem;
+        font-weight: 600;
+        display: grid;
+        place-items: center;
+      }
+
+      .currently-playing-play-btn {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: none;
+        color: var(--bg-primary);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        flex-shrink: 0;
+      }
+
+      .currently-playing-play-btn:hover {
+        background: var(--accent-hover);
+        transform: scale(1.05);
+      }
+
+      .currently-playing-play-btn:active {
+        transform: scale(0.95);
+      }
+
+      .currently-playing-play-btn svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+      }
+
+      .currently-playing-volume {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .currently-playing-volume-icon {
+        width: 16px;
+        height: 16px;
+        color: var(--text-secondary);
+        flex-shrink: 0;
+      }
+
+      .currently-playing-volume-slider {
+        flex: 1;
+        height: 4px;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+
+      .currently-playing-volume-value {
+        min-width: 2rem;
+        text-align: right;
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+      }
+
+      body {
+        padding-bottom: 0;
+      }
+
+      body.has-playing {
+        padding-bottom: 100px;
+      }
     </style>
   </head>
   <body>
@@ -664,6 +853,43 @@
           </div>
         </section>
       </div>
+
+      <div id="currently-playing" class="currently-playing">
+        <div class="currently-playing-content">
+          <div class="currently-playing-art" id="currently-playing-art">
+            <span class="currently-playing-art-placeholder">♪</span>
+          </div>
+          <div class="currently-playing-info">
+            <div class="currently-playing-location" id="currently-playing-location">
+              <span>No group selected</span>
+            </div>
+            <div class="currently-playing-title" id="currently-playing-title">
+              Nothing playing
+            </div>
+            <div class="currently-playing-artist" id="currently-playing-artist">
+              <span></span>
+            </div>
+          </div>
+          <div class="currently-playing-controls">
+            <div class="currently-playing-group-indicator" id="currently-playing-group-indicator" style="display: none;">
+              <span>🔊</span>
+              <span class="currently-playing-group-count" id="currently-playing-group-count" style="display: none;">1</span>
+            </div>
+            <button class="currently-playing-play-btn" id="currently-playing-play-btn" type="button">
+              <svg viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="currently-playing-volume" id="currently-playing-volume" style="display: none;">
+          <svg class="currently-playing-volume-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 5L6 9H2v6h4l5 4V5z" />
+          </svg>
+          <input type="range" class="currently-playing-volume-slider" id="currently-playing-volume-slider" min="0" max="100" value="0" />
+          <span class="currently-playing-volume-value" id="currently-playing-volume-value">0</span>
+        </div>
+      </div>
     </main>
 
     <script>
@@ -691,6 +917,17 @@
       const favoritesStatus = document.getElementById('favorites-status');
       const vibeFiltersContainer = document.getElementById('vibe-filters');
       const roomsContainer = document.getElementById('rooms');
+      const currentlyPlayingPanel = document.getElementById('currently-playing');
+      const currentlyPlayingArt = document.getElementById('currently-playing-art');
+      const currentlyPlayingLocation = document.getElementById('currently-playing-location');
+      const currentlyPlayingTitle = document.getElementById('currently-playing-title');
+      const currentlyPlayingArtist = document.getElementById('currently-playing-artist');
+      const currentlyPlayingGroupIndicator = document.getElementById('currently-playing-group-indicator');
+      const currentlyPlayingGroupCount = document.getElementById('currently-playing-group-count');
+      const currentlyPlayingPlayBtn = document.getElementById('currently-playing-play-btn');
+      const currentlyPlayingVolume = document.getElementById('currently-playing-volume');
+      const currentlyPlayingVolumeSlider = document.getElementById('currently-playing-volume-slider');
+      const currentlyPlayingVolumeValue = document.getElementById('currently-playing-volume-value');
 const settingsPlayersWrap = document.getElementById('settings-players');
 const settingsSaveButton = document.getElementById('settings-save');
 const settingsStatusLabel = document.getElementById('settings-status');
@@ -712,6 +949,8 @@ settingsStatusLabel.textContent = '';
       let refreshTimer = null;
       let playlistVibes = {};
       let currentVibeFilter = null;
+      let playbackRefreshTimer = null;
+      let currentPlaybackState = null;
 
       function login() {
         window.location.href = '/auth/sonos/login';
@@ -848,6 +1087,9 @@ async function checkAuthAndInit() {
           if (settingsHelpLabel) {
             settingsHelpLabel.textContent = 'Sign in to load speakers.';
           }
+          stopPlaybackRefresh();
+          currentlyPlayingPanel.classList.remove('visible');
+          document.body.classList.remove('has-playing');
         }
 
         settingsSaveButton.disabled = !connected;
@@ -867,17 +1109,6 @@ async function checkAuthAndInit() {
         activeGroupChip.textContent = currentGroupName || 'No group selected';
       }
 
-      function setActiveGroup(groupId, name, { refreshFavorites = false } = {}) {
-        currentGroupId = groupId || null;
-        currentGroupName = currentGroupId ? name || currentGroupName || 'Group' : 'No group selected';
-        updateActiveGroupDisplay();
-        evaluateFavoritesAvailability();
-        if (refreshFavorites && currentHouseholdId) {
-          loadFavorites(currentHouseholdId).catch((error) => {
-            console.error('Failed to refresh favorites', error);
-          });
-        }
-      }
 
       async function loadHouseholds() {
         try {
@@ -1409,8 +1640,8 @@ async function checkAuthAndInit() {
           if (currentHouseholdId) {
             await loadPlayers(currentHouseholdId);
           }
-          await refreshPrimaryGroup(currentHouseholdId || householdSelect.value || null);
           markActiveFavorite(entry.favorite.id);
+          setTimeout(() => updateCurrentlyPlaying(), 1000);
         } else {
           updateFavoriteStatus(entry, FAVORITE_ERROR_MESSAGE);
         }
@@ -1502,6 +1733,7 @@ async function checkAuthAndInit() {
         }
 
         await sendCommand(endpoint);
+        setTimeout(() => updateCurrentlyPlaying(), 500);
       }
 
       async function setVolume(level) {
@@ -1522,6 +1754,8 @@ async function checkAuthAndInit() {
 
         if (!success) {
           showFeedback('Unable to update volume. Please try again.', true);
+        } else {
+          setTimeout(() => updateCurrentlyPlaying(), 500);
         }
       }
 
@@ -1906,6 +2140,200 @@ async function checkAuthAndInit() {
       setVolumeControlAvailability(false);
       evaluateFavoritesAvailability();
       updateActiveGroupDisplay();
+
+      async function updateCurrentlyPlaying() {
+        const groupId = getSelectedGroupId();
+        if (!groupId || !isSonosConnected) {
+          currentlyPlayingPanel.classList.remove('visible');
+          document.body.classList.remove('has-playing');
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playback/status`);
+          if (!response.ok) {
+            throw new Error('Failed to fetch playback status');
+          }
+
+          const status = await response.json();
+          currentPlaybackState = status;
+
+          console.log('Playback status:', status);
+
+          const playbackState = status.playbackState || status.state || status.playback?.state || 'STOPPED';
+          const isPlaying = playbackState === 'PLAYING' || playbackState === 'PLAYBACK_STATE_PLAYING';
+          
+          const item = status.currentItem || status.item || status.playback?.currentItem || null;
+          const track = item?.track || item?.container?.metadata || status.track || null;
+          
+          const groupInfo = latestGroups.find((g) => g.id === groupId || g.groupId === groupId);
+          const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
+
+          if (track || item || playbackState !== 'STOPPED') {
+            const title = track?.name || track?.title || item?.name || 'Unknown Track';
+            
+            let artist = '';
+            if (track?.artist) {
+              artist = typeof track.artist === 'string' ? track.artist : track.artist?.name || track.artist?.value || '';
+            } else if (track?.albumArtist) {
+              artist = typeof track.albumArtist === 'string' ? track.albumArtist : track.albumArtist?.name || track.albumArtist?.value || '';
+            } else if (track?.creator) {
+              artist = typeof track.creator === 'string' ? track.creator : track.creator?.name || track.creator?.value || '';
+            }
+            
+            let album = '';
+            if (track?.album) {
+              album = typeof track.album === 'string' ? track.album : track.album?.name || track.album?.value || '';
+            } else if (track?.albumName) {
+              album = typeof track.albumName === 'string' ? track.albumName : track.albumName?.name || track.albumName?.value || '';
+            }
+            
+            let imageUrl = null;
+            if (track?.imageUrl) {
+              imageUrl = typeof track.imageUrl === 'string' ? track.imageUrl : track.imageUrl?.url || track.imageUrl?.value || null;
+            } else if (track?.albumArtUri) {
+              imageUrl = typeof track.albumArtUri === 'string' ? track.albumArtUri : track.albumArtUri?.url || track.albumArtUri?.value || null;
+            } else if (track?.albumArtURL) {
+              imageUrl = typeof track.albumArtURL === 'string' ? track.albumArtURL : track.albumArtURL?.url || track.albumArtURL?.value || null;
+            } else if (item?.imageUrl) {
+              imageUrl = typeof item.imageUrl === 'string' ? item.imageUrl : item.imageUrl?.url || item.imageUrl?.value || null;
+            } else if (item?.albumArtUri) {
+              imageUrl = typeof item.albumArtUri === 'string' ? item.albumArtUri : item.albumArtUri?.url || item.albumArtUri?.value || null;
+            }
+            
+            if (imageUrl && !imageUrl.startsWith('http')) {
+              imageUrl = null;
+            }
+
+            currentlyPlayingTitle.textContent = title;
+            currentlyPlayingArtist.innerHTML = '';
+            if (artist) {
+              const artistSpan = document.createElement('span');
+              artistSpan.textContent = artist;
+              currentlyPlayingArtist.appendChild(artistSpan);
+            }
+            if (album && artist) {
+              const separator = document.createTextNode(' • ');
+              currentlyPlayingArtist.appendChild(separator);
+              const albumSpan = document.createElement('span');
+              albumSpan.textContent = album;
+              currentlyPlayingArtist.appendChild(albumSpan);
+            }
+            if (!artist && !album) {
+              currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
+            }
+
+            currentlyPlayingLocation.innerHTML = `<span>${groupName}</span>`;
+
+            if (imageUrl) {
+              const img = document.createElement('img');
+              let finalImageUrl = imageUrl;
+              
+              if (imageUrl.startsWith('http://')) {
+                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+              }
+              
+              img.src = finalImageUrl;
+              img.alt = title;
+              img.loading = 'lazy';
+              img.style.width = '100%';
+              img.style.height = '100%';
+              img.style.objectFit = 'cover';
+              img.onerror = () => {
+                currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+              };
+              currentlyPlayingArt.innerHTML = '';
+              currentlyPlayingArt.appendChild(img);
+            } else {
+              currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+            }
+
+            const playerCount = latestPlayers.filter((p) => p.groupId === groupId).length;
+            if (playerCount > 1) {
+              currentlyPlayingGroupIndicator.style.display = 'grid';
+              currentlyPlayingGroupCount.textContent = playerCount;
+              currentlyPlayingGroupCount.style.display = 'grid';
+            } else {
+              currentlyPlayingGroupIndicator.style.display = 'none';
+              currentlyPlayingGroupCount.style.display = 'none';
+            }
+
+            currentlyPlayingPlayBtn.innerHTML = isPlaying
+              ? '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>'
+              : '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>';
+
+            const volume = status.volume || status.groupVolume || status.playback?.volume || 0;
+            currentlyPlayingVolumeSlider.value = volume;
+            currentlyPlayingVolumeValue.textContent = volume;
+            currentlyPlayingVolume.style.display = 'flex';
+
+            currentlyPlayingPanel.classList.add('visible');
+            document.body.classList.add('has-playing');
+          } else {
+            currentlyPlayingPanel.classList.remove('visible');
+            document.body.classList.remove('has-playing');
+          }
+        } catch (error) {
+          console.error('Failed to update currently playing:', error);
+          currentlyPlayingPanel.classList.remove('visible');
+          document.body.classList.remove('has-playing');
+        }
+      }
+
+      function startPlaybackRefresh() {
+        clearInterval(playbackRefreshTimer);
+        playbackRefreshTimer = setInterval(() => {
+          if (isSonosConnected && getSelectedGroupId()) {
+            updateCurrentlyPlaying();
+          }
+        }, 3000);
+        updateCurrentlyPlaying();
+      }
+
+      function stopPlaybackRefresh() {
+        clearInterval(playbackRefreshTimer);
+        playbackRefreshTimer = null;
+      }
+
+      currentlyPlayingPlayBtn.addEventListener('click', async () => {
+        const groupId = getSelectedGroupId();
+        if (!groupId) {
+          return;
+        }
+        await handlePlaybackAction('playpause');
+        setTimeout(() => updateCurrentlyPlaying(), 500);
+      });
+
+      currentlyPlayingVolumeSlider.addEventListener('input', (e) => {
+        currentlyPlayingVolumeValue.textContent = e.target.value;
+      });
+
+      currentlyPlayingVolumeSlider.addEventListener('change', async (e) => {
+        const groupId = getSelectedGroupId();
+        if (!groupId) {
+          return;
+        }
+        await setVolume(Number(e.target.value));
+        setTimeout(() => updateCurrentlyPlaying(), 500);
+      });
+
+      function setActiveGroup(groupId, name, { refreshFavorites = false } = {}) {
+        currentGroupId = groupId || null;
+        currentGroupName = currentGroupId ? name || currentGroupName || 'Group' : 'No group selected';
+        updateActiveGroupDisplay();
+        evaluateFavoritesAvailability();
+        if (refreshFavorites && currentHouseholdId) {
+          loadFavorites(currentHouseholdId).catch((error) => {
+            console.error('Failed to refresh favorites', error);
+          });
+        }
+        if (groupId) {
+          startPlaybackRefresh();
+        } else {
+          stopPlaybackRefresh();
+        }
+      }
+
       window.addEventListener('load', () => {
         applyAuthFeedback();
         checkAuthAndInit();
