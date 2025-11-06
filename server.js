@@ -241,12 +241,16 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       }
     }
 
+    const activeInfo = activeFavoritesByGroup.get(groupId);
+    const activeFavoriteId = activeInfo ? activeInfo.favoriteId : null;
+
     res.json({
       playbackState: playbackState.playbackState || playbackState.state || 'STOPPED',
       currentItem: currentItem ? { ...currentItem, track } : null,
       item: currentItem ? { ...currentItem, track } : null,
       track: track,
       volume: volume.volume || volume.groupVolume || 0,
+      activeFavoriteId: activeFavoriteId,
       ...playbackState,
       ...metadata
     });
@@ -532,6 +536,52 @@ app.get('/api/households/:householdId/groups-players', async (req, res) => {
     const groups = Array.isArray(snapshot.groups) ? snapshot.groups : [];
     const players = Array.isArray(snapshot.players) ? snapshot.players : [];
     res.json({ groups, players });
+  } catch (error) {
+    handleProxyError(res, error);
+  }
+});
+
+app.post('/api/households/:householdId/create-all-group', async (req, res) => {
+  const { householdId } = req.params;
+
+  try {
+    const snapshot = await getHouseholdSnapshot(householdId);
+    const players = Array.isArray(snapshot.players) ? snapshot.players : [];
+    const playerIds = players.map((player) => player?.id).filter(Boolean);
+
+    if (!playerIds.length) {
+      return res.status(400).json({ error: 'No players found in household' });
+    }
+
+    const groups = Array.isArray(snapshot.groups) ? snapshot.groups : [];
+    let targetGroup = groups.find((g) => {
+      const groupPlayerIds = g.playerIds || [];
+      return groupPlayerIds.length === playerIds.length &&
+             playerIds.every((id) => groupPlayerIds.includes(id));
+    });
+
+    if (!targetGroup) {
+      const firstPlayer = players[0];
+      if (!firstPlayer?.id) {
+        return res.status(400).json({ error: 'No valid player found' });
+      }
+
+      const coordinatorId = firstPlayer.id;
+      targetGroup = groups.find((g) => 
+        g.coordinatorId === coordinatorId || 
+        g.id === firstPlayer.groupId
+      ) || { id: firstPlayer.groupId || coordinatorId, coordinatorId };
+
+      const encodedGroupId = encodeURIComponent(targetGroup.id);
+      await sonosRequest(`/groups/${encodedGroupId}/groups/setGroupMembers`, {
+        method: 'POST',
+        body: JSON.stringify({ playerIds })
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    res.json({ groupId: targetGroup.id, groupName: targetGroup.name || 'All Rooms' });
   } catch (error) {
     handleProxyError(res, error);
   }

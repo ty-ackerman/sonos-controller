@@ -605,10 +605,18 @@
         display: none;
         z-index: 100;
         box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+        max-height: 100vh;
+        overflow-y: auto;
+        transition: transform 0.3s ease-out;
+        transform: translateY(0);
       }
 
       .currently-playing.visible {
         display: block;
+      }
+
+      .currently-playing.expanded {
+        transform: translateY(0);
       }
 
       .currently-playing-content {
@@ -617,6 +625,11 @@
         display: flex;
         align-items: center;
         gap: 12px;
+        cursor: pointer;
+      }
+
+      .currently-playing-content:not(:has(.currently-playing-play-btn:hover)):hover {
+        opacity: 0.9;
       }
 
       .currently-playing-art {
@@ -715,22 +728,25 @@
       }
 
       .currently-playing-play-btn {
-        width: 48px;
-        height: 48px;
+        width: 56px;
+        height: 56px;
         border-radius: 50%;
-        background: var(--accent);
-        border: none;
-        color: var(--bg-primary);
+        background: var(--bg-primary);
+        border: 2px solid var(--border-color);
+        color: var(--text-primary);
         display: grid;
         place-items: center;
         cursor: pointer;
         transition: all 0.2s ease;
         flex-shrink: 0;
+        box-shadow: var(--shadow-sm);
       }
 
       .currently-playing-play-btn:hover {
-        background: var(--accent-hover);
+        background: var(--bg-tertiary);
+        border-color: var(--accent);
         transform: scale(1.05);
+        box-shadow: var(--shadow-md);
       }
 
       .currently-playing-play-btn:active {
@@ -738,38 +754,73 @@
       }
 
       .currently-playing-play-btn svg {
-        width: 20px;
-        height: 20px;
+        width: 24px;
+        height: 24px;
         fill: currentColor;
       }
 
+      .currently-playing-play-btn.playing {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--bg-primary);
+      }
+
+      .currently-playing-play-btn.playing:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+
+      .currently-playing-play-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
       .currently-playing-volume {
+        flex-direction: column;
+        gap: 12px;
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        transition: max-height 0.3s ease-out, padding 0.3s ease-out, margin 0.3s ease-out, opacity 0.3s ease-out;
+      }
+
+      .currently-playing.expanded .currently-playing-volume {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+        max-height: 500px;
+        opacity: 1;
+      }
+
+      .currently-playing-room-volume {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid var(--border-color);
+        gap: 12px;
+        padding: 8px 0;
       }
 
-      .currently-playing-volume-icon {
-        width: 16px;
-        height: 16px;
-        color: var(--text-secondary);
-        flex-shrink: 0;
+      .currently-playing-room-name {
+        min-width: 100px;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-primary);
       }
 
-      .currently-playing-volume-slider {
+      .currently-playing-room-slider {
         flex: 1;
         height: 4px;
         accent-color: var(--accent);
         cursor: pointer;
       }
 
-      .currently-playing-volume-value {
-        min-width: 2rem;
+      .currently-playing-room-value {
+        min-width: 2.5rem;
         text-align: right;
-        font-size: 0.75rem;
+        font-size: 0.8125rem;
         font-weight: 500;
         color: var(--text-secondary);
         font-variant-numeric: tabular-nums;
@@ -806,10 +857,6 @@
             <label for="households">Household</label>
             <select id="households"></select>
           </div>
-          <div class="select-group">
-            <label>Group</label>
-            <span id="group-chip" class="group-chip">No group selected</span>
-          </div>
 
           <div class="controls">
             <span>Playback</span>
@@ -835,10 +882,6 @@
             <div id="favorites-grid" class="favorites-grid"></div>
           </div>
 
-          <div class="rooms">
-            <span class="section-title">Rooms</span>
-            <div id="rooms"></div>
-          </div>
         </section>
 
         <section id="panel-settings" class="hidden">
@@ -882,18 +925,14 @@
             </button>
           </div>
         </div>
-        <div class="currently-playing-volume" id="currently-playing-volume" style="display: none;">
-          <svg class="currently-playing-volume-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 5L6 9H2v6h4l5 4V5z" />
-          </svg>
-          <input type="range" class="currently-playing-volume-slider" id="currently-playing-volume-slider" min="0" max="100" value="0" />
-          <span class="currently-playing-volume-value" id="currently-playing-volume-value">0</span>
+        <div class="currently-playing-volume" id="currently-playing-volume">
+          <div id="currently-playing-rooms-list"></div>
         </div>
       </div>
     </main>
 
     <script>
-      const SELECT_GROUP_MESSAGE = 'Select a group to play';
+      const SELECT_GROUP_MESSAGE = 'Ready to play';
       const READY_MESSAGE = 'Ready to play';
       const FAVORITE_SUCCESS_MESSAGE = 'Loaded • Shuffle / Repeat / Crossfade ON';
       const FAVORITE_ERROR_MESSAGE = 'Favorite failed to start';
@@ -910,13 +949,11 @@
       const tabControlButton = document.getElementById('tab-control');
       const tabSettingsButton = document.getElementById('tab-settings');
       const householdSelect = document.getElementById('households');
-      const activeGroupChip = document.getElementById('group-chip');
       const volumeSlider = document.getElementById('volume-slider');
       const volumeValue = document.getElementById('volume-value');
       const favoritesGrid = document.getElementById('favorites-grid');
       const favoritesStatus = document.getElementById('favorites-status');
       const vibeFiltersContainer = document.getElementById('vibe-filters');
-      const roomsContainer = document.getElementById('rooms');
       const currentlyPlayingPanel = document.getElementById('currently-playing');
       const currentlyPlayingArt = document.getElementById('currently-playing-art');
       const currentlyPlayingLocation = document.getElementById('currently-playing-location');
@@ -926,8 +963,11 @@
       const currentlyPlayingGroupCount = document.getElementById('currently-playing-group-count');
       const currentlyPlayingPlayBtn = document.getElementById('currently-playing-play-btn');
       const currentlyPlayingVolume = document.getElementById('currently-playing-volume');
-      const currentlyPlayingVolumeSlider = document.getElementById('currently-playing-volume-slider');
-      const currentlyPlayingVolumeValue = document.getElementById('currently-playing-volume-value');
+      const currentlyPlayingRoomsList = document.getElementById('currently-playing-rooms-list');
+      // Track panel state to prevent flickering
+      let panelShouldBeVisible = false;
+      let hidePanelTimeout = null;
+      
 const settingsPlayersWrap = document.getElementById('settings-players');
 const settingsSaveButton = document.getElementById('settings-save');
 const settingsStatusLabel = document.getElementById('settings-status');
@@ -944,13 +984,12 @@ settingsStatusLabel.textContent = '';
       const favoritesRegistry = new Map();
       let latestPlayers = [];
       let latestGroups = [];
-      const volumeLabelMap = new Map();
-      const volumeSliderMap = new Map();
       let refreshTimer = null;
       let playlistVibes = {};
       let currentVibeFilter = null;
       let playbackRefreshTimer = null;
       let currentPlaybackState = null;
+      let currentImageUrl = null;
 
       function login() {
         window.location.href = '/auth/sonos/login';
@@ -1077,7 +1116,6 @@ async function checkAuthAndInit() {
           setVolumeControlAvailability(false);
           favoritesStatus.textContent = 'Login required to load favorites.';
           vibeFiltersContainer.innerHTML = '';
-          roomsContainer.innerHTML = '';
           currentGroupId = null;
           currentGroupName = 'No group selected';
           updateActiveGroupDisplay();
@@ -1106,7 +1144,7 @@ async function checkAuthAndInit() {
       }
 
       function updateActiveGroupDisplay() {
-        activeGroupChip.textContent = currentGroupName || 'No group selected';
+        // Group display removed - groups are auto-created
       }
 
 
@@ -1613,37 +1651,66 @@ async function checkAuthAndInit() {
       }
 
       async function playFavorite(entry) {
-        const groupId = getSelectedGroupId();
-        if (!groupId) {
-          showFeedback('Choose a group before starting the favorite.', true);
+        if (!currentHouseholdId) {
+          showFeedback('Select a household first.', true);
           return;
         }
 
         setFavoriteLoading(entry, true);
 
-        const commandPromise = sendCommand(
-          `/api/groups/${encodeURIComponent(groupId)}/favorites/play`,
-          {
-            householdId: currentHouseholdId || null,
-            favoriteId: entry.favorite.id,
-            shuffle: true,
-            repeat: true,
-            crossfade: true
-          },
-          FAVORITE_SUCCESS_TOAST
-        );
+        try {
+          const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
+            method: 'POST'
+          });
 
-        const [success] = await Promise.all([commandPromise, delay(2000)]);
-        setFavoriteLoading(entry, false);
-
-        if (success) {
-          if (currentHouseholdId) {
-            await loadPlayers(currentHouseholdId);
+          if (!groupResponse.ok) {
+            throw new Error('Failed to create group with all players');
           }
-          markActiveFavorite(entry.favorite.id);
-          setTimeout(() => updateCurrentlyPlaying(), 1000);
-        } else {
+
+          const groupData = await groupResponse.json();
+          const groupId = groupData.groupId;
+
+          if (!groupId) {
+            throw new Error('No group ID returned');
+          }
+
+          setActiveGroup(groupId, groupData.groupName || 'All Rooms');
+
+          const commandPromise = sendCommand(
+            `/api/groups/${encodeURIComponent(groupId)}/favorites/play`,
+            {
+              householdId: currentHouseholdId,
+              favoriteId: entry.favorite.id,
+              shuffle: true,
+              repeat: true,
+              crossfade: true
+            },
+            FAVORITE_SUCCESS_TOAST
+          );
+
+          const [success] = await Promise.all([commandPromise, delay(2000)]);
+          setFavoriteLoading(entry, false);
+
+          if (success) {
+            // Store the group ID before loadPlayers might clear it
+            const savedGroupId = groupId;
+            await loadPlayers(currentHouseholdId);
+            // Restore the group ID if it was cleared
+            if (!getSelectedGroupId() && savedGroupId) {
+              setActiveGroup(savedGroupId, groupData.groupName || 'All Rooms');
+            }
+            markActiveFavorite(entry.favorite.id);
+            setTimeout(() => {
+              updateCurrentlyPlaying();
+            }, 1000);
+          } else {
+            updateFavoriteStatus(entry, FAVORITE_ERROR_MESSAGE);
+          }
+        } catch (error) {
+          console.error('Failed to play favorite:', error);
+          setFavoriteLoading(entry, false);
           updateFavoriteStatus(entry, FAVORITE_ERROR_MESSAGE);
+          showFeedback('Failed to start playback. Please try again.', true);
         }
 
         evaluateFavoritesAvailability();
@@ -1666,8 +1733,7 @@ async function checkAuthAndInit() {
       }
 
       function evaluateFavoritesAvailability() {
-        const hasGroup = Boolean(getSelectedGroupId());
-        const enabled = isSonosConnected && hasGroup;
+        const enabled = isSonosConnected && Boolean(currentHouseholdId);
 
         favoritesRegistry.forEach((entry) => {
           if (entry.loading) {
@@ -1679,7 +1745,7 @@ async function checkAuthAndInit() {
 
           if (!enabled) {
             entry.button.classList.remove('active');
-            updateFavoriteStatus(entry, SELECT_GROUP_MESSAGE);
+            updateFavoriteStatus(entry, 'Select a household to play');
           } else if (
             entry.statusMessage === SELECT_GROUP_MESSAGE ||
             entry.statusMessage === READY_MESSAGE ||
@@ -1810,23 +1876,10 @@ async function checkAuthAndInit() {
   applyAuthFeedback();
   showTab('control');
 
-  async function refreshRooms() {
-        if (!currentHouseholdId) {
-          return;
-        }
-
-        try {
-          await loadPlayers(currentHouseholdId);
-        } catch (error) {
-          console.error('Failed to refresh rooms', error);
-        }
-      }
-
       async function loadPlayers(householdId) {
         if (!householdId) {
           latestPlayers = [];
           latestGroups = [];
-          roomsContainer.innerHTML = '';
           setVolumeControlAvailability(false);
           ensureActiveGroup([]);
           return;
@@ -1840,7 +1893,6 @@ async function checkAuthAndInit() {
           if (response.status === 401) {
             setAuthUI(false);
             favoritesStatus.textContent = 'Login required to load favorites.';
-            roomsContainer.innerHTML = '';
             setVolumeControlAvailability(false);
             return;
           }
@@ -1854,11 +1906,12 @@ async function checkAuthAndInit() {
           latestGroups = Array.isArray(data.groups) ? data.groups : [];
 
           ensureActiveGroup(latestPlayers);
-          renderRooms(latestPlayers, latestGroups);
+          if (getSelectedGroupId()) {
+            updateCurrentlyPlayingRooms(getSelectedGroupId());
+          }
           setVolumeControlAvailability(Boolean(currentGroupId));
         } catch (error) {
           console.error('Failed to load players', error);
-          roomsContainer.innerHTML = '<p class="favorites-status">Unable to load rooms.</p>';
           setVolumeControlAvailability(false);
         }
       }
@@ -1870,206 +1923,26 @@ async function checkAuthAndInit() {
             currentGroupName = active.groupName || active.name || currentGroupName;
           }
         } else {
+          // Don't clear the group if panel is visible (we're in the middle of playback)
+          if (panelShouldBeVisible && currentGroupId) {
+            return; // Keep the existing group ID
+          }
           const candidate = players.find((player) => player.groupId);
           if (candidate) {
             currentGroupId = candidate.groupId;
             currentGroupName = candidate.groupName || candidate.name || 'Group';
           } else {
-            currentGroupId = null;
-            currentGroupName = 'No group selected';
+            // Only clear if panel isn't visible
+            if (!panelShouldBeVisible) {
+              currentGroupId = null;
+              currentGroupName = 'No group selected';
+            }
           }
         }
         updateActiveGroupDisplay();
         evaluateFavoritesAvailability();
       }
 
-      function renderRooms(players = [], groups = []) {
-        volumeLabelMap.clear();
-        volumeSliderMap.clear();
-        roomsContainer.innerHTML = '';
-
-        if (!players.length) {
-          roomsContainer.innerHTML = '<p class="favorites-status">No rooms detected.</p>';
-          return;
-        }
-
-        const selectedGroupId = getSelectedGroupId();
-        const groupLookup = new Map();
-        groups.forEach((group) => {
-          if (!group) {
-            return;
-          }
-          const identifiers = [group.id, group.groupId, group.coordinatorId].filter(Boolean);
-          const resolvedName = group.name ?? group.displayName ?? identifiers[0] ?? 'Group';
-          identifiers.forEach((identifier) => {
-            if (!groupLookup.has(identifier)) {
-              groupLookup.set(identifier, { ...group, name: resolvedName });
-            }
-          });
-        });
-
-        let selectedGroup = selectedGroupId ? groupLookup.get(selectedGroupId) : null;
-        if (!selectedGroup && selectedGroupId) {
-          selectedGroup = groups.find((group) => group?.id === selectedGroupId) || null;
-        }
-
-        players.forEach((player) => {
-          let resolvedGroupId = player.groupId ?? null;
-          if (!resolvedGroupId) {
-            const fallback = groups.find(
-              (group) => Array.isArray(group.playerIds) && group.playerIds.includes(player.id)
-            );
-            if (fallback) {
-              resolvedGroupId = fallback.id ?? fallback.groupId ?? null;
-            }
-          }
-
-          const playerGroupInfo = resolvedGroupId ? groupLookup.get(resolvedGroupId) : null;
-
-          const card = document.createElement('div');
-          card.className = 'room-card';
-          if (resolvedGroupId && resolvedGroupId === currentGroupId) {
-            card.classList.add('active');
-          }
-
-          const header = document.createElement('div');
-          header.className = 'room-header';
-
-          const title = document.createElement('span');
-          title.className = 'room-name';
-          const displayName = player.name || player.id || 'Room';
-          title.textContent = displayName;
-
-          const groupLabel = document.createElement('span');
-          groupLabel.className = 'room-group-label';
-          groupLabel.textContent = playerGroupInfo
-            ? `Group: ${playerGroupInfo.name}`
-            : player.groupName
-              ? `Group: ${player.groupName}`
-              : 'Ungrouped';
-
-          header.appendChild(title);
-          header.appendChild(groupLabel);
-
-          const volumeRow = document.createElement('div');
-          volumeRow.className = 'volume-row';
-          const volumeLabel = document.createElement('span');
-          const initialVolume = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
-          volumeLabel.textContent = `Vol ${initialVolume}%`;
-          const volumeSliderEl = document.createElement('input');
-          volumeSliderEl.type = 'range';
-          volumeSliderEl.min = '0';
-          volumeSliderEl.max = '100';
-          volumeSliderEl.value = initialVolume;
-          volumeSliderEl.addEventListener('input', (event) => {
-            volumeLabel.textContent = `Vol ${event.target.value}%`;
-          });
-          volumeSliderEl.addEventListener('change', (event) => {
-            setPlayerVolume(player.id, Number(event.target.value));
-          });
-          volumeSliderEl.addEventListener('pointerdown', (event) => event.stopPropagation());
-          volumeSliderEl.addEventListener('click', (event) => event.stopPropagation());
-          volumeLabelMap.set(player.id, volumeLabel);
-          volumeSliderMap.set(player.id, volumeSliderEl);
-          volumeRow.appendChild(volumeLabel);
-          volumeRow.appendChild(volumeSliderEl);
-
-          const actions = document.createElement('div');
-          actions.className = 'room-actions';
-
-          const otherPlayer = players.find(
-            (candidate) => candidate.id !== player.id && candidate.groupId && candidate.groupId !== resolvedGroupId
-          );
-
-          const joinButton = document.createElement('button');
-          if (selectedGroup && selectedGroup.id !== resolvedGroupId) {
-            joinButton.textContent = `Join ${selectedGroup.name}`;
-            joinButton.disabled = false;
-            joinButton.addEventListener('click', (event) => {
-              event.stopPropagation();
-              addToGroup(selectedGroup.id, player.id);
-            });
-          } else if (otherPlayer) {
-            const targetName = otherPlayer.groupName || otherPlayer.name || 'Group';
-            joinButton.textContent = `Join ${targetName}`;
-            joinButton.disabled = false;
-            joinButton.addEventListener('click', (event) => {
-              event.stopPropagation();
-              addToGroup(otherPlayer.groupId, player.id);
-            });
-          } else {
-            joinButton.textContent = 'Join Other Room';
-            joinButton.disabled = true;
-          }
-
-          const leaveButton = document.createElement('button');
-          leaveButton.textContent = 'Leave Group';
-          const groupEntry = groups.find((group) => group?.id === resolvedGroupId);
-          const memberCount = Array.isArray(groupEntry?.playerIds)
-            ? groupEntry.playerIds.length
-            : players.filter((candidate) => candidate.groupId === resolvedGroupId).length;
-          leaveButton.disabled = !resolvedGroupId || memberCount <= 1;
-          leaveButton.addEventListener('click', (event) => {
-            event.stopPropagation();
-            if (resolvedGroupId) {
-              removeFromGroup(resolvedGroupId, player.id);
-            }
-          });
-
-          actions.appendChild(joinButton);
-          actions.appendChild(leaveButton);
-
-          card.appendChild(header);
-          card.appendChild(volumeRow);
-          card.appendChild(actions);
-
-          card.addEventListener('click', () => {
-            if (resolvedGroupId) {
-              const resolvedName = playerGroupInfo?.name || player.groupName || displayName;
-              setActiveGroup(resolvedGroupId, resolvedName, { refreshFavorites: true });
-              renderRooms(latestPlayers, latestGroups);
-            }
-          });
-
-          roomsContainer.appendChild(card);
-        });
-      }
-
-      async function addToGroup(groupId, playerId) {
-        if (!groupId || !playerId) {
-          return;
-        }
-
-        const success = await sendCommand(
-          `/api/groups/${encodeURIComponent(groupId)}/addPlayer`,
-          { playerId },
-          'Room joined the selected group.'
-        );
-
-        if (success && currentHouseholdId) {
-          await loadPlayers(currentHouseholdId);
-          await loadFavorites(currentHouseholdId);
-          scheduleRefresh();
-        }
-      }
-
-      async function removeFromGroup(groupId, playerId) {
-        if (!groupId || !playerId) {
-          return;
-        }
-
-        const success = await sendCommand(
-          `/api/groups/${encodeURIComponent(groupId)}/removePlayer`,
-          { playerId },
-          'Room removed from its group.'
-        );
-
-        if (success && currentHouseholdId) {
-          await loadPlayers(currentHouseholdId);
-          await loadFavorites(currentHouseholdId);
-          scheduleRefresh();
-        }
-      }
 
       async function setPlayerVolume(playerId, level) {
         if (!playerId) {
@@ -2077,15 +1950,6 @@ async function checkAuthAndInit() {
         }
 
         const numericLevel = Number(level);
-        const label = volumeLabelMap.get(playerId);
-        const slider = volumeSliderMap.get(playerId);
-
-        if (label) {
-          label.textContent = `Vol ${numericLevel}%`;
-        }
-        if (slider) {
-          slider.value = numericLevel;
-        }
 
         try {
           const postResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume`, {
@@ -2104,33 +1968,23 @@ async function checkAuthAndInit() {
             const updatedLevel = Number(
               payload.volume ?? payload?.volume?.volume ?? payload.level ?? numericLevel
             );
-            if (label) {
-              label.textContent = `Vol ${updatedLevel}%`;
-            }
-            if (slider) {
-              slider.value = updatedLevel;
+            
+            const roomRow = document.querySelector(`[data-player-id="${playerId}"]`);
+            if (roomRow) {
+              const slider = roomRow.querySelector('.currently-playing-room-slider');
+              const value = roomRow.querySelector('.currently-playing-room-value');
+              if (slider) slider.value = updatedLevel;
+              if (value) value.textContent = updatedLevel;
             }
           }
 
-          scheduleRefresh();
+          if (currentHouseholdId) {
+            setTimeout(() => loadPlayers(currentHouseholdId), 500);
+          }
         } catch (error) {
           console.error('Failed to update player volume:', error);
           showFeedback('Unable to update room volume. Please try again.', true);
-          if (currentHouseholdId) {
-            loadPlayers(currentHouseholdId);
-          }
         }
-      }
-
-      function scheduleRefresh() {
-        clearTimeout(refreshTimer);
-        refreshTimer = setTimeout(() => {
-          if (currentHouseholdId) {
-            loadPlayers(currentHouseholdId).catch((error) => {
-              console.error('Scheduled room refresh failed', error);
-            });
-          }
-        }, 700);
       }
 
       async function refreshUI() {
@@ -2143,9 +1997,14 @@ async function checkAuthAndInit() {
 
       async function updateCurrentlyPlaying() {
         const groupId = getSelectedGroupId();
+        
         if (!groupId || !isSonosConnected) {
-          currentlyPlayingPanel.classList.remove('visible');
-          document.body.classList.remove('has-playing');
+          // Only hide if panel wasn't previously visible (don't hide during transitions)
+          if (!panelShouldBeVisible) {
+            clearTimeout(hidePanelTimeout);
+            currentlyPlayingPanel.classList.remove('visible');
+            document.body.classList.remove('has-playing');
+          }
           return;
         }
 
@@ -2158,19 +2017,35 @@ async function checkAuthAndInit() {
           const status = await response.json();
           currentPlaybackState = status;
 
-          console.log('Playback status:', status);
-
           const playbackState = status.playbackState || status.state || status.playback?.state || 'STOPPED';
           const isPlaying = playbackState === 'PLAYING' || playbackState === 'PLAYBACK_STATE_PLAYING';
           
           const item = status.currentItem || status.item || status.playback?.currentItem || null;
           const track = item?.track || item?.container?.metadata || status.track || null;
           
-          const groupInfo = latestGroups.find((g) => g.id === groupId || g.groupId === groupId);
-          const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
+          // Determine if we should show the panel - be more permissive
+          const hasContent = !!(track || item);
+          const isActive = isPlaying || playbackState !== 'STOPPED';
+          
+          // If we have content OR are playing, show the panel
+          // If panel was visible, keep it visible (don't hide during transitions)
+          if (hasContent || isActive || panelShouldBeVisible) {
+            panelShouldBeVisible = true;
+            clearTimeout(hidePanelTimeout);
+            
+            const groupInfo = latestGroups.find((g) => g.id === groupId || g.groupId === groupId);
+            const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
 
-          if (track || item || playbackState !== 'STOPPED') {
-            const title = track?.name || track?.title || item?.name || 'Unknown Track';
+            let playlistName = null;
+            const activeFavoriteId = status.activeFavoriteId || currentActiveFavoriteId;
+            if (activeFavoriteId) {
+              const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
+              if (favoriteEntry && favoriteEntry.favorite) {
+                playlistName = favoriteEntry.favorite.name || null;
+              }
+            }
+
+            const title = track?.name || track?.title || item?.name || (isPlaying ? 'Loading...' : 'Unknown Track');
             
             let artist = '';
             if (track?.artist) {
@@ -2223,29 +2098,34 @@ async function checkAuthAndInit() {
               currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
             }
 
-            currentlyPlayingLocation.innerHTML = `<span>${groupName}</span>`;
+            currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
+            let finalImageUrl = null;
             if (imageUrl) {
-              const img = document.createElement('img');
-              let finalImageUrl = imageUrl;
-              
-              if (imageUrl.startsWith('http://')) {
-                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
-              }
-              
-              img.src = finalImageUrl;
-              img.alt = title;
-              img.loading = 'lazy';
-              img.style.width = '100%';
-              img.style.height = '100%';
-              img.style.objectFit = 'cover';
-              img.onerror = () => {
+              finalImageUrl = imageUrl.startsWith('http://')
+                ? `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`
+                : imageUrl;
+            }
+
+            if (finalImageUrl !== currentImageUrl) {
+              currentImageUrl = finalImageUrl;
+              if (finalImageUrl) {
+                const img = document.createElement('img');
+                img.src = finalImageUrl;
+                img.alt = title;
+                img.loading = 'lazy';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
+                img.onerror = () => {
+                  currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+                  currentImageUrl = null;
+                };
+                currentlyPlayingArt.innerHTML = '';
+                currentlyPlayingArt.appendChild(img);
+              } else {
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
-              };
-              currentlyPlayingArt.innerHTML = '';
-              currentlyPlayingArt.appendChild(img);
-            } else {
-              currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+              }
             }
 
             const playerCount = latestPlayers.filter((p) => p.groupId === groupId).length;
@@ -2258,26 +2138,100 @@ async function checkAuthAndInit() {
               currentlyPlayingGroupCount.style.display = 'none';
             }
 
-            currentlyPlayingPlayBtn.innerHTML = isPlaying
-              ? '<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" /></svg>'
-              : '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>';
+            const playIcon = isPlaying
+              ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
+              : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+            
+            if (currentlyPlayingPlayBtn.innerHTML !== playIcon) {
+              currentlyPlayingPlayBtn.innerHTML = playIcon;
+            }
+            
+            currentlyPlayingPlayBtn.classList.toggle('playing', isPlaying);
 
-            const volume = status.volume || status.groupVolume || status.playback?.volume || 0;
-            currentlyPlayingVolumeSlider.value = volume;
-            currentlyPlayingVolumeValue.textContent = volume;
-            currentlyPlayingVolume.style.display = 'flex';
+            updateCurrentlyPlayingRooms(groupId);
 
             currentlyPlayingPanel.classList.add('visible');
             document.body.classList.add('has-playing');
           } else {
-            currentlyPlayingPanel.classList.remove('visible');
-            document.body.classList.remove('has-playing');
+            // Only hide if we're truly stopped - use a delay to prevent flickering
+            if (playbackState === 'STOPPED' && !isPlaying) {
+              clearTimeout(hidePanelTimeout);
+              hidePanelTimeout = setTimeout(() => {
+                if (!panelShouldBeVisible) {
+                  currentlyPlayingPanel.classList.remove('visible');
+                  document.body.classList.remove('has-playing');
+                  currentImageUrl = null;
+                }
+              }, 2000); // Wait 2 seconds before hiding
+            }
           }
         } catch (error) {
           console.error('Failed to update currently playing:', error);
           currentlyPlayingPanel.classList.remove('visible');
           document.body.classList.remove('has-playing');
         }
+      }
+
+      function updateCurrentlyPlayingRooms(groupId) {
+        if (!groupId || !latestPlayers.length) {
+          currentlyPlayingRoomsList.innerHTML = '';
+          return;
+        }
+
+        // Since we're auto-grouping all players, show all players
+        // The groupId format is "RINCON_XXX:PORT" where RINCON_XXX is the coordinator
+        // We'll show all players since they're all in the same auto-created group
+        const groupPlayers = latestPlayers;
+        
+        console.log('[CurrentlyPlaying] Showing all players for group:', {
+          groupId,
+          playersCount: groupPlayers.length,
+          players: groupPlayers.map(p => ({ id: p.id, name: p.name }))
+        });
+        
+        currentlyPlayingRoomsList.innerHTML = '';
+
+        groupPlayers.forEach((player) => {
+          const roomRow = document.createElement('div');
+          roomRow.className = 'currently-playing-room-volume';
+          roomRow.dataset.playerId = player.id;
+
+          const name = document.createElement('span');
+          name.className = 'currently-playing-room-name';
+          name.textContent = player.name || player.id || 'Room';
+
+          const slider = document.createElement('input');
+          slider.type = 'range';
+          slider.className = 'currently-playing-room-slider';
+          slider.min = '0';
+          slider.max = '100';
+          slider.value = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+
+          const value = document.createElement('span');
+          value.className = 'currently-playing-room-value';
+          value.textContent = `${slider.value}`;
+
+          slider.addEventListener('input', (e) => {
+            value.textContent = e.target.value;
+          });
+
+          slider.addEventListener('change', async (e) => {
+            e.stopPropagation();
+            const playerId = roomRow.dataset.playerId;
+            if (playerId) {
+              await setPlayerVolume(playerId, Number(e.target.value));
+            }
+          });
+
+          slider.addEventListener('pointerdown', (e) => e.stopPropagation());
+          slider.addEventListener('mousedown', (e) => e.stopPropagation());
+
+          roomRow.appendChild(name);
+          roomRow.appendChild(slider);
+          roomRow.appendChild(value);
+          currentlyPlayingRoomsList.appendChild(roomRow);
+        });
+        
       }
 
       function startPlaybackRefresh() {
@@ -2289,32 +2243,58 @@ async function checkAuthAndInit() {
         }, 3000);
         updateCurrentlyPlaying();
       }
-
+      
       function stopPlaybackRefresh() {
         clearInterval(playbackRefreshTimer);
         playbackRefreshTimer = null;
       }
 
-      currentlyPlayingPlayBtn.addEventListener('click', async () => {
+
+      // Use event delegation on the panel itself - simpler and more reliable
+      currentlyPlayingPanel.addEventListener('click', (e) => {
+        // Don't toggle if clicking on interactive elements
+        const playBtn = e.target.closest('.currently-playing-play-btn');
+        const roomVolume = e.target.closest('.currently-playing-room-volume');
+        const roomSlider = e.target.closest('.currently-playing-room-slider');
+        const rangeInput = e.target.closest('input[type="range"]');
+        
+        if (playBtn || roomVolume || roomSlider || rangeInput) {
+          return;
+        }
+        
+        // Toggle expanded state
+        currentlyPlayingPanel.classList.toggle('expanded');
+        
+        // Update rooms when expanding (in case they weren't loaded yet)
+        if (currentlyPlayingPanel.classList.contains('expanded')) {
+          const groupId = getSelectedGroupId();
+          if (groupId) {
+            updateCurrentlyPlayingRooms(groupId);
+          }
+        }
+      });
+
+      currentlyPlayingPlayBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         const groupId = getSelectedGroupId();
         if (!groupId) {
           return;
         }
-        await handlePlaybackAction('playpause');
-        setTimeout(() => updateCurrentlyPlaying(), 500);
-      });
-
-      currentlyPlayingVolumeSlider.addEventListener('input', (e) => {
-        currentlyPlayingVolumeValue.textContent = e.target.value;
-      });
-
-      currentlyPlayingVolumeSlider.addEventListener('change', async (e) => {
-        const groupId = getSelectedGroupId();
-        if (!groupId) {
-          return;
+        
+        const wasPlaying = currentlyPlayingPlayBtn.classList.contains('playing');
+        currentlyPlayingPlayBtn.disabled = true;
+        
+        try {
+          await handlePlaybackAction('playpause');
+          setTimeout(() => {
+            updateCurrentlyPlaying();
+            currentlyPlayingPlayBtn.disabled = false;
+          }, 600);
+        } catch (error) {
+          console.error('Playback toggle failed:', error);
+          currentlyPlayingPlayBtn.disabled = false;
+          setTimeout(() => updateCurrentlyPlaying(), 500);
         }
-        await setVolume(Number(e.target.value));
-        setTimeout(() => updateCurrentlyPlaying(), 500);
       });
 
       function setActiveGroup(groupId, name, { refreshFavorites = false } = {}) {
