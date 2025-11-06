@@ -196,6 +196,35 @@
         gap: 12px;
       }
 
+      .vibe-filters {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+      }
+
+      .vibe-filter-btn {
+        padding: 6px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        background: rgba(30, 41, 59, 0.6);
+        color: inherit;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s ease, border-color 0.2s ease;
+      }
+
+      .vibe-filter-btn:hover {
+        background: rgba(30, 41, 59, 0.8);
+        border-color: rgba(148, 163, 184, 0.5);
+      }
+
+      .vibe-filter-btn.active {
+        background: rgba(37, 99, 235, 0.4);
+        border-color: #2563eb;
+      }
+
       .favorites-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -214,8 +243,8 @@
 
       .playlist-card {
         display: flex;
-        align-items: center;
-        gap: 16px;
+        flex-direction: column;
+        gap: 12px;
         padding: 14px 18px;
         border-radius: 18px;
         border: 1px solid rgba(37, 99, 235, 0.25);
@@ -224,6 +253,12 @@
         text-align: left;
         box-shadow: 0 12px 24px rgba(15, 23, 42, 0.45);
         transition: transform 0.12s ease, box-shadow 0.2s ease;
+      }
+
+      .playlist-card-content {
+        display: flex;
+        align-items: center;
+        gap: 16px;
       }
 
       .playlist-card:not(:disabled):active {
@@ -298,6 +333,37 @@
       .playlist-status {
         font-size: 0.85rem;
         color: #cbd5f5;
+      }
+
+      .playlist-vibe-selector {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(148, 163, 184, 0.2);
+      }
+
+      .playlist-vibe-selector label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #cbd5f5;
+      }
+
+      .playlist-vibe-selector select {
+        flex: 1;
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(15, 23, 42, 0.6);
+        color: inherit;
+        font-size: 0.85rem;
+        appearance: none;
+        cursor: pointer;
+      }
+
+      .playlist-vibe-selector select:focus {
+        outline: none;
+        border-color: #2563eb;
       }
 
       .settings-actions {
@@ -430,6 +496,7 @@
 
           <div class="favorites">
             <span class="section-title">Favorites</span>
+            <div id="vibe-filters" class="vibe-filters"></div>
             <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
             <div id="favorites-grid" class="favorites-grid"></div>
           </div>
@@ -477,6 +544,7 @@
       const volumeValue = document.getElementById('volume-value');
       const favoritesGrid = document.getElementById('favorites-grid');
       const favoritesStatus = document.getElementById('favorites-status');
+      const vibeFiltersContainer = document.getElementById('vibe-filters');
       const roomsContainer = document.getElementById('rooms');
 const settingsPlayersWrap = document.getElementById('settings-players');
 const settingsSaveButton = document.getElementById('settings-save');
@@ -497,6 +565,8 @@ settingsStatusLabel.textContent = '';
       const volumeLabelMap = new Map();
       const volumeSliderMap = new Map();
       let refreshTimer = null;
+      let playlistVibes = {};
+      let currentVibeFilter = null;
 
       function login() {
         window.location.href = '/auth/sonos/login';
@@ -622,6 +692,7 @@ async function checkAuthAndInit() {
           currentHouseholdId = null;
           setVolumeControlAvailability(false);
           favoritesStatus.textContent = 'Login required to load favorites.';
+          vibeFiltersContainer.innerHTML = '';
           roomsContainer.innerHTML = '';
           currentGroupId = null;
           currentGroupName = 'No group selected';
@@ -909,6 +980,75 @@ async function checkAuthAndInit() {
         }
       }
 
+      async function loadPlaylistVibes() {
+        try {
+          const response = await fetch('/api/playlist-vibes');
+          if (response.ok) {
+            playlistVibes = await response.json();
+          }
+        } catch (error) {
+          console.error('Failed to load playlist vibes:', error);
+        }
+      }
+
+      async function setPlaylistVibe(playlistId, vibe) {
+        if (vibe) {
+          playlistVibes[playlistId] = vibe;
+        } else {
+          delete playlistVibes[playlistId];
+        }
+
+        try {
+          const response = await fetch('/api/playlist-vibes', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(playlistVibes)
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to save vibe');
+          }
+
+          applyVibeFilter();
+        } catch (error) {
+          console.error('Failed to save playlist vibe:', error);
+        }
+      }
+
+      function renderVibeFilters() {
+        vibeFiltersContainer.innerHTML = '';
+
+        const allButton = document.createElement('button');
+        allButton.className = 'vibe-filter-btn';
+        allButton.textContent = 'All';
+        allButton.classList.toggle('active', currentVibeFilter === null);
+        allButton.addEventListener('click', () => {
+          currentVibeFilter = null;
+          applyVibeFilter();
+        });
+        vibeFiltersContainer.appendChild(allButton);
+
+        ['Down', 'Down/Mid', 'Mid'].forEach((vibe) => {
+          const button = document.createElement('button');
+          button.className = 'vibe-filter-btn';
+          button.textContent = vibe;
+          button.classList.toggle('active', currentVibeFilter === vibe);
+          button.addEventListener('click', () => {
+            currentVibeFilter = vibe;
+            applyVibeFilter();
+          });
+          vibeFiltersContainer.appendChild(button);
+        });
+      }
+
+      function applyVibeFilter() {
+        favoritesRegistry.forEach((entry) => {
+          const vibe = playlistVibes[entry.favorite.id] || null;
+          const shouldShow = currentVibeFilter === null || vibe === currentVibeFilter;
+          entry.button.style.display = shouldShow ? '' : 'none';
+        });
+      }
+
       async function loadFavorites(householdId) {
         favoritesRegistry.clear();
         favoritesGrid.innerHTML = '';
@@ -917,6 +1057,7 @@ async function checkAuthAndInit() {
           favoritesStatus.textContent = isSonosConnected
             ? 'Select a household to load favorites.'
             : 'Login required to load favorites.';
+          vibeFiltersContainer.innerHTML = '';
           evaluateFavoritesAvailability();
           return;
         }
@@ -924,6 +1065,8 @@ async function checkAuthAndInit() {
         favoritesStatus.textContent = 'Loading favorites…';
 
         try {
+          await loadPlaylistVibes();
+
           const params = new URLSearchParams({ householdId });
           const activeGroupId = getSelectedGroupId();
           if (activeGroupId) {
@@ -948,6 +1091,7 @@ async function checkAuthAndInit() {
 
           if (!items.length) {
             favoritesStatus.textContent = 'No favorites found.';
+            vibeFiltersContainer.innerHTML = '';
             evaluateFavoritesAvailability();
             return;
           }
@@ -960,11 +1104,14 @@ async function checkAuthAndInit() {
             favoritesGrid.appendChild(entry.button);
           });
 
+          renderVibeFilters();
+          applyVibeFilter();
           evaluateFavoritesAvailability();
           markActiveFavorite(currentActiveFavoriteId);
         } catch (error) {
           console.error('Failed to load favorites:', error);
           favoritesStatus.textContent = 'Could not load favorites. Please try again.';
+          vibeFiltersContainer.innerHTML = '';
           evaluateFavoritesAvailability();
         }
       }
@@ -1038,18 +1185,53 @@ async function checkAuthAndInit() {
         meta.appendChild(title);
         meta.appendChild(status);
 
-        button.appendChild(artWrapper);
-        button.appendChild(meta);
+        const cardContent = document.createElement('div');
+        cardContent.className = 'playlist-card-content';
+        cardContent.appendChild(artWrapper);
+        cardContent.appendChild(meta);
+
+        const vibeSelector = document.createElement('div');
+        vibeSelector.className = 'playlist-vibe-selector';
+        const vibeLabel = document.createElement('label');
+        vibeLabel.textContent = 'Vibe:';
+        const vibeSelect = document.createElement('select');
+        vibeSelect.dataset.favoriteId = favorite.id;
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = '—';
+        vibeSelect.appendChild(defaultOption);
+        ['Down', 'Down/Mid', 'Mid'].forEach((vibe) => {
+          const option = document.createElement('option');
+          option.value = vibe;
+          option.textContent = vibe;
+          vibeSelect.appendChild(option);
+        });
+        vibeSelect.value = playlistVibes[favorite.id] || '';
+        vibeSelect.addEventListener('change', (event) => {
+          event.stopPropagation();
+          setPlaylistVibe(favorite.id, event.target.value);
+        });
+        vibeSelector.appendChild(vibeLabel);
+        vibeSelector.appendChild(vibeSelect);
+
+        button.appendChild(cardContent);
+        button.appendChild(vibeSelector);
 
         const entry = {
           favorite,
           button,
           statusEl: status,
           loading: false,
-          statusMessage: SELECT_GROUP_MESSAGE
+          statusMessage: SELECT_GROUP_MESSAGE,
+          vibeSelect
         };
 
-        button.addEventListener('click', () => playFavorite(entry));
+        button.addEventListener('click', (event) => {
+          if (event.target === vibeSelect || event.target.closest('.playlist-vibe-selector')) {
+            return;
+          }
+          playFavorite(entry);
+        });
 
         return entry;
       }

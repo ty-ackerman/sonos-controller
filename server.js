@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { loadTokens, saveTokens, clearTokens } from './tokenStore.js';
 import { loadSpeakerVolumes, saveSpeakerVolumes } from './settingsStore.js';
+import { loadPlaylistVibes, savePlaylistVibes } from './playlistVibesStore.js';
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 let tokens = await loadTokens();
 let speakerVolumes = await loadSpeakerVolumes();
+let playlistVibes = await loadPlaylistVibes();
 
 const activeFavoritesByGroup = new Map();
 
@@ -257,6 +259,22 @@ app.put('/api/settings/volumes', async (req, res) => {
     res
       .status(400)
       .json({ error: 'settings_save_failed', detail: error?.message ?? String(error) });
+  }
+});
+
+app.get('/api/playlist-vibes', (_req, res) => {
+  res.json(playlistVibes);
+});
+
+app.put('/api/playlist-vibes', async (req, res) => {
+  try {
+    const incoming = req.body ?? {};
+    playlistVibes = await savePlaylistVibes(incoming);
+    res.json(playlistVibes);
+  } catch (error) {
+    res
+      .status(400)
+      .json({ error: 'playlist_vibes_save_failed', detail: error?.message ?? String(error) });
   }
 });
 
