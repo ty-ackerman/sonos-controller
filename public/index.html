@@ -2216,10 +2216,26 @@ async function checkAuthAndInit() {
             let finalImageUrl = null;
             if (imageUrl) {
               console.log('[CoverArt] Original imageUrl:', imageUrl);
-              // Proxy all external images through our server to avoid CORS and mixed content issues
+              
+              // Check if it's a local network address (10.x.x.x, 192.168.x.x, 172.16-31.x.x, or localhost)
+              const isLocalNetwork = /^(http:\/\/)?(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.0\.0\.1|localhost)/.test(imageUrl);
+              
               if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
-                console.log('[CoverArt] Proxying image through server:', finalImageUrl);
+                if (isLocalNetwork) {
+                  // Local network address - browser can access it directly (browser is on same network)
+                  // Only proxy if we're on HTTPS and the image is HTTP (mixed content)
+                  if (window.location.protocol === 'https:' && imageUrl.startsWith('http://')) {
+                    finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+                    console.log('[CoverArt] Proxying local HTTP image through server (HTTPS page):', finalImageUrl);
+                  } else {
+                    finalImageUrl = imageUrl;
+                    console.log('[CoverArt] Using local network image directly (browser can access):', finalImageUrl);
+                  }
+                } else {
+                  // External URL - proxy through server to avoid CORS issues
+                  finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+                  console.log('[CoverArt] Proxying external image through server:', finalImageUrl);
+                }
               } else {
                 finalImageUrl = imageUrl;
                 console.log('[CoverArt] Using image URL directly (not http/https):', finalImageUrl);
@@ -2464,34 +2480,36 @@ async function checkAuthAndInit() {
         }
       });
 
-      // Close panel when scrolling
-      let scrollTimeout = null;
+      // Close panel when scrolling starts
+      let isScrolling = false;
       document.addEventListener('scroll', () => {
         if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
           return;
         }
         
-        // Debounce scroll events to avoid closing too frequently
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-          if (currentlyPlayingPanel.classList.contains('expanded')) {
-            currentlyPlayingPanel.classList.remove('expanded');
-          }
-        }, 100);
+        // Close immediately when scrolling starts
+        if (!isScrolling) {
+          isScrolling = true;
+          currentlyPlayingPanel.classList.remove('expanded');
+        }
       }, { passive: true });
 
-      // Close panel on touchmove (mobile scrolling)
+      // Close panel on touchmove (mobile scrolling) - close immediately
       document.addEventListener('touchmove', () => {
         if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
           return;
         }
         
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-          if (currentlyPlayingPanel.classList.contains('expanded')) {
-            currentlyPlayingPanel.classList.remove('expanded');
-          }
-        }, 100);
+        currentlyPlayingPanel.classList.remove('expanded');
+      }, { passive: true });
+
+      // Reset scrolling flag when scroll ends
+      let scrollEndTimeout = null;
+      document.addEventListener('scroll', () => {
+        clearTimeout(scrollEndTimeout);
+        scrollEndTimeout = setTimeout(() => {
+          isScrolling = false;
+        }, 150);
       }, { passive: true });
 
       currentlyPlayingPlayBtn.addEventListener('click', async (e) => {
