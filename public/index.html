@@ -2479,28 +2479,44 @@ async function checkAuthAndInit() {
         }
       });
 
-      // Close panel when scrolling starts
+      // Close panel when scrolling starts (only if scroll is outside the panel)
       let isScrolling = false;
-      document.addEventListener('scroll', () => {
+      document.addEventListener('scroll', (e) => {
         if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
           return;
         }
         
-        // Close immediately when scrolling starts
-        if (!isScrolling) {
-          isScrolling = true;
-          currentlyPlayingPanel.classList.remove('expanded');
+        // Check if the scroll event originated from within the panel
+        const target = e.target;
+        if (target && currentlyPlayingPanel.contains(target)) {
+          return; // Don't close if scrolling within the panel
         }
-      }, { passive: true });
+        
+        // Check if the scroll happened on the document/body (outside the panel)
+        if (target === document || target === document.body || target === document.documentElement) {
+          // Close immediately when scrolling starts outside the panel
+          if (!isScrolling) {
+            isScrolling = true;
+            currentlyPlayingPanel.classList.remove('expanded');
+          }
+        }
+      }, { passive: true, capture: true });
 
-      // Close panel on touchmove (mobile scrolling) - close immediately
-      document.addEventListener('touchmove', () => {
+      // Close panel on touchmove (mobile scrolling) - only if touch is outside the panel
+      document.addEventListener('touchmove', (e) => {
         if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
           return;
         }
         
+        // Check if the touch event originated from within the panel
+        const target = e.target;
+        if (target && currentlyPlayingPanel.contains(target)) {
+          return; // Don't close if touching/swiping within the panel
+        }
+        
+        // Only close if touch is outside the panel
         currentlyPlayingPanel.classList.remove('expanded');
-      }, { passive: true });
+      }, { passive: true, capture: true });
 
       // Reset scrolling flag when scroll ends
       let scrollEndTimeout = null;
