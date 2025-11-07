@@ -2429,6 +2429,36 @@ async function checkAuthAndInit() {
         }
       });
 
+      // Close panel when scrolling
+      let scrollTimeout = null;
+      document.addEventListener('scroll', () => {
+        if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
+          return;
+        }
+        
+        // Debounce scroll events to avoid closing too frequently
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          if (currentlyPlayingPanel.classList.contains('expanded')) {
+            currentlyPlayingPanel.classList.remove('expanded');
+          }
+        }, 100);
+      }, { passive: true });
+
+      // Close panel on touchmove (mobile scrolling)
+      document.addEventListener('touchmove', () => {
+        if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
+          return;
+        }
+        
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          if (currentlyPlayingPanel.classList.contains('expanded')) {
+            currentlyPlayingPanel.classList.remove('expanded');
+          }
+        }, 100);
+      }, { passive: true });
+
       currentlyPlayingPlayBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const groupId = getSelectedGroupId();
