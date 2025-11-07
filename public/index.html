@@ -2230,81 +2230,60 @@ async function checkAuthAndInit() {
 
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
-            let finalImageUrl = null;
-            if (imageUrl) {
+            // Handle image loading
+            if (imageUrl && imageUrl !== currentImageUrl) {
               console.log('[CoverArt] Original imageUrl:', imageUrl);
               
-              // Check if it's a local network address
               const isLocalNetwork = /^(http:\/\/)?(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.0\.0\.1|localhost)/.test(imageUrl);
               const isHttpsPage = window.location.protocol === 'https:';
               
-              if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                if (isLocalNetwork && isHttpsPage && imageUrl.startsWith('http://')) {
-                  // Local HTTP image on HTTPS page - try multiple approaches
-                  console.log('[CoverArt] Local HTTP image on HTTPS page - trying blob URL approach:', imageUrl);
-                  
-                  // Try blob URL first (bypasses mixed content)
-                  fetch(imageUrl, { mode: 'no-cors' })
-                    .then(response => response.blob())
-                    .then(blob => {
-                      const blobUrl = URL.createObjectURL(blob);
-                      console.log('[CoverArt] Successfully created blob URL:', blobUrl);
-                      
-                      // Clean up old blob URL
-                      if (currentImageUrl && currentImageUrl.startsWith('blob:')) {
-                        URL.revokeObjectURL(currentImageUrl);
-                      }
-                      
-                      const img = document.createElement('img');
-                      img.src = blobUrl;
-                      img.alt = title;
-                      img.loading = 'lazy';
-                      img.style.width = '100%';
-                      img.style.height = '100%';
-                      img.style.objectFit = 'cover';
-                      img.onload = () => {
-                        console.log('[CoverArt] Blob image loaded successfully');
-                        currentImageUrl = blobUrl;
-                      };
-                      img.onerror = () => {
-                        console.error('[CoverArt] Blob image failed to load');
-                        URL.revokeObjectURL(blobUrl);
-                        // Try direct URL as fallback
-                        tryDirectImageUrl(imageUrl);
-                      };
-                      
-                      currentlyPlayingArt.innerHTML = '';
-                      currentlyPlayingArt.appendChild(img);
-                    })
-                    .catch(error => {
-                      console.error('[CoverArt] Failed to create blob URL, trying direct URL:', error);
-                      // Fallback: try direct URL
-                      tryDirectImageUrl(imageUrl);
-                    });
-                  
-                  // Don't set finalImageUrl here - blob approach handles it
-                  // Continue with rest of panel update (don't return early)
-                  finalImageUrl = null; // Signal that blob approach is handling it
-                } else if (isLocalNetwork) {
-                  // Local network, not HTTPS page - use directly
-                  finalImageUrl = imageUrl;
-                  console.log('[CoverArt] Using local network image directly:', finalImageUrl);
-                } else {
-                  // External URL - proxy through server to avoid CORS issues
-                  finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
-                  console.log('[CoverArt] Proxying external image through server:', finalImageUrl);
-                }
+              // For local network images on HTTPS, we need a special approach
+              if (isLocalNetwork && isHttpsPage && imageUrl.startsWith('http://')) {
+                // Try to fetch via proxy first - if it returns localNetwork flag, fetch directly
+                console.log('[CoverArt] Local network HTTP image on HTTPS - checking proxy response');
+                fetch(`/api/image-proxy?url=${encodeURIComponent(imageUrl)}`)
+                  .then(response => response.json())
+                  .then(data => {
+                    if (data.localNetwork && data.originalUrl) {
+                      // Server confirmed it's local network - fetch directly using Service Worker approach
+                      // Since we can't bypass mixed content, we'll use a canvas-based approach
+                      console.log('[CoverArt] Server confirmed local network - attempting direct fetch via canvas');
+                      loadLocalImageViaCanvas(data.originalUrl);
+                    }
+                  })
+                  .catch(() => {
+                    // Proxy failed, try canvas approach
+                    console.log('[CoverArt] Proxy check failed, trying canvas approach');
+                    loadLocalImageViaCanvas(imageUrl);
+                  });
+              } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+                // Non-local or HTTPS image - use proxy
+                const finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+                console.log('[CoverArt] Proxying image through server:', finalImageUrl);
+                loadImage(finalImageUrl, imageUrl);
               } else {
-                finalImageUrl = imageUrl;
-                console.log('[CoverArt] Using image URL directly (not http/https):', finalImageUrl);
+                // Not HTTP/HTTPS - use directly
+                console.log('[CoverArt] Using image URL directly:', imageUrl);
+                loadImage(imageUrl, imageUrl);
+              }
+            } else if (!imageUrl) {
+              console.log('[CoverArt] No imageUrl found in track/item data');
+              if (!currentlyPlayingArt.querySelector('img')) {
+                currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
               }
             } else {
-              console.log('[CoverArt] No imageUrl found in track/item data');
+              console.log('[CoverArt] Image URL unchanged, skipping update');
             }
-
-            // Helper function to try loading image directly
-            function tryDirectImageUrl(url) {
-              console.log('[CoverArt] Trying direct image URL:', url);
+            
+            function loadImage(url, originalUrl) {
+              if (url === currentImageUrl) {
+                console.log('[CoverArt] Image URL unchanged, skipping');
+                return;
+              }
+              
+              console.log('[CoverArt] Loading image:', { url, originalUrl });
+              currentImageUrl = url;
+              
               const img = document.createElement('img');
               img.alt = title;
               img.loading = 'lazy';
@@ -2313,76 +2292,33 @@ async function checkAuthAndInit() {
               img.style.objectFit = 'cover';
               
               img.onerror = () => {
-                console.error('[CoverArt] Direct image URL also failed');
+                console.error('[CoverArt] Image load failed:', url);
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
                 currentImageUrl = null;
               };
               
               img.onload = () => {
-                console.log('[CoverArt] Direct image URL succeeded!');
-                currentImageUrl = url;
+                console.log('[CoverArt] Image loaded successfully:', {
+                  url,
+                  originalUrl,
+                  width: img.naturalWidth,
+                  height: img.naturalHeight
+                });
               };
               
               currentlyPlayingArt.innerHTML = '';
               currentlyPlayingArt.appendChild(img);
               img.src = url;
             }
-
-            // Only update image if we have a finalImageUrl and it's different
-            // (blob approach handles its own image, so finalImageUrl will be null in that case)
-            if (finalImageUrl !== null && finalImageUrl !== currentImageUrl && finalImageUrl) {
-              console.log('[CoverArt] Image URL changed, updating:', { old: currentImageUrl, new: finalImageUrl });
-              currentImageUrl = finalImageUrl;
+            
+            function loadLocalImageViaCanvas(localUrl) {
+              // Service Worker should handle this, but if it doesn't, try direct load
+              // The Service Worker intercepts /api/image-proxy requests for local URLs
+              console.log('[CoverArt] Loading local image via Service Worker proxy:', localUrl);
               
-              const img = document.createElement('img');
-              img.alt = title;
-              img.loading = 'lazy';
-              img.style.width = '100%';
-              img.style.height = '100%';
-              img.style.objectFit = 'cover';
-              
-              img.onerror = (e) => {
-                console.error('[CoverArt] Image load failed:', {
-                  url: finalImageUrl,
-                  originalUrl: imageUrl,
-                  imgSrc: img.src,
-                  imgCurrentSrc: img.currentSrc
-                });
-                
-                // If proxy failed and we have original URL, try direct
-                if (finalImageUrl.startsWith('/api/image-proxy') && imageUrl && isLocalNetwork) {
-                  console.log('[CoverArt] Proxy failed, trying direct URL as fallback');
-                  tryDirectImageUrl(imageUrl);
-                } else {
-                  currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
-                  currentImageUrl = null;
-                }
-              };
-              
-              img.onload = () => {
-                console.log('[CoverArt] Image loaded successfully:', {
-                  url: finalImageUrl,
-                  originalUrl: imageUrl,
-                  width: img.naturalWidth,
-                  height: img.naturalHeight
-                });
-              };
-              
-              console.log('[CoverArt] Setting image src:', finalImageUrl);
-              currentlyPlayingArt.innerHTML = '';
-              currentlyPlayingArt.appendChild(img);
-              img.src = finalImageUrl;
-            } else if (finalImageUrl === null && !imageUrl) {
-              // No image URL at all - show placeholder (but only if blob approach isn't handling it)
-              if (!currentlyPlayingArt.querySelector('img')) {
-                console.log('[CoverArt] No finalImageUrl, showing placeholder');
-                currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
-              }
-            } else if (finalImageUrl === null) {
-              // Blob approach is handling it - don't update image here
-              console.log('[CoverArt] Blob approach handling image, skipping direct update');
-            } else {
-              console.log('[CoverArt] Image URL unchanged, skipping update');
+              // Use the proxy endpoint - Service Worker will intercept and fetch locally
+              const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(localUrl)}`;
+              loadImage(proxyUrl, localUrl);
             }
 
             const playerCount = latestPlayers.filter((p) => p.groupId === groupId).length;
@@ -2618,6 +2554,17 @@ async function checkAuthAndInit() {
       window.addEventListener('load', () => {
         applyAuthFeedback();
         checkAuthAndInit();
+        
+        // Register Service Worker for local image handling
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('[SW] Service Worker registered:', registration.scope);
+            })
+            .catch(error => {
+              console.error('[SW] Service Worker registration failed:', error);
+            });
+        }
       });
     </script>
 

@@ -292,6 +292,21 @@ app.get('/api/image-proxy', async (req, res) => {
       return res.status(400).json({ error: 'Invalid URL' });
     }
 
+    // Check if this is a local network address (server can't access these from cloud)
+    const isLocalNetwork = /^(http:\/\/)?(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.0\.0\.1|localhost)/.test(imageUrl);
+    
+    if (isLocalNetwork) {
+      console.log('[ImageProxy] Local network URL detected - server cannot access, returning special response');
+      // Return a special response that tells the client to fetch directly
+      // The client will handle this case
+      res.status(200).json({ 
+        localNetwork: true, 
+        originalUrl: imageUrl,
+        message: 'Local network URL - client must fetch directly'
+      });
+      return;
+    }
+
     console.log('[ImageProxy] Fetching image from:', imageUrl);
     const imageResponse = await fetch(imageUrl, {
       headers: {
