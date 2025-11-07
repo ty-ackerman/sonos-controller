@@ -2230,39 +2230,17 @@ async function checkAuthAndInit() {
 
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
-            // Handle image loading
+            // Handle image loading - always proxy through server
             if (imageUrl && imageUrl !== currentImageUrl) {
               console.log('[CoverArt] Original imageUrl:', imageUrl);
               
-              const isLocalNetwork = /^(http:\/\/)?(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|127\.0\.0\.1|localhost)/.test(imageUrl);
-              const isHttpsPage = window.location.protocol === 'https:';
-              
-              // For local network images on HTTPS, we need a special approach
-              if (isLocalNetwork && isHttpsPage && imageUrl.startsWith('http://')) {
-                // Try to fetch via proxy first - if it returns localNetwork flag, fetch directly
-                console.log('[CoverArt] Local network HTTP image on HTTPS - checking proxy response');
-                fetch(`/api/image-proxy?url=${encodeURIComponent(imageUrl)}`)
-                  .then(response => response.json())
-                  .then(data => {
-                    if (data.localNetwork && data.originalUrl) {
-                      // Server confirmed it's local network - fetch directly using Service Worker approach
-                      // Since we can't bypass mixed content, we'll use a canvas-based approach
-                      console.log('[CoverArt] Server confirmed local network - attempting direct fetch via canvas');
-                      loadLocalImageViaCanvas(data.originalUrl);
-                    }
-                  })
-                  .catch(() => {
-                    // Proxy failed, try canvas approach
-                    console.log('[CoverArt] Proxy check failed, trying canvas approach');
-                    loadLocalImageViaCanvas(imageUrl);
-                  });
-              } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                // Non-local or HTTPS image - use proxy
-                const finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
-                console.log('[CoverArt] Proxying image through server:', finalImageUrl);
-                loadImage(finalImageUrl, imageUrl);
+              // Always proxy through server (handles CORS, mixed content, etc.)
+              if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+                const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+                console.log('[CoverArt] Proxying image through server:', proxyUrl);
+                loadImage(proxyUrl, imageUrl);
               } else {
-                // Not HTTP/HTTPS - use directly
+                // Not HTTP/HTTPS - use directly (shouldn't happen with Sonos)
                 console.log('[CoverArt] Using image URL directly:', imageUrl);
                 loadImage(imageUrl, imageUrl);
               }
@@ -2309,16 +2287,6 @@ async function checkAuthAndInit() {
               currentlyPlayingArt.innerHTML = '';
               currentlyPlayingArt.appendChild(img);
               img.src = url;
-            }
-            
-            function loadLocalImageViaCanvas(localUrl) {
-              // Service Worker should handle this, but if it doesn't, try direct load
-              // The Service Worker intercepts /api/image-proxy requests for local URLs
-              console.log('[CoverArt] Loading local image via Service Worker proxy:', localUrl);
-              
-              // Use the proxy endpoint - Service Worker will intercept and fetch locally
-              const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(localUrl)}`;
-              loadImage(proxyUrl, localUrl);
             }
 
             const playerCount = latestPlayers.filter((p) => p.groupId === groupId).length;
@@ -2570,17 +2538,6 @@ async function checkAuthAndInit() {
       window.addEventListener('load', () => {
         applyAuthFeedback();
         checkAuthAndInit();
-        
-        // Register Service Worker for local image handling
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => {
-              console.log('[SW] Service Worker registered:', registration.scope);
-            })
-            .catch(error => {
-              console.error('[SW] Service Worker registration failed:', error);
-            });
-        }
       });
     </script>
 
