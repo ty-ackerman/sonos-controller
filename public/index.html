@@ -1906,9 +1906,46 @@ async function checkAuthAndInit() {
           latestGroups = Array.isArray(data.groups) ? data.groups : [];
 
           ensureActiveGroup(latestPlayers);
-          if (getSelectedGroupId()) {
-            updateCurrentlyPlayingRooms(getSelectedGroupId());
-          }
+          const activeGroupId = getSelectedGroupId();
+          
+          // Check for currently playing content after a short delay to ensure everything is loaded
+          setTimeout(async () => {
+            // First try the active group if we have one
+            if (activeGroupId) {
+              updateCurrentlyPlayingRooms(activeGroupId);
+              await updateCurrentlyPlaying();
+              startPlaybackRefresh();
+            } else if (latestGroups.length > 0) {
+              // If no group is selected, check all groups to find which one is playing
+              for (const group of latestGroups) {
+                const groupId = group.id || group.groupId;
+                if (!groupId) continue;
+                
+                try {
+                  const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playback/status`);
+                  if (response.ok) {
+                    const status = await response.json();
+                    const playbackState = status.playbackState || status.state || 'STOPPED';
+                    const isPlaying = playbackState === 'PLAYING' || playbackState === 'PLAYBACK_STATE_PLAYING';
+                    const hasContent = !!(status.track || status.currentItem || status.item);
+                    
+                    if (isPlaying || hasContent || playbackState !== 'STOPPED') {
+                      // Found a group with playback - set it as active
+                      setActiveGroup(groupId, group.name || group.displayName || 'Group');
+                      updateCurrentlyPlayingRooms(groupId);
+                      await updateCurrentlyPlaying();
+                      startPlaybackRefresh();
+                      break;
+                    }
+                  }
+                } catch (error) {
+                  // Continue to next group
+                  continue;
+                }
+              }
+            }
+          }, 500);
+          
           setVolumeControlAvailability(Boolean(currentGroupId));
         } catch (error) {
           console.error('Failed to load players', error);
@@ -1996,7 +2033,19 @@ async function checkAuthAndInit() {
       updateActiveGroupDisplay();
 
       async function updateCurrentlyPlaying() {
-        const groupId = getSelectedGroupId();
+        let groupId = getSelectedGroupId();
+        
+        // If no group is selected but we have groups, try the first one
+        if (!groupId && latestGroups.length > 0 && isSonosConnected) {
+          const firstGroup = latestGroups.find(g => g.id || g.groupId);
+          if (firstGroup) {
+            groupId = firstGroup.id || firstGroup.groupId;
+            // Set it as active so refresh continues
+            if (groupId && !currentGroupId) {
+              setActiveGroup(groupId, firstGroup.name || firstGroup.displayName || 'Group');
+            }
+          }
+        }
         
         if (!groupId || !isSonosConnected) {
           // Only hide if panel wasn't previously visible (don't hide during transitions)
