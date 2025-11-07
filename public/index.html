@@ -781,12 +781,16 @@
         gap: 20px;
         margin-top: 0;
         padding-top: 0;
-        padding-bottom: 8px;
+        padding-bottom: 0;
         border-top: none;
         max-height: 0;
         overflow: hidden;
         opacity: 0;
-        transition: max-height 0.3s ease-out, padding 0.3s ease-out, margin 0.3s ease-out, opacity 0.3s ease-out;
+        transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
+                    padding 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
+                    margin 0.4s cubic-bezier(0.4, 0, 0.2, 1), 
+                    opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                    border-top 0.4s cubic-bezier(0.4, 0, 0.2, 1);
       }
 
       .currently-playing.expanded .currently-playing-volume {
@@ -2211,15 +2215,21 @@ async function checkAuthAndInit() {
 
             let finalImageUrl = null;
             if (imageUrl) {
+              console.log('[CoverArt] Original imageUrl:', imageUrl);
               // Proxy all external images through our server to avoid CORS and mixed content issues
               if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
                 finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+                console.log('[CoverArt] Proxying image through server:', finalImageUrl);
               } else {
                 finalImageUrl = imageUrl;
+                console.log('[CoverArt] Using image URL directly (not http/https):', finalImageUrl);
               }
+            } else {
+              console.log('[CoverArt] No imageUrl found in track/item data');
             }
 
             if (finalImageUrl !== currentImageUrl) {
+              console.log('[CoverArt] Image URL changed, updating:', { old: currentImageUrl, new: finalImageUrl });
               currentImageUrl = finalImageUrl;
               if (finalImageUrl) {
                 const img = document.createElement('img');
@@ -2230,18 +2240,35 @@ async function checkAuthAndInit() {
                 img.style.height = '100%';
                 img.style.objectFit = 'cover';
                 img.onerror = (e) => {
-                  console.error('Failed to load cover art:', finalImageUrl, e);
+                  console.error('[CoverArt] Image load failed:', {
+                    url: finalImageUrl,
+                    originalUrl: imageUrl,
+                    error: e,
+                    imgSrc: img.src,
+                    imgComplete: img.complete,
+                    imgNaturalWidth: img.naturalWidth,
+                    imgNaturalHeight: img.naturalHeight
+                  });
                   currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
                   currentImageUrl = null;
                 };
                 img.onload = () => {
-                  console.log('Cover art loaded successfully:', finalImageUrl);
+                  console.log('[CoverArt] Image loaded successfully:', {
+                    url: finalImageUrl,
+                    originalUrl: imageUrl,
+                    width: img.naturalWidth,
+                    height: img.naturalHeight
+                  });
                 };
+                console.log('[CoverArt] Setting image src and appending to DOM');
                 currentlyPlayingArt.innerHTML = '';
                 currentlyPlayingArt.appendChild(img);
               } else {
+                console.log('[CoverArt] No finalImageUrl, showing placeholder');
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
               }
+            } else {
+              console.log('[CoverArt] Image URL unchanged, skipping update');
             }
 
             const playerCount = latestPlayers.filter((p) => p.groupId === groupId).length;
@@ -2387,6 +2414,18 @@ async function checkAuthAndInit() {
           if (groupId) {
             updateCurrentlyPlayingRooms(groupId);
           }
+        }
+      });
+
+      // Close panel when clicking outside of it
+      document.addEventListener('click', (e) => {
+        if (!currentlyPlayingPanel.classList.contains('visible')) {
+          return;
+        }
+        
+        // If click is outside the panel, close it
+        if (!currentlyPlayingPanel.contains(e.target)) {
+          currentlyPlayingPanel.classList.remove('expanded');
         }
       });
 

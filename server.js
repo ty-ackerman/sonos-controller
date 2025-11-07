@@ -276,17 +276,23 @@ app.get('/api/players/:playerId/volume', async (req, res) => {
 app.get('/api/image-proxy', async (req, res) => {
   const { url } = req.query;
 
+  console.log('[ImageProxy] Request received:', { url, query: req.query });
+
   if (!url || typeof url !== 'string') {
+    console.error('[ImageProxy] Missing or invalid URL parameter');
     return res.status(400).json({ error: 'URL parameter is required' });
   }
 
   try {
     const imageUrl = decodeURIComponent(url);
+    console.log('[ImageProxy] Decoded URL:', imageUrl);
     
     if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+      console.error('[ImageProxy] Invalid URL format (not http/https):', imageUrl);
       return res.status(400).json({ error: 'Invalid URL' });
     }
 
+    console.log('[ImageProxy] Fetching image from:', imageUrl);
     const imageResponse = await fetch(imageUrl, {
       headers: {
         'User-Agent': 'Sonos-Controller/1.0',
@@ -294,28 +300,34 @@ app.get('/api/image-proxy', async (req, res) => {
       }
     });
 
+    console.log('[ImageProxy] Response status:', imageResponse.status, imageResponse.statusText);
+    console.log('[ImageProxy] Response headers:', Object.fromEntries(imageResponse.headers.entries()));
+
     if (!imageResponse.ok) {
-      console.error(`Image proxy failed for ${imageUrl}: ${imageResponse.status} ${imageResponse.statusText}`);
+      console.error(`[ImageProxy] Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText} for ${imageUrl}`);
       return res.status(imageResponse.status).json({ error: 'Failed to fetch image' });
     }
 
     const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    console.log('[ImageProxy] Content-Type:', contentType);
     
     // Validate it's actually an image
     if (!contentType.startsWith('image/')) {
-      console.error(`Image proxy received non-image content type: ${contentType} for ${imageUrl}`);
+      console.error(`[ImageProxy] Non-image content type: ${contentType} for ${imageUrl}`);
       return res.status(400).json({ error: 'URL does not point to an image' });
     }
 
     const imageBuffer = await imageResponse.arrayBuffer();
+    console.log('[ImageProxy] Image buffer size:', imageBuffer.byteLength, 'bytes');
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(Buffer.from(imageBuffer));
+    console.log('[ImageProxy] Image sent successfully');
   } catch (error) {
-    console.error('Image proxy error:', error);
-    res.status(500).json({ error: 'Failed to proxy image' });
+    console.error('[ImageProxy] Error:', error.message, error.stack);
+    res.status(500).json({ error: 'Failed to proxy image', details: error.message });
   }
 });
 
