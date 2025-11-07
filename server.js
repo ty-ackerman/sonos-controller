@@ -289,19 +289,29 @@ app.get('/api/image-proxy', async (req, res) => {
 
     const imageResponse = await fetch(imageUrl, {
       headers: {
-        'User-Agent': 'Sonos-Controller/1.0'
+        'User-Agent': 'Sonos-Controller/1.0',
+        'Accept': 'image/*'
       }
     });
 
     if (!imageResponse.ok) {
+      console.error(`Image proxy failed for ${imageUrl}: ${imageResponse.status} ${imageResponse.statusText}`);
       return res.status(imageResponse.status).json({ error: 'Failed to fetch image' });
     }
 
     const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    
+    // Validate it's actually an image
+    if (!contentType.startsWith('image/')) {
+      console.error(`Image proxy received non-image content type: ${contentType} for ${imageUrl}`);
+      return res.status(400).json({ error: 'URL does not point to an image' });
+    }
+
     const imageBuffer = await imageResponse.arrayBuffer();
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(Buffer.from(imageBuffer));
   } catch (error) {
     console.error('Image proxy error:', error);

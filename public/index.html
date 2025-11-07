@@ -2211,9 +2211,12 @@ async function checkAuthAndInit() {
 
             let finalImageUrl = null;
             if (imageUrl) {
-              finalImageUrl = imageUrl.startsWith('http://')
-                ? `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`
-                : imageUrl;
+              // Proxy all external images through our server to avoid CORS and mixed content issues
+              if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+              } else {
+                finalImageUrl = imageUrl;
+              }
             }
 
             if (finalImageUrl !== currentImageUrl) {
@@ -2226,9 +2229,13 @@ async function checkAuthAndInit() {
                 img.style.width = '100%';
                 img.style.height = '100%';
                 img.style.objectFit = 'cover';
-                img.onerror = () => {
+                img.onerror = (e) => {
+                  console.error('Failed to load cover art:', finalImageUrl, e);
                   currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
                   currentImageUrl = null;
+                };
+                img.onload = () => {
+                  console.log('Cover art loaded successfully:', finalImageUrl);
                 };
                 currentlyPlayingArt.innerHTML = '';
                 currentlyPlayingArt.appendChild(img);
