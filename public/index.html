@@ -2233,36 +2233,71 @@ async function checkAuthAndInit() {
               currentImageUrl = finalImageUrl;
               if (finalImageUrl) {
                 const img = document.createElement('img');
-                img.src = finalImageUrl;
                 img.alt = title;
                 img.loading = 'lazy';
                 img.style.width = '100%';
                 img.style.height = '100%';
                 img.style.objectFit = 'cover';
+                
+                // Set up error handler before setting src
                 img.onerror = (e) => {
                   console.error('[CoverArt] Image load failed:', {
                     url: finalImageUrl,
                     originalUrl: imageUrl,
                     error: e,
                     imgSrc: img.src,
+                    imgCurrentSrc: img.currentSrc,
                     imgComplete: img.complete,
                     imgNaturalWidth: img.naturalWidth,
-                    imgNaturalHeight: img.naturalHeight
+                    imgNaturalHeight: img.naturalHeight,
+                    imgWidth: img.width,
+                    imgHeight: img.height
                   });
+                  
+                  // Check if it's a network error by trying to fetch the proxy URL
+                  fetch(finalImageUrl)
+                    .then(response => {
+                      console.log('[CoverArt] Proxy URL fetch response:', {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: Object.fromEntries(response.headers.entries())
+                      });
+                      return response.text();
+                    })
+                    .then(text => {
+                      console.log('[CoverArt] Proxy response body (first 200 chars):', text.substring(0, 200));
+                    })
+                    .catch(fetchError => {
+                      console.error('[CoverArt] Failed to fetch proxy URL:', fetchError);
+                    });
+                  
                   currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
                   currentImageUrl = null;
                 };
+                
                 img.onload = () => {
                   console.log('[CoverArt] Image loaded successfully:', {
                     url: finalImageUrl,
                     originalUrl: imageUrl,
                     width: img.naturalWidth,
-                    height: img.naturalHeight
+                    height: img.naturalHeight,
+                    complete: img.complete
                   });
                 };
+                
                 console.log('[CoverArt] Setting image src and appending to DOM');
                 currentlyPlayingArt.innerHTML = '';
                 currentlyPlayingArt.appendChild(img);
+                
+                // Set src after appending to ensure event handlers are attached
+                img.src = finalImageUrl;
+                
+                // Check if image loads immediately (cached)
+                setTimeout(() => {
+                  if (!img.complete) {
+                    console.log('[CoverArt] Image still loading after 100ms...');
+                  }
+                }, 100);
               } else {
                 console.log('[CoverArt] No finalImageUrl, showing placeholder');
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
