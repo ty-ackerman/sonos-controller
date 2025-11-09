@@ -199,21 +199,49 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
   const { groupId } = req.params;
 
   try {
+    // Try playbackStatus endpoint first (more reliable), fallback to playbackState
     const [statusResponse, metadataResponse] = await Promise.allSettled([
-      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackState`).catch(() => null),
-      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playbackMetadata`).catch(() => null)
+      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackStatus`).catch(() => {
+        // Fallback to playbackState if playbackStatus fails
+        return sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackState`).catch((err) => {
+          console.error('[PlaybackStatus] Both playbackStatus and playbackState requests failed:', err.message);
+          return null;
+        });
+      }),
+      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playbackMetadata`).catch((err) => {
+        console.error('[PlaybackStatus] playbackMetadata request failed:', err.message);
+        return null;
+      })
     ]);
 
     const playbackState = statusResponse.status === 'fulfilled' && statusResponse.value
-      ? await statusResponse.value.json().catch(() => ({}))
+      ? await statusResponse.value.json().catch((err) => {
+          console.error('[PlaybackStatus] Failed to parse playbackState JSON:', err.message);
+          return {};
+        })
       : {};
 
     const metadata = metadataResponse.status === 'fulfilled' && metadataResponse.value
-      ? await metadataResponse.value.json().catch(() => ({}))
+      ? await metadataResponse.value.json().catch((err) => {
+          console.error('[PlaybackStatus] Failed to parse metadata JSON:', err.message);
+          return {};
+        })
       : {};
 
     const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`).catch(() => null);
     const volume = volumeResponse ? await volumeResponse.json().catch(() => ({})) : {};
+
+    // DEBUG: Log what we're getting from Sonos API - FULL raw response
+    console.log('[PlaybackStatus] Raw responses:', {
+      statusResponseStatus: statusResponse.status,
+      playbackStateKeys: Object.keys(playbackState),
+      playbackStateValue: JSON.stringify(playbackState, null, 2),
+      metadataKeys: Object.keys(metadata),
+      hasCurrentItem: !!(metadata.currentItem || metadata.item),
+      fullPlaybackStateResponse: statusResponse.status === 'fulfilled' && statusResponse.value 
+        ? await statusResponse.value.text().catch(() => 'Failed to get text')
+        : 'No response'
+    });
 
     const currentItem = metadata.currentItem || metadata.item || null;
     let track = null;
@@ -244,8 +272,50 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     const activeInfo = activeFavoritesByGroup.get(groupId);
     const activeFavoriteId = activeInfo ? activeInfo.favoriteId : null;
 
+    // Try multiple possible field names for playback state
+    // Sonos API uses: PLAYBACK_STATE_PLAYING, PLAYBACK_STATE_PAUSED, PLAYBACK_STATE_IDLE, PLAYBACK_STATE_STOPPED
+    // Also check for simplified versions: PLAYING, PAUSED, IDLE, STOPPED
+    let finalPlaybackState = playbackState.playbackState 
+      || playbackState.state 
+      || playbackState.playback?.state
+      || playbackState.playbackState
+      || metadata.playbackState
+      || metadata.state
+      || 'STOPPED';
+
+    // Normalize state values (handle both PLAYBACK_STATE_PLAYING and PLAYING)
+    if (finalPlaybackState.includes('PLAYING')) {
+      finalPlaybackState = 'PLAYING';
+    } else if (finalPlaybackState.includes('PAUSED')) {
+      finalPlaybackState = 'PAUSED';
+    } else if (finalPlaybackState.includes('IDLE')) {
+      // IDLE typically means paused for streaming content
+      finalPlaybackState = 'PAUSED';
+    } else if (finalPlaybackState.includes('STOPPED') || finalPlaybackState === 'STOPPED') {
+      finalPlaybackState = 'STOPPED';
+    }
+
+    // Fallback: If we have a currentItem but playbackState says STOPPED, 
+    // assume it's playing (the API sometimes returns incorrect state)
+    if (finalPlaybackState === 'STOPPED' && currentItem) {
+      console.log('[PlaybackStatus] Inferring PLAYING from currentItem presence');
+      finalPlaybackState = 'PLAYING';
+    }
+
+    console.log('[PlaybackStatus] Final playback state:', {
+      finalPlaybackState,
+      hasCurrentItem: !!currentItem,
+      allPlaybackStateFields: {
+        'playbackState.playbackState': playbackState.playbackState,
+        'playbackState.state': playbackState.state,
+        'playbackState.playback?.state': playbackState.playback?.state,
+        'metadata.playbackState': metadata.playbackState,
+        'metadata.state': metadata.state
+      }
+    });
+
     res.json({
-      playbackState: playbackState.playbackState || playbackState.state || 'STOPPED',
+      playbackState: finalPlaybackState,
       currentItem: currentItem ? { ...currentItem, track } : null,
       item: currentItem ? { ...currentItem, track } : null,
       track: track,

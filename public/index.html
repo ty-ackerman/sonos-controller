@@ -80,44 +80,61 @@
         gap: 24px;
       }
 
-      .app-tabs {
-        display: flex;
-        gap: 4px;
-        background: var(--bg-tertiary);
-        padding: 4px;
-        border-radius: 12px;
+      .header-container {
+        display: grid;
+        grid-template-columns: 40px 1fr 40px;
+        align-items: center;
+        gap: 12px;
         margin-bottom: 8px;
+        position: relative;
       }
 
-      .tab-button {
-        flex: 1;
-        padding: 10px 16px;
-        border-radius: 8px;
+      .hamburger-menu-btn {
+        width: 40px;
+        height: 40px;
         border: none;
         background: transparent;
-        color: var(--text-secondary);
-        font-weight: 500;
-        font-size: 0.9375rem;
+        color: var(--text-primary);
         cursor: pointer;
-        transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 5px;
+        padding: 8px;
+        border-radius: 8px;
+        transition: background 0.2s ease;
       }
 
-      .tab-button.active {
-        background: var(--bg-primary);
-        color: var(--text-primary);
-        box-shadow: var(--shadow-sm);
+      .hamburger-menu-btn:hover {
+        background: var(--bg-tertiary);
       }
 
-      .tab-button:hover:not(.active) {
-        color: var(--text-primary);
+      .hamburger-menu-btn span {
+        display: block;
+        width: 20px;
+        height: 2px;
+        background: currentColor;
+        border-radius: 1px;
+        transition: all 0.3s ease;
       }
 
       h1 {
         font-size: 1.5rem;
         font-weight: 600;
         margin: 0;
+        grid-column: 2;
         text-align: center;
         letter-spacing: -0.02em;
+      }
+
+      .household-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        margin: 8px 0;
+        text-align: center;
+        color: var(--text-primary);
+        min-height: 1.5rem;
       }
 
       p.status {
@@ -205,9 +222,6 @@
         background: var(--accent-hover);
       }
 
-      button:active:not(:disabled) {
-        transform: scale(0.98);
-      }
 
       button:disabled {
         opacity: 0.4;
@@ -375,9 +389,6 @@
         gap: 14px;
       }
 
-      .playlist-card:not(:disabled):active {
-        transform: scale(0.99);
-      }
 
       .playlist-card.disabled {
         opacity: 0.5;
@@ -757,6 +768,7 @@
         transition: all 0.2s ease;
         flex-shrink: 0;
         box-shadow: var(--shadow-sm);
+        padding: 0;
       }
 
       .currently-playing-play-btn:hover {
@@ -766,25 +778,36 @@
         box-shadow: var(--shadow-md);
       }
 
-      .currently-playing-play-btn:active {
-        transform: scale(0.95);
-      }
 
       .currently-playing-play-btn svg {
         width: 24px;
         height: 24px;
+        display: block;
+      }
+
+      .currently-playing-play-btn .play-icon {
         fill: currentColor;
       }
 
-      .currently-playing-play-btn.playing {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: var(--bg-primary);
+      .currently-playing-play-btn .pause-icon {
+        display: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
 
-      .currently-playing-play-btn.playing:hover {
-        background: var(--accent-hover);
-        border-color: var(--accent-hover);
+      .currently-playing-play-btn.playing .play-icon {
+        display: none;
+      }
+
+      .currently-playing-play-btn.playing .pause-icon {
+        display: block;
+      }
+
+      /* Hide play button when expanded */
+      .currently-playing.expanded .currently-playing-play-btn {
+        display: none;
       }
 
       .currently-playing-play-btn:disabled {
@@ -795,8 +818,9 @@
 
       .currently-playing-volume {
         flex-direction: column;
-        gap: 20px;
+        gap: 12px;
         margin-top: 0;
+        padding: 0 16px;
         padding-top: 0;
         padding-bottom: 0;
         border-top: none;
@@ -812,7 +836,7 @@
 
       .currently-playing.expanded .currently-playing-volume {
         margin-top: 12px;
-        padding-top: 12px;
+        padding-top: 16px;
         padding-bottom: 8px;
         border-top: 1px solid var(--border-color);
         max-height: 500px;
@@ -825,6 +849,11 @@
         gap: 12px;
         padding: 12px 0;
         min-height: 44px;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .currently-playing-room-volume:first-of-type {
+        border-top: none;
       }
 
       .currently-playing-room-name {
@@ -857,55 +886,303 @@
       body.has-playing {
         padding-bottom: 100px;
       }
+
+      body.menu-open {
+        overflow: hidden;
+      }
+
+      .menu-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 998;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0.3s ease;
+      }
+
+      .menu-backdrop.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .menu-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: min(280px, 80vw);
+        max-width: 280px;
+        background: var(--bg-primary);
+        border-right: 1px solid var(--border-color);
+        z-index: 999;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        display: flex;
+        flex-direction: column;
+        box-shadow: var(--shadow-lg);
+      }
+
+      .menu-panel.open {
+        transform: translateX(0);
+      }
+
+      .menu-header {
+        padding: 20px;
+        border-bottom: 1px solid var(--border-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .menu-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .menu-close-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        background: transparent;
+        color: var(--text-primary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        transition: background 0.2s ease;
+      }
+
+      .menu-close-btn:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .menu-items {
+        flex: 1;
+        padding: 12px 0;
+        overflow-y: auto;
+      }
+
+      .menu-item {
+        display: block;
+        width: 100%;
+        padding: 14px 20px;
+        border: none;
+        background: transparent;
+        color: var(--text-primary);
+        text-align: left;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.2s ease;
+      }
+
+      .menu-item:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .menu-item.active {
+        background: var(--bg-tertiary);
+        color: var(--accent);
+      }
+
+      .menu-signout {
+        margin-top: auto;
+        padding: 12px 0;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .menu-signout .menu-item {
+        color: var(--error);
+      }
+
+      .menu-signout .menu-item:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .currently-playing-playback-controls {
+        display: none;
+        justify-content: center;
+        align-items: center;
+        gap: 24px;
+        margin: 20px 0 16px 0;
+        padding: 0 16px;
+      }
+
+      .currently-playing.expanded .currently-playing-playback-controls {
+        display: flex;
+      }
+
+      .playback-control-btn {
+        width: 40px;
+        height: 40px;
+        border: none;
+        background: transparent;
+        color: var(--text-primary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: all 0.2s ease;
+        padding: 0;
+      }
+
+      .playback-control-btn:hover {
+        background: var(--bg-tertiary);
+        transform: scale(1.1);
+      }
+
+
+      .playback-control-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .playback-control-btn svg {
+        width: 20px;
+        height: 20px;
+        fill: currentColor;
+      }
+
+      .playback-control-btn.play-pause {
+        width: 56px;
+        height: 56px;
+        background: var(--bg-primary);
+        border: 2px solid var(--border-color);
+        box-shadow: var(--shadow-sm);
+      }
+
+      .playback-control-btn.play-pause:hover {
+        background: var(--bg-tertiary);
+        border-color: var(--accent);
+        transform: scale(1.05);
+      }
+
+      .playback-control-btn.play-pause.playing {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--bg-primary);
+      }
+
+      .playback-control-btn.play-pause.playing:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+
+      .playback-control-btn.play-pause svg {
+        width: 24px;
+        height: 24px;
+      }
+
+      /* Show/hide play/pause icons in expanded section */
+      .playback-control-btn.play-pause #play-icon {
+        display: block;
+      }
+
+      .playback-control-btn.play-pause #pause-icon {
+        display: none;
+      }
+
+      .playback-control-btn.play-pause.playing #play-icon {
+        display: none;
+      }
+
+      .playback-control-btn.play-pause.playing #pause-icon {
+        display: block;
+      }
+
+      .currently-playing-master-volume {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .master-volume-label {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .master-volume-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .master-volume-slider {
+        flex: 1;
+        height: 4px;
+        accent-color: var(--accent);
+        cursor: pointer;
+      }
+
+      .master-volume-value {
+        min-width: 2.5rem;
+        text-align: right;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        font-variant-numeric: tabular-nums;
+      }
     </style>
   </head>
   <body>
+    <div id="menu-backdrop" class="menu-backdrop"></div>
+    <div id="menu-panel" class="menu-panel">
+      <div class="menu-header">
+        <span class="menu-title">Menu</span>
+        <button id="menu-close-btn" class="menu-close-btn" type="button" aria-label="Close menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="menu-items">
+        <button id="menu-item-controls" class="menu-item active" type="button">Controls</button>
+        <button id="menu-item-settings" class="menu-item" type="button">Settings</button>
+      </div>
+      <div class="menu-signout">
+        <button id="menu-item-signout" class="menu-item" type="button">Sign out</button>
+      </div>
+    </div>
+
     <main class="container">
-      <h1>Sonos Controller</h1>
+      <div class="header-container">
+        <button id="hamburger-menu-btn" class="hamburger-menu-btn" type="button" aria-label="Open menu">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <h1>Sonos Controller</h1>
+      </div>
       <p id="status" class="status disconnected">Checking connection…</p>
       <div id="feedback" class="feedback"></div>
 
       <div id="auth-bar" style="margin-bottom: 12px">
         <button id="signin-btn" onclick="login()">Sign in with Sonos</button>
-        <button id="signout-btn" class="hidden" onclick="signout()">Sign out</button>
       </div>
 
       <div id="app-panels" class="hidden">
-        <nav class="app-tabs">
-          <button id="tab-control" class="tab-button active" type="button">Control</button>
-          <button id="tab-settings" class="tab-button" type="button">Settings</button>
-        </nav>
+        <div id="household-title" class="household-title"></div>
 
         <section id="panel-control">
-          <div class="select-group">
-            <label for="households">Household</label>
-            <select id="households"></select>
-          </div>
-
-          <div class="controls">
-            <span>Playback</span>
-            <div class="control-buttons">
-              <button data-action="playpause">Play / Pause</button>
-              <button data-action="previous" class="secondary">Previous</button>
-              <button data-action="next" class="secondary">Next</button>
-            </div>
-          </div>
-
-          <div class="volume">
-            <span>Volume</span>
-            <div class="slider-row">
-              <input id="volume-slider" type="range" min="0" max="100" step="1" value="35" />
-              <span id="volume-value" class="volume-value">35%</span>
-            </div>
-          </div>
-
           <div class="favorites">
             <span class="section-title">Favorites</span>
             <div id="vibe-filters" class="vibe-filters"></div>
             <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
             <div id="favorites-grid" class="favorites-grid"></div>
           </div>
-
         </section>
 
         <section id="panel-settings" class="hidden">
@@ -943,13 +1220,45 @@
               <span class="currently-playing-group-count" id="currently-playing-group-count" style="display: none;">1</span>
             </div>
             <button class="currently-playing-play-btn" id="currently-playing-play-btn" type="button">
-              <svg viewBox="0 0 24 24">
+              <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
+              </svg>
+              <svg class="pause-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="6" y="4" width="4" height="16" rx="1"/>
+                <rect x="14" y="4" width="4" height="16" rx="1"/>
               </svg>
             </button>
           </div>
         </div>
+        <div class="currently-playing-playback-controls" id="currently-playing-playback-controls">
+          <button class="playback-control-btn" id="playback-prev-btn" type="button" aria-label="Previous">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+            </svg>
+          </button>
+          <button class="playback-control-btn play-pause" id="playback-play-pause-btn" type="button" aria-label="Play/Pause">
+            <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            <svg id="pause-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
+              <rect x="6" y="4" width="4" height="16" rx="1"/>
+              <rect x="14" y="4" width="4" height="16" rx="1"/>
+            </svg>
+          </button>
+          <button class="playback-control-btn" id="playback-next-btn" type="button" aria-label="Next">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+            </svg>
+          </button>
+        </div>
         <div class="currently-playing-volume" id="currently-playing-volume">
+          <div class="currently-playing-master-volume" id="currently-playing-master-volume">
+            <div class="master-volume-label">Master Volume</div>
+            <div class="master-volume-row">
+              <input id="master-volume-slider" type="range" class="master-volume-slider" min="0" max="100" step="1" value="0" />
+              <span id="master-volume-value" class="master-volume-value">0%</span>
+            </div>
+          </div>
           <div id="currently-playing-rooms-list"></div>
         </div>
       </div>
@@ -966,15 +1275,10 @@
       const statusLabel = document.getElementById('status');
       const feedbackLabel = document.getElementById('feedback');
       const signinButton = document.getElementById('signin-btn');
-      const signoutButton = document.getElementById('signout-btn');
       const panelsContainer = document.getElementById('app-panels');
       const panelControl = document.getElementById('panel-control');
       const panelSettings = document.getElementById('panel-settings');
-      const tabControlButton = document.getElementById('tab-control');
-      const tabSettingsButton = document.getElementById('tab-settings');
-      const householdSelect = document.getElementById('households');
-      const volumeSlider = document.getElementById('volume-slider');
-      const volumeValue = document.getElementById('volume-value');
+      const householdTitle = document.getElementById('household-title');
       const favoritesGrid = document.getElementById('favorites-grid');
       const favoritesStatus = document.getElementById('favorites-status');
       const vibeFiltersContainer = document.getElementById('vibe-filters');
@@ -988,9 +1292,31 @@
       const currentlyPlayingPlayBtn = document.getElementById('currently-playing-play-btn');
       const currentlyPlayingVolume = document.getElementById('currently-playing-volume');
       const currentlyPlayingRoomsList = document.getElementById('currently-playing-rooms-list');
+      
+      // Hamburger menu elements
+      const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
+      const menuBackdrop = document.getElementById('menu-backdrop');
+      const menuPanel = document.getElementById('menu-panel');
+      const menuCloseBtn = document.getElementById('menu-close-btn');
+      const menuItemControls = document.getElementById('menu-item-controls');
+      const menuItemSettings = document.getElementById('menu-item-settings');
+      const menuItemSignout = document.getElementById('menu-item-signout');
+      
+      // Playback controls in now-playing section
+      const playbackPrevBtn = document.getElementById('playback-prev-btn');
+      const playbackPlayPauseBtn = document.getElementById('playback-play-pause-btn');
+      const playbackNextBtn = document.getElementById('playback-next-btn');
+      const playIcon = document.getElementById('play-icon');
+      const pauseIcon = document.getElementById('pause-icon');
+      
+      // Master volume controls
+      const masterVolumeSlider = document.getElementById('master-volume-slider');
+      const masterVolumeValue = document.getElementById('master-volume-value');
+      
       // Track panel state to prevent flickering
       let panelShouldBeVisible = false;
       let hidePanelTimeout = null;
+      let currentHouseholdName = null;
       
 const settingsPlayersWrap = document.getElementById('settings-players');
 const settingsSaveButton = document.getElementById('settings-save');
@@ -1013,6 +1339,8 @@ settingsStatusLabel.textContent = '';
       let currentVibeFilter = null;
       let playbackRefreshTimer = null;
       let currentPlaybackState = null;
+      // Track playback state locally (since API is unreliable)
+      let trackedPlaybackState = null; // 'PLAYING' | 'PAUSED' | null
       let currentImageUrl = null;
 
       function login() {
@@ -1025,33 +1353,67 @@ async function signout() {
   } catch (error) {
     console.error('Sign out failed:', error);
   }
+  closeMenu();
   setAuthUI(false);
   showFeedback('Signed out of Sonos.');
 }
 
-function showTab(name) {
-  const isControl = name === 'control';
-  tabControlButton.classList.toggle('active', isControl);
-  tabSettingsButton.classList.toggle('active', !isControl);
-  panelControl.classList.toggle('hidden', !isControl);
-  panelSettings.classList.toggle('hidden', isControl);
+function openMenu() {
+  menuPanel.classList.add('open');
+  menuBackdrop.classList.add('visible');
+  document.body.classList.add('menu-open');
 }
 
-tabControlButton.addEventListener('click', () => {
-  showTab('control');
+function closeMenu() {
+  menuPanel.classList.remove('open');
+  menuBackdrop.classList.remove('visible');
+  document.body.classList.remove('menu-open');
+}
+
+function showView(name) {
+  const isControl = name === 'control';
+  menuItemControls.classList.toggle('active', isControl);
+  menuItemSettings.classList.toggle('active', !isControl);
+  panelControl.classList.toggle('hidden', !isControl);
+  panelSettings.classList.toggle('hidden', isControl);
+  closeMenu();
+  
+  if (!isControl) {
+    renderSettings();
+  }
+}
+
+// Hamburger menu event handlers
+hamburgerMenuBtn.addEventListener('click', () => {
+  openMenu();
 });
 
-tabSettingsButton.addEventListener('click', async () => {
-  showTab('settings');
-  await renderSettings();
+menuCloseBtn.addEventListener('click', () => {
+  closeMenu();
+});
+
+menuBackdrop.addEventListener('click', () => {
+  closeMenu();
+});
+
+menuItemControls.addEventListener('click', () => {
+  showView('control');
+});
+
+menuItemSettings.addEventListener('click', () => {
+  showView('settings');
+});
+
+menuItemSignout.addEventListener('click', () => {
+  signout();
 });
 
 function setAuthUI(loggedIn) {
   signinButton.classList.toggle('hidden', loggedIn);
-  signoutButton.classList.toggle('hidden', !loggedIn);
   panelsContainer.classList.toggle('hidden', !loggedIn);
   if (!loggedIn) {
-    showTab('control');
+    showView('control');
+    closeMenu();
   }
   updateConnectionStatus(loggedIn);
 }
@@ -1066,7 +1428,7 @@ async function checkAuthAndInit() {
     const state = await response.json();
     const loggedIn = Boolean(state.loggedIn);
     setAuthUI(loggedIn);
-    showTab('control');
+    showView('control');
 
     if (loggedIn) {
       await refreshUI();
@@ -1077,38 +1439,31 @@ async function checkAuthAndInit() {
         }
       }
 
-      householdSelect.addEventListener('change', async (event) => {
-        const householdId = event.target.value;
-        currentHouseholdId = householdId || null;
+      // Playback control handlers for now-playing section
+      playbackPrevBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await handlePlaybackAction('previous');
+      });
 
-        if (!householdId) {
-          currentGroupId = null;
-          currentGroupName = 'No group selected';
-          updateActiveGroupDisplay();
-          await loadFavorites(null);
-          await loadPlayers(null);
-          evaluateFavoritesAvailability();
-          setVolumeControlAvailability(false);
-          return;
-        }
+      playbackPlayPauseBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await handlePlaybackAction('playpause');
+      });
 
-    showFeedback('Loading rooms…');
-    await loadPlayers(householdId);
-    await loadFavorites(householdId);
-    if (!panelSettings.classList.contains('hidden')) {
-      await renderSettings();
-    }
-    showFeedback('Rooms ready.');
-  });
+      playbackNextBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await handlePlaybackAction('next');
+      });
 
-      document
-        .querySelectorAll('[data-action]')
-        .forEach((button) =>
-          button.addEventListener('click', () => handlePlaybackAction(button.dataset.action))
-        );
+      // Master volume handler
+      masterVolumeSlider.addEventListener('input', (e) => {
+        masterVolumeValue.textContent = `${Number(e.target.value)}%`;
+      });
 
-      volumeSlider.addEventListener('input', () => updateVolumeDisplay(volumeSlider.value));
-      volumeSlider.addEventListener('change', () => setVolume(Number(volumeSlider.value)));
+      masterVolumeSlider.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        await setMasterVolume(Number(e.target.value));
+      });
       const authMessages = {
         success: 'Sonos authorization complete. Ready to control playback.',
         error: 'Authorization failed. Please try logging in again.',
@@ -1135,9 +1490,9 @@ async function checkAuthAndInit() {
         isSonosConnected = connected;
 
         if (!connected) {
-          householdSelect.innerHTML = '';
           currentHouseholdId = null;
-          setVolumeControlAvailability(false);
+          currentHouseholdName = null;
+          householdTitle.textContent = '';
           favoritesStatus.textContent = 'Login required to load favorites.';
           vibeFiltersContainer.innerHTML = '';
           currentGroupId = null;
@@ -1193,30 +1548,27 @@ async function checkAuthAndInit() {
           if (!households.length) {
             setAuthUI(true);
             showFeedback('No households returned for this account.', true);
-            householdSelect.innerHTML = '';
             currentHouseholdId = null;
+            currentHouseholdName = null;
+            householdTitle.textContent = '';
             currentGroupId = null;
             currentGroupName = 'No group selected';
             currentActiveFavoriteId = null;
             updateActiveGroupDisplay();
-            setVolumeControlAvailability(false);
             await loadFavorites(null);
             await loadPlayers(null);
             evaluateFavoritesAvailability();
             return;
           }
 
-          householdSelect.innerHTML = households
-            .map(
-              (household) =>
-                `<option value="${household.id}">${household.name || household.id}</option>`
-            )
-            .join('');
+          // Auto-select first household and display as title
+          const firstHousehold = households[0];
+          currentHouseholdId = firstHousehold.id || null;
+          currentHouseholdName = firstHousehold.name || firstHousehold.id || '';
+          householdTitle.textContent = currentHouseholdName;
 
           setAuthUI(true);
-          showFeedback('Households loaded. Choose one to continue.');
-
-          currentHouseholdId = householdSelect.value || null;
+          showFeedback('Household loaded.');
 
           if (currentHouseholdId) {
             await loadPlayers(currentHouseholdId);
@@ -1271,11 +1623,11 @@ async function checkAuthAndInit() {
           return;
         }
 
-        const householdId = householdSelect.value;
+        const householdId = currentHouseholdId;
         if (!householdId) {
           settingsPlayersWrap.innerHTML = '';
           if (settingsHelpLabel) {
-            settingsHelpLabel.textContent = 'Select a household to load speakers.';
+            settingsHelpLabel.textContent = 'No household available.';
           }
           settingsSaveButton.disabled = true;
           settingsSaveButton.onclick = null;
@@ -1829,6 +2181,19 @@ async function checkAuthAndInit() {
           return;
         }
 
+        // Track state change for play/pause - toggle based on current tracked state
+        if (action === 'playpause') {
+          // Determine current state to toggle from
+          const currentIsPlaying = trackedPlaybackState === 'PLAYING' || (trackedPlaybackState === null && currentPlaybackState?.playbackState === 'PLAYING');
+          // Toggle tracked state
+          if (currentIsPlaying) {
+            trackedPlaybackState = 'PAUSED';
+          } else {
+            trackedPlaybackState = 'PLAYING';
+          }
+          console.log('[PlayPause] Tracked state after toggle:', trackedPlaybackState, '(was playing:', currentIsPlaying + ')');
+        }
+
         const endpoints = {
           playpause: `/api/groups/${encodeURIComponent(groupId)}/playpause`,
           next: `/api/groups/${encodeURIComponent(groupId)}/next`,
@@ -1845,7 +2210,7 @@ async function checkAuthAndInit() {
         setTimeout(() => updateCurrentlyPlaying(), 500);
       }
 
-      async function setVolume(level) {
+      async function setMasterVolume(level) {
         const groupId = getSelectedGroupId();
         if (!groupId) {
           // Auto-grouping is handled on load, but if we still don't have a group, try to create one
@@ -1859,7 +2224,7 @@ async function checkAuthAndInit() {
                 if (groupData.groupId) {
                   setActiveGroup(groupData.groupId, groupData.groupName || 'All Rooms');
                   // Retry setting volume
-                  setVolume(level);
+                  setMasterVolume(level);
                   return;
                 }
               }
@@ -1871,7 +2236,7 @@ async function checkAuthAndInit() {
           return;
         }
 
-        updateVolumeDisplay(level);
+        masterVolumeValue.textContent = `${level}%`;
         const success = await sendCommand(
           `/api/groups/${encodeURIComponent(groupId)}/volume`,
           {
@@ -1883,8 +2248,23 @@ async function checkAuthAndInit() {
         if (!success) {
           showFeedback('Unable to update volume. Please try again.', true);
         } else {
+          // Update individual player volumes proportionally
+          updateIndividualVolumesFromMaster(level);
           setTimeout(() => updateCurrentlyPlaying(), 500);
         }
+      }
+
+      function updateIndividualVolumesFromMaster(masterLevel) {
+        // Update all individual sliders to match master volume
+        const roomRows = currentlyPlayingRoomsList.querySelectorAll('.currently-playing-room-volume');
+        roomRows.forEach((row) => {
+          const slider = row.querySelector('.currently-playing-room-slider');
+          const value = row.querySelector('.currently-playing-room-value');
+          if (slider && value) {
+            slider.value = masterLevel;
+            value.textContent = `${masterLevel}`;
+          }
+        });
       }
 
       async function sendCommand(endpoint, body, successMessage = 'Command sent to Sonos.') {
@@ -1920,29 +2300,14 @@ async function checkAuthAndInit() {
         return new Promise((resolve) => setTimeout(resolve, ms));
       }
 
-      function setVolumeControlAvailability(enabled) {
-        volumeSlider.disabled = !enabled;
-        if (!enabled) {
-          volumeValue.textContent = '--%';
-        } else {
-          updateVolumeDisplay(volumeSlider.value);
-        }
-      }
-
-      function updateVolumeDisplay(value) {
-        volumeValue.textContent = `${Number(value)}%`;
-      }
-
-  setVolumeControlAvailability(false);
   evaluateFavoritesAvailability();
   applyAuthFeedback();
-  showTab('control');
+  showView('control');
 
       async function loadPlayers(householdId) {
         if (!householdId) {
           latestPlayers = [];
           latestGroups = [];
-          setVolumeControlAvailability(false);
           ensureActiveGroup([]);
           return;
         }
@@ -1955,7 +2320,6 @@ async function checkAuthAndInit() {
           if (response.status === 401) {
             setAuthUI(false);
             favoritesStatus.textContent = 'Login required to load favorites.';
-            setVolumeControlAvailability(false);
             return;
           }
 
@@ -2026,11 +2390,8 @@ async function checkAuthAndInit() {
               }
             }
           }, 500);
-          
-          setVolumeControlAvailability(Boolean(currentGroupId));
         } catch (error) {
           console.error('Failed to load players', error);
-          setVolumeControlAvailability(false);
         }
       }
 
@@ -2109,7 +2470,6 @@ async function checkAuthAndInit() {
         await loadHouseholds();
       }
 
-      setVolumeControlAvailability(false);
       evaluateFavoritesAvailability();
       updateActiveGroupDisplay();
 
@@ -2147,8 +2507,54 @@ async function checkAuthAndInit() {
           const status = await response.json();
           currentPlaybackState = status;
 
-          const playbackState = status.playbackState || status.state || status.playback?.state || 'STOPPED';
-          const isPlaying = playbackState === 'PLAYING' || playbackState === 'PLAYBACK_STATE_PLAYING';
+          const apiPlaybackState = status.playbackState || status.state || status.playback?.state || 'STOPPED';
+          
+          // Normalize API state (handle PLAYBACK_STATE_PLAYING, PLAYING, etc.)
+          let normalizedApiState = apiPlaybackState;
+          if (typeof apiPlaybackState === 'string') {
+            if (apiPlaybackState.includes('PLAYING')) {
+              normalizedApiState = 'PLAYING';
+            } else if (apiPlaybackState.includes('PAUSED') || apiPlaybackState.includes('IDLE')) {
+              normalizedApiState = 'PAUSED';
+            } else if (apiPlaybackState.includes('STOPPED')) {
+              normalizedApiState = 'STOPPED';
+            }
+          }
+          
+          // Use tracked state if available (more reliable than API), otherwise use normalized API state
+          let playbackState;
+          if (trackedPlaybackState !== null) {
+            // Use tracked state (from user actions) - this is more reliable than the API
+            playbackState = trackedPlaybackState;
+            console.log('[PlayPause] Using tracked state:', trackedPlaybackState, '(API said:', normalizedApiState + ')');
+          } else if (normalizedApiState === 'STOPPED') {
+            // API says STOPPED - trust it
+            playbackState = 'STOPPED';
+            trackedPlaybackState = 'STOPPED';
+            console.log('[PlayPause] Using API STOPPED state');
+          } else if (normalizedApiState === 'PAUSED') {
+            // API says PAUSED - trust it
+            playbackState = 'PAUSED';
+            trackedPlaybackState = 'PAUSED';
+            console.log('[PlayPause] Using API PAUSED state');
+          } else {
+            // API says PLAYING but we have no tracked state - initialize to PLAYING
+            // (This happens on first load when music is already playing)
+            playbackState = 'PLAYING';
+            trackedPlaybackState = 'PLAYING';
+            console.log('[PlayPause] Initializing tracked state to PLAYING (first load, API:', normalizedApiState + ')');
+          }
+          
+          const isPlaying = playbackState === 'PLAYING';
+          
+          // DEBUG: Play/Pause state
+          console.log('[PlayPause] State check:', {
+            apiPlaybackState: status.playbackState || status.state || 'STOPPED',
+            finalPlaybackState: playbackState,
+            trackedPlaybackState,
+            isPlaying,
+            statusKeys: Object.keys(status)
+          });
           
           const item = status.currentItem || status.item || status.playback?.currentItem || null;
           const track = item?.track || item?.container?.metadata || status.track || null;
@@ -2167,14 +2573,24 @@ async function checkAuthAndInit() {
             const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
 
             let playlistName = null;
+            let playlistImageUrl = null;
             const activeFavoriteId = status.activeFavoriteId || currentActiveFavoriteId;
             if (activeFavoriteId) {
               const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
               if (favoriteEntry && favoriteEntry.favorite) {
                 playlistName = favoriteEntry.favorite.name || null;
+                // Get playlist cover art
+                const favorite = favoriteEntry.favorite;
+                playlistImageUrl = favorite?.imageUrl
+                  ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
+                  : favorite?.images && favorite.images.length && favorite.images[0]?.url
+                    ? favorite.images[0].url
+                    : favorite?.container?.imageUrl
+                      ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
+                      : null;
               }
             }
-
+            
             const title = track?.name || track?.title || item?.name || (isPlaying ? 'Loading...' : 'Unknown Track');
             
             let artist = '';
@@ -2193,18 +2609,8 @@ async function checkAuthAndInit() {
               album = typeof track.albumName === 'string' ? track.albumName : track.albumName?.name || track.albumName?.value || '';
             }
             
-            let imageUrl = null;
-            if (track?.imageUrl) {
-              imageUrl = typeof track.imageUrl === 'string' ? track.imageUrl : track.imageUrl?.url || track.imageUrl?.value || null;
-            } else if (track?.albumArtUri) {
-              imageUrl = typeof track.albumArtUri === 'string' ? track.albumArtUri : track.albumArtUri?.url || track.albumArtUri?.value || null;
-            } else if (track?.albumArtURL) {
-              imageUrl = typeof track.albumArtURL === 'string' ? track.albumArtURL : track.albumArtURL?.url || track.albumArtURL?.value || null;
-            } else if (item?.imageUrl) {
-              imageUrl = typeof item.imageUrl === 'string' ? item.imageUrl : item.imageUrl?.url || item.imageUrl?.value || null;
-            } else if (item?.albumArtUri) {
-              imageUrl = typeof item.albumArtUri === 'string' ? item.albumArtUri : item.albumArtUri?.url || item.albumArtUri?.value || null;
-            }
+            // Use playlist image instead of track image
+            let imageUrl = playlistImageUrl;
             
             if (imageUrl && !imageUrl.startsWith('http')) {
               imageUrl = null;
@@ -2231,37 +2637,38 @@ async function checkAuthAndInit() {
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
             // Handle image loading - always proxy through server
-            if (imageUrl && imageUrl !== currentImageUrl) {
-              console.log('[CoverArt] Original imageUrl:', imageUrl);
-              
-              // Always proxy through server (handles CORS, mixed content, etc.)
+            // Calculate the final URL we'll use (proxy URL if HTTP/HTTPS)
+            let finalImageUrl = null;
+            if (imageUrl) {
               if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
-                console.log('[CoverArt] Proxying image through server:', proxyUrl);
-                loadImage(proxyUrl, imageUrl);
+                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
               } else {
-                // Not HTTP/HTTPS - use directly (shouldn't happen with Sonos)
-                console.log('[CoverArt] Using image URL directly:', imageUrl);
-                loadImage(imageUrl, imageUrl);
+                finalImageUrl = imageUrl;
               }
-            } else if (!imageUrl) {
-              console.log('[CoverArt] No imageUrl found in track/item data');
+            }
+            
+            // Only update if the final URL has actually changed
+            if (finalImageUrl && finalImageUrl !== currentImageUrl) {
+              loadImage(finalImageUrl, imageUrl);
+            } else if (!finalImageUrl) {
+              // No image - only show placeholder if there's no image element
               if (!currentlyPlayingArt.querySelector('img')) {
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
               }
-            } else {
-              console.log('[CoverArt] Image URL unchanged, skipping update');
             }
             
             function loadImage(url, originalUrl) {
-              if (url === currentImageUrl) {
-                console.log('[CoverArt] Image URL unchanged, skipping');
+              currentImageUrl = url;
+              
+              // Check if there's already an img element - if so, just update src
+              const existingImg = currentlyPlayingArt.querySelector('img');
+              if (existingImg) {
+                existingImg.src = url;
+                existingImg.alt = title;
                 return;
               }
               
-              console.log('[CoverArt] Loading image:', { url, originalUrl });
-              currentImageUrl = url;
-              
+              // Otherwise create new img element
               const img = document.createElement('img');
               img.alt = title;
               img.loading = 'lazy';
@@ -2270,18 +2677,8 @@ async function checkAuthAndInit() {
               img.style.objectFit = 'cover';
               
               img.onerror = () => {
-                console.error('[CoverArt] Image load failed:', url);
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
                 currentImageUrl = null;
-              };
-              
-              img.onload = () => {
-                console.log('[CoverArt] Image loaded successfully:', {
-                  url,
-                  originalUrl,
-                  width: img.naturalWidth,
-                  height: img.naturalHeight
-                });
               };
               
               currentlyPlayingArt.innerHTML = '';
@@ -2299,15 +2696,48 @@ async function checkAuthAndInit() {
               currentlyPlayingGroupCount.style.display = 'none';
             }
 
-            const playIcon = isPlaying
-              ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>'
-              : '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-            
-            if (currentlyPlayingPlayBtn.innerHTML !== playIcon) {
-              currentlyPlayingPlayBtn.innerHTML = playIcon;
+            // Toggle play/pause icon for right-side button using CSS classes
+            // When isPlaying is true, show pause icon (add .playing class)
+            // When isPlaying is false, show play icon (remove .playing class)
+            const hadPlayingClass = currentlyPlayingPlayBtn.classList.contains('playing');
+            if (isPlaying) {
+              currentlyPlayingPlayBtn.classList.add('playing');
+            } else {
+              currentlyPlayingPlayBtn.classList.remove('playing');
             }
+            const hasPlayingClass = currentlyPlayingPlayBtn.classList.contains('playing');
             
-            currentlyPlayingPlayBtn.classList.toggle('playing', isPlaying);
+            // Update playback controls in expanded section using CSS classes
+            const hadExpandedPlayingClass = playbackPlayPauseBtn.classList.contains('playing');
+            if (isPlaying) {
+              playbackPlayPauseBtn.classList.add('playing');
+            } else {
+              playbackPlayPauseBtn.classList.remove('playing');
+            }
+            const hasExpandedPlayingClass = playbackPlayPauseBtn.classList.contains('playing');
+            
+            // DEBUG: Button state updates
+            console.log('[PlayPause] Button updates:', {
+              isPlaying,
+              playbackState,
+              rightButton: {
+                exists: !!currentlyPlayingPlayBtn,
+                hadPlaying: hadPlayingClass,
+                hasPlaying: hasPlayingClass,
+                classList: Array.from(currentlyPlayingPlayBtn.classList)
+              },
+              expandedButton: {
+                exists: !!playbackPlayPauseBtn,
+                hadPlaying: hadExpandedPlayingClass,
+                hasPlaying: hasExpandedPlayingClass,
+                classList: Array.from(playbackPlayPauseBtn.classList)
+              }
+            });
+
+            // Update master volume from group volume
+            const groupVolume = status.volume || 0;
+            masterVolumeSlider.value = groupVolume;
+            masterVolumeValue.textContent = `${groupVolume}%`;
 
             updateCurrentlyPlayingRooms(groupId);
 
@@ -2344,12 +2774,6 @@ async function checkAuthAndInit() {
         // We'll show all players since they're all in the same auto-created group
         const groupPlayers = latestPlayers;
         
-        console.log('[CurrentlyPlaying] Showing all players for group:', {
-          groupId,
-          playersCount: groupPlayers.length,
-          players: groupPlayers.map(p => ({ id: p.id, name: p.name }))
-        });
-        
         currentlyPlayingRoomsList.innerHTML = '';
 
         groupPlayers.forEach((player) => {
@@ -2373,6 +2797,7 @@ async function checkAuthAndInit() {
           value.textContent = `${slider.value}`;
 
           slider.addEventListener('input', (e) => {
+            e.stopPropagation();
             value.textContent = e.target.value;
           });
 
@@ -2384,8 +2809,22 @@ async function checkAuthAndInit() {
             }
           });
 
-          slider.addEventListener('pointerdown', (e) => e.stopPropagation());
-          slider.addEventListener('mousedown', (e) => e.stopPropagation());
+          // Prevent panel from closing when interacting with slider
+          slider.addEventListener('pointerdown', (e) => {
+            e.stopPropagation();
+          });
+          slider.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+          });
+          slider.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+          });
+          slider.addEventListener('touchmove', (e) => {
+            e.stopPropagation();
+          });
+          slider.addEventListener('touchend', (e) => {
+            e.stopPropagation();
+          });
 
           roomRow.appendChild(name);
           roomRow.appendChild(slider);
@@ -2418,8 +2857,11 @@ async function checkAuthAndInit() {
         const roomVolume = e.target.closest('.currently-playing-room-volume');
         const roomSlider = e.target.closest('.currently-playing-room-slider');
         const rangeInput = e.target.closest('input[type="range"]');
+        const playbackControls = e.target.closest('.currently-playing-playback-controls');
+        const playbackControlBtn = e.target.closest('.playback-control-btn');
+        const masterVolume = e.target.closest('.currently-playing-master-volume');
         
-        if (playBtn || roomVolume || roomSlider || rangeInput) {
+        if (playBtn || roomVolume || roomSlider || rangeInput || playbackControls || playbackControlBtn || masterVolume) {
           return;
         }
         
