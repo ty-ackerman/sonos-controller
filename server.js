@@ -619,21 +619,32 @@ async function getRecommendedPlaylists(householdId) {
 
     // Load time rules and find matching ones
     const rules = await loadVibeTimeRules();
+    console.log(`[Recommendations] Current hour: ${currentHour}, Total rules: ${rules.length}`);
+    
     const matchingRules = rules.filter((rule) => {
       // Handle time ranges that span midnight (e.g., 22-6)
+      let matches = false;
       if (rule.start_hour <= rule.end_hour) {
-        return currentHour >= rule.start_hour && currentHour < rule.end_hour;
+        // Normal range (e.g., 7-12 means 7:00 AM to 12:00 PM, inclusive of 12:00 PM)
+        // For end_hour, we include the full hour, so use <= instead of <
+        matches = currentHour >= rule.start_hour && currentHour <= rule.end_hour;
       } else {
-        // Wraps around midnight
-        return currentHour >= rule.start_hour || currentHour < rule.end_hour;
+        // Wraps around midnight (e.g., 22-6 means 10 PM to 6 AM)
+        matches = currentHour >= rule.start_hour || currentHour <= rule.end_hour;
       }
+      console.log(`[Recommendations] Rule ${rule.id}: ${rule.start_hour}-${rule.end_hour} (${rule.allowed_vibes.join(', ')}) matches: ${matches}`);
+      return matches;
     });
+
+    console.log(`[Recommendations] Matching rules: ${matchingRules.length}`);
 
     // Collect all allowed vibes from matching rules
     const allowedVibes = new Set();
     matchingRules.forEach((rule) => {
       rule.allowed_vibes.forEach((vibe) => allowedVibes.add(vibe));
     });
+
+    console.log(`[Recommendations] Allowed vibes: ${Array.from(allowedVibes).join(', ')}`);
 
     // If no rules match, return empty recommendations
     if (allowedVibes.size === 0) {
@@ -648,15 +659,24 @@ async function getRecommendedPlaylists(householdId) {
     const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`);
     const payload = await response.json();
     const favorites = Array.isArray(payload.items) ? payload.items : [];
+    console.log(`[Recommendations] Total favorites: ${favorites.length}`);
 
     // Load playlist vibes
     const vibes = await loadPlaylistVibes();
+    console.log(`[Recommendations] Playlists with vibes: ${Object.keys(vibes).length}`);
+    console.log(`[Recommendations] Vibe assignments:`, Object.entries(vibes).slice(0, 5));
 
     // Filter favorites by allowed vibes
     const matchingPlaylists = favorites.filter((favorite) => {
       const vibe = vibes[favorite.id];
-      return vibe && allowedVibes.has(vibe);
+      const matches = vibe && allowedVibes.has(vibe);
+      if (matches) {
+        console.log(`[Recommendations] Match found: ${favorite.name} (${vibe})`);
+      }
+      return matches;
     });
+
+    console.log(`[Recommendations] Matching playlists: ${matchingPlaylists.length}`);
 
     if (matchingPlaylists.length === 0) {
       return {
