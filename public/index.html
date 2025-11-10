@@ -345,9 +345,8 @@
 
 
       .vibe-filter-btn.active {
-        background: var(--accent);
-        color: var(--bg-primary);
         border-color: var(--accent);
+        /* Removed background and color changes to prevent contrast issues */
       }
 
       .favorites-grid {
@@ -383,10 +382,6 @@
         cursor: pointer;
       }
 
-      .playlist-card:hover:not(:disabled) {
-        box-shadow: var(--shadow-md);
-        border-color: var(--text-tertiary);
-      }
 
       .playlist-card-content {
         display: flex;
@@ -406,7 +401,7 @@
 
       .playlist-card.active {
         border-color: var(--accent);
-        box-shadow: var(--shadow-md);
+        /* Removed box-shadow to prevent contrast issues */
       }
 
       .playlist-art-wrapper {
@@ -546,14 +541,10 @@
         transition: all 0.2s ease;
       }
 
-      .room-card:hover {
-        border-color: var(--text-tertiary);
-        box-shadow: var(--shadow-sm);
-      }
 
       .room-card.active {
         border-color: var(--accent);
-        box-shadow: var(--shadow-md);
+        /* Removed box-shadow to prevent contrast issues */
       }
 
       .room-header {
@@ -590,9 +581,6 @@
         border: 1px solid var(--border-color);
       }
 
-      .room-actions button:hover:not(:disabled) {
-        background: var(--border-color);
-      }
 
       .volume-row {
         display: flex;
@@ -990,7 +978,6 @@
 
       .menu-item.active {
         color: var(--accent);
-        /* Removed background change to prevent contrast issues */
       }
 
       .menu-signout {
