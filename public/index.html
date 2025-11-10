@@ -587,7 +587,7 @@
         border-top: 1px solid var(--border-color);
         padding: 12px 16px 24px 16px;
         display: none;
-        z-index: 100;
+        z-index: 50;
         box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
         max-height: 100vh;
         overflow-y: auto;
@@ -1243,9 +1243,9 @@
       }
 
       .playlist-recommendations {
-        margin-top: 16px;
-        padding-top: 16px;
-        border-top: 1px solid var(--border-color);
+        margin-bottom: 32px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border-color);
       }
 
       .recommendation-header {
@@ -1471,6 +1471,14 @@
         <div id="household-title" class="household-title"></div>
 
         <section id="panel-control">
+          <div class="playlist-recommendations" id="playlist-recommendations">
+            <div class="recommendation-header">
+              <div class="recommendation-title">Recommended Playlist</div>
+            </div>
+            <div id="recommendation-rule-info" class="recommendation-rule-info"></div>
+            <div id="recommended-playlist-container"></div>
+            <div id="alternatives-dropdown" class="alternatives-dropdown"></div>
+          </div>
           <div class="favorites">
             <span class="section-title">Favorites</span>
             <div id="vibe-filters" class="vibe-filters"></div>
@@ -1653,14 +1661,6 @@
           </div>
           <div id="currently-playing-rooms-list"></div>
         </div>
-        <div class="playlist-recommendations" id="playlist-recommendations">
-          <div class="recommendation-header">
-            <div class="recommendation-title">Recommended Playlist</div>
-          </div>
-          <div id="recommendation-rule-info" class="recommendation-rule-info"></div>
-          <div id="recommended-playlist-container"></div>
-          <div id="alternatives-dropdown" class="alternatives-dropdown"></div>
-        </div>
       </div>
     </main>
 
@@ -1810,6 +1810,9 @@ function showView(name) {
     renderSettings();
   } else if (isPlaylistManagement) {
     renderPlaylistManagement();
+  } else if (isControl) {
+    // Update recommendations when control panel is shown
+    updatePlaylistRecommendations();
   }
 }
 
@@ -2334,9 +2337,20 @@ async function checkAuthAndInit() {
           vibeSelect.appendChild(option);
         });
         vibeSelect.value = playlistVibes[favorite.id] || '';
-        vibeSelect.addEventListener('change', (event) => {
+        vibeSelect.addEventListener('change', async (event) => {
           event.stopPropagation();
-          setPlaylistVibe(favorite.id, event.target.value);
+          const oldValue = vibeSelect.value;
+          // Optimistically update the UI
+          vibeSelect.value = event.target.value;
+          try {
+            await setPlaylistVibe(favorite.id, event.target.value);
+            // Refresh the vibe selector to ensure it matches saved state
+            await loadPlaylistVibes();
+            vibeSelect.value = playlistVibes[favorite.id] || '';
+          } catch (error) {
+            // Revert on error
+            vibeSelect.value = oldValue;
+          }
         });
         vibeSelector.appendChild(vibeLabel);
         vibeSelector.appendChild(vibeSelect);
@@ -2541,13 +2555,24 @@ async function checkAuthAndInit() {
             throw new Error('Failed to save vibe');
           }
 
+          // Update the saved vibes from the response
+          const saved = await response.json();
+          playlistVibes = saved;
+
           applyVibeFilter();
-          // Update recommendations when vibes change
-          if (currentlyPlayingPanel.classList.contains('visible')) {
+          // Update recommendations when vibes change (if control panel is visible)
+          if (!panelControl.classList.contains('hidden')) {
             updatePlaylistRecommendations();
           }
         } catch (error) {
           console.error('Failed to save playlist vibe:', error);
+          // Revert the change on error
+          if (vibe) {
+            delete playlistVibes[playlistId];
+          } else {
+            // Reload from server to get correct state
+            await loadPlaylistVibes();
+          }
         }
       }
 
@@ -2808,6 +2833,10 @@ async function checkAuthAndInit() {
           applyVibeFilter();
           evaluateFavoritesAvailability();
           markActiveFavorite(currentActiveFavoriteId);
+          // Update recommendations when favorites are loaded
+          if (!panelControl.classList.contains('hidden')) {
+            updatePlaylistRecommendations();
+          }
         } catch (error) {
           console.error('Failed to load favorites:', error);
           favoritesStatus.textContent = 'Could not load favorites. Please try again.';
@@ -3716,8 +3745,6 @@ async function checkAuthAndInit() {
 
             currentlyPlayingPanel.classList.add('visible');
             document.body.classList.add('has-playing');
-            // Update playlist recommendations when panel becomes visible
-            updatePlaylistRecommendations();
           } else {
             // Only hide if we're truly stopped - use a delay to prevent flickering
             if (playbackState === 'STOPPED' && !isPlaying) {
