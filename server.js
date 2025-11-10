@@ -621,56 +621,98 @@ async function getRecommendedPlaylists(householdId) {
     // Load time rules and find matching ones
     const rules = await loadVibeTimeRules();
     console.log(`[Recommendations] Current hour: ${currentHour}, Current day: ${currentDay}, Total rules: ${rules.length}`);
+    console.log(`[Recommendations] All rules loaded:`, rules.map(r => ({
+      id: r.id,
+      time: `${r.start_hour}-${r.end_hour}`,
+      days: r.days ? r.days.join(',') : 'all',
+      vibes: r.allowed_vibes.join(',')
+    })));
     
-    // First, filter by time and day
-    const timeMatchingRules = rules.filter((rule) => {
-      // Check day match (null means all days, array means specific days)
-      let dayMatches = true;
-      if (rule.days !== null && rule.days !== undefined && Array.isArray(rule.days) && rule.days.length > 0) {
-        dayMatches = rule.days.includes(currentDay);
-      }
+    // Helper function to check if a rule is day-specific
+    const isDaySpecific = (rule) => {
+      return rule.days !== null && 
+             rule.days !== undefined && 
+             Array.isArray(rule.days) && 
+             rule.days.length > 0;
+    };
 
-      if (!dayMatches) {
-        return false;
-      }
-
-      // Handle time ranges that span midnight (e.g., 22-6)
-      let timeMatches = false;
+    // Helper function to check if a rule matches the current time
+    const matchesTime = (rule) => {
       if (rule.start_hour <= rule.end_hour) {
         // Normal range (e.g., 7-12 means 7:00 AM to 12:00 PM, inclusive of 12:00 PM)
-        timeMatches = currentHour >= rule.start_hour && currentHour <= rule.end_hour;
+        return currentHour >= rule.start_hour && currentHour <= rule.end_hour;
       } else {
         // Wraps around midnight (e.g., 22-6 means 10 PM to 6 AM)
-        timeMatches = currentHour >= rule.start_hour || currentHour <= rule.end_hour;
+        return currentHour >= rule.start_hour || currentHour <= rule.end_hour;
       }
+    };
 
-      const matches = dayMatches && timeMatches;
-      const daysStr = rule.days ? rule.days.join(',') : 'all';
-      console.log(`[Recommendations] Rule ${rule.id}: ${rule.start_hour}-${rule.end_hour} days:[${daysStr}] (${rule.allowed_vibes.join(', ')}) matches: ${matches}`);
-      return matches;
+    // Helper function to check if a rule matches the current day
+    const matchesDay = (rule) => {
+      if (!isDaySpecific(rule)) {
+        // General rule (days is null/undefined/empty) - matches all days
+        return true;
+      }
+      // Specific rule - check if current day is in the days array
+      return rule.days.includes(currentDay);
+    };
+
+    // First, filter ALL rules to find those that match the current time
+    // We need to check ALL rules (both specific and general) for time matching
+    const timeMatchingRules = rules.filter((rule) => {
+      const timeMatches = matchesTime(rule);
+      const daysStr = isDaySpecific(rule) ? rule.days.join(',') : 'all';
+      const ruleType = isDaySpecific(rule) ? 'SPECIFIC' : 'GENERAL';
+      
+      console.log(`[Recommendations] Rule ${rule.id} (${ruleType}): ${rule.start_hour}-${rule.end_hour} days:[${daysStr}] (${rule.allowed_vibes.join(', ')})`);
+      console.log(`[Recommendations]   Time check: ${timeMatches ? `hour ${currentHour} matches` : `hour ${currentHour} does NOT match`}`);
+      
+      return timeMatches;
     });
 
-    console.log(`[Recommendations] Time/day matching rules: ${timeMatchingRules.length}`);
+    console.log(`[Recommendations] Rules matching current time (${currentHour}): ${timeMatchingRules.length}`);
 
-    // Separate rules into specific (with days) and general (without days)
+    // Now separate time-matching rules into day-specific and general
+    // Day-specific rules are those that:
+    // 1. Match the current time (already filtered above)
+    // 2. Are day-specific (have a days array)
+    // 3. Match the current day
     const specificRules = timeMatchingRules.filter((rule) => {
-      const isSpecific = rule.days !== null && rule.days !== undefined && Array.isArray(rule.days) && rule.days.length > 0;
-      if (isSpecific) {
-        console.log(`[Recommendations] Specific rule found: ID ${rule.id}, days: [${rule.days.join(',')}], time: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(',')}]`);
+      if (!isDaySpecific(rule)) {
+        return false; // Not a day-specific rule
       }
-      return isSpecific;
+      
+      const dayMatches = matchesDay(rule);
+      const daysStr = rule.days.join(',');
+      
+      console.log(`[Recommendations] Checking day-specific rule ${rule.id}: days [${daysStr}], current day ${currentDay}, matches: ${dayMatches}`);
+      
+      if (dayMatches) {
+        console.log(`[Recommendations] ✓ Day-specific rule MATCHES: ID ${rule.id}, days: [${daysStr}], time: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(',')}]`);
+      } else {
+        console.log(`[Recommendations] ✗ Day-specific rule does NOT match day: ID ${rule.id}, days: [${daysStr}], current day: ${currentDay}`);
+      }
+      
+      return dayMatches;
     });
     
+    // General rules are those that:
+    // 1. Match the current time (already filtered above)
+    // 2. Are NOT day-specific (days is null/undefined/empty)
+    // Note: General rules match all days by definition
     const generalRules = timeMatchingRules.filter((rule) => {
-      const isGeneral = rule.days === null || rule.days === undefined || !Array.isArray(rule.days) || rule.days.length === 0;
+      const isGeneral = !isDaySpecific(rule);
       if (isGeneral) {
-        console.log(`[Recommendations] General rule found: ID ${rule.id}, days: all, time: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(',')}]`);
+        console.log(`[Recommendations] General rule: ID ${rule.id}, time: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(',')}]`);
       }
       return isGeneral;
     });
 
-    // Priority: Use specific rules if available, otherwise fall back to general rules
-    // Specific rules override general rules for the same time period
+    console.log(`[Recommendations] Day-specific rules matching: ${specificRules.length}`);
+    console.log(`[Recommendations] General rules matching: ${generalRules.length}`);
+
+    // CRITICAL: Day-specific rules ALWAYS override general rules
+    // If ANY day-specific rule matches, use ONLY day-specific rules and ignore all general rules
     const matchingRules = specificRules.length > 0 ? specificRules : generalRules;
 
     console.log(`[Recommendations] Specific rules: ${specificRules.length}, General rules: ${generalRules.length}, Using: ${matchingRules.length}`);
@@ -751,7 +793,20 @@ async function getRecommendedPlaylists(householdId) {
       specificRuleIds: specificRules.map(r => r.id),
       generalRuleIds: generalRules.map(r => r.id),
       usedRuleIds: matchingRules.map(r => r.id),
-      ruleTypes: matchingRules.map(r => specificRules.includes(r) ? 'specific' : 'general')
+      ruleTypes: matchingRules.map(r => specificRules.includes(r) ? 'specific' : 'general'),
+      allRules: rules.map(r => ({
+        id: r.id,
+        time: `${r.start_hour}-${r.end_hour}`,
+        days: r.days ? r.days.join(',') : 'all',
+        vibes: r.allowed_vibes.join(',')
+      })),
+      matchingRules: timeMatchingRules.map(r => ({
+        id: r.id,
+        time: `${r.start_hour}-${r.end_hour}`,
+        days: r.days ? r.days.join(',') : 'all',
+        vibes: r.allowed_vibes.join(','),
+        type: (r.days && r.days.length > 0) ? 'specific' : 'general'
+      }))
     };
     console.log(`[Recommendations] Debug info:`, JSON.stringify(debugInfo, null, 2));
 
