@@ -1,36 +1,65 @@
-import fs from 'fs/promises';
+import { supabase } from './supabase.js';
 
-const PATH = './.playlist-vibes.json';
 const VALID_VIBES = ['Down', 'Down/Mid', 'Mid'];
 
 export async function loadPlaylistVibes() {
   try {
-    const raw = await fs.readFile(PATH, 'utf8');
-    const data = JSON.parse(raw);
+    const { data, error } = await supabase
+      .from('playlist_vibes')
+      .select('playlist_id, vibe');
+
+    if (error) {
+      console.error('Error loading playlist vibes:', error);
+      return {};
+    }
 
     const sanitized = {};
-    Object.entries(data || {}).forEach(([playlistId, vibe]) => {
-      if (typeof vibe === 'string' && VALID_VIBES.includes(vibe)) {
-        sanitized[playlistId] = vibe;
+    (data || []).forEach((row) => {
+      if (row.playlist_id && typeof row.vibe === 'string' && VALID_VIBES.includes(row.vibe)) {
+        sanitized[row.playlist_id] = row.vibe;
       }
     });
 
     return sanitized;
-  } catch {
+  } catch (error) {
+    console.error('Error loading playlist vibes:', error);
     return {};
   }
 }
 
 export async function savePlaylistVibes(map) {
-  const sanitized = {};
-  Object.entries(map || {}).forEach(([playlistId, vibe]) => {
-    if (typeof playlistId === 'string' && typeof vibe === 'string' && VALID_VIBES.includes(vibe)) {
-      sanitized[playlistId] = vibe;
-    }
-  });
+  try {
+    const sanitized = {};
+    const rows = [];
 
-  await fs.writeFile(PATH, JSON.stringify(sanitized, null, 2), 'utf8');
-  return sanitized;
+    Object.entries(map || {}).forEach(([playlistId, vibe]) => {
+      if (typeof playlistId === 'string' && typeof vibe === 'string' && VALID_VIBES.includes(vibe)) {
+        sanitized[playlistId] = vibe;
+        rows.push({
+          playlist_id: playlistId,
+          vibe: vibe
+        });
+      }
+    });
+
+    if (rows.length === 0) {
+      return sanitized;
+    }
+
+    // Upsert all playlist vibes
+    const { error } = await supabase
+      .from('playlist_vibes')
+      .upsert(rows, { onConflict: 'playlist_id' });
+
+    if (error) {
+      throw error;
+    }
+
+    return sanitized;
+  } catch (error) {
+    console.error('Error saving playlist vibes:', error);
+    throw error;
+  }
 }
 
 export function getValidVibes() {

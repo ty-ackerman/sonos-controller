@@ -1,0 +1,58 @@
+[build]
+  command = "npm install"
+  publish = "public"
+  functions = "netlify/functions"
+
+[functions]
+  # Increase timeout for long-running operations (max 26 seconds on free tier, 60s on paid)
+  timeout = 26
+  # Increase memory if needed (default is 1024MB)
+  # memory = 1024
+
+# Netlify will serve static files from the publish directory automatically
+# We need to route API and auth requests to the serverless function
+# Static files (/, /index.html, etc.) will be served from the publish directory
+
+# Route API requests to serverless function
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/server"
+  status = 200
+
+# Route auth requests to serverless function
+[[redirects]]
+  from = "/auth/*"
+  to = "/.netlify/functions/server"
+  status = 200
+
+# Route health check to serverless function
+[[redirects]]
+  from = "/healthz"
+  to = "/.netlify/functions/server"
+  status = 200
+
+# SPA fallback - all other routes serve index.html
+# Note: Netlify serves static files from public/ first, so this only applies to non-file routes
+# /api/image-proxy is already covered by /api/* redirect above
+# This must be last to catch all other routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for static assets
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Headers = "Content-Type"
+    Access-Control-Allow-Methods = "GET, POST, PUT, OPTIONS"
+

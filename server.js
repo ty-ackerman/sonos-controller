@@ -444,7 +444,10 @@ app.put('/api/settings/volumes', async (req, res) => {
       }
     });
 
-    speakerVolumes = await saveSpeakerVolumes(sanitized);
+    // Save updated volumes to database (upsert updates existing, adds new)
+    await saveSpeakerVolumes(sanitized);
+    // Merge updated volumes into cache to keep it in sync
+    speakerVolumes = { ...speakerVolumes, ...sanitized };
     res.json(speakerVolumes);
   } catch (error) {
     res
@@ -1216,6 +1219,12 @@ function handleProxyError(res, error) {
   res.status(status).json({ error: message });
 }
 
-app.listen(PORT, () => {
-  console.log(`Sonos controller server listening on port ${PORT}`);
-});
+// Export app for serverless environments (Netlify Functions)
+export { app };
+
+// Only listen if not in serverless environment
+if (process.env.NETLIFY !== 'true' && process.env.AWS_LAMBDA_FUNCTION_NAME === undefined) {
+  app.listen(PORT, () => {
+    console.log(`Sonos controller server listening on port ${PORT}`);
+  });
+}

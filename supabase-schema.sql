@@ -1,0 +1,56 @@
+-- Supabase schema for Sonos Controller
+-- Run this SQL in your Supabase SQL Editor
+
+-- Table for storing Sonos OAuth tokens
+-- Using a single row with id=1 to store the tokens
+CREATE TABLE IF NOT EXISTS tokens (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  access_token TEXT,
+  refresh_token TEXT,
+  expires_at BIGINT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Table for storing speaker volume settings
+CREATE TABLE IF NOT EXISTS speaker_volumes (
+  player_id TEXT PRIMARY KEY,
+  volume INTEGER NOT NULL CHECK (volume >= 0 AND volume <= 100),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Table for storing playlist vibes
+CREATE TABLE IF NOT EXISTS playlist_vibes (
+  playlist_id TEXT PRIMARY KEY,
+  vibe TEXT NOT NULL CHECK (vibe IN ('Down', 'Down/Mid', 'Mid')),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_speaker_volumes_updated_at ON speaker_volumes(updated_at);
+CREATE INDEX IF NOT EXISTS idx_playlist_vibes_updated_at ON playlist_vibes(updated_at);
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers to automatically update updated_at
+CREATE TRIGGER update_tokens_updated_at BEFORE UPDATE ON tokens
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_speaker_volumes_updated_at BEFORE UPDATE ON speaker_volumes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_playlist_vibes_updated_at BEFORE UPDATE ON playlist_vibes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Insert initial token row if it doesn't exist
+INSERT INTO tokens (id, access_token, refresh_token, expires_at)
+VALUES (1, NULL, NULL, 0)
+ON CONFLICT (id) DO NOTHING;
+
