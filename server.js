@@ -660,10 +660,15 @@ async function getRecommendedPlaylists(householdId) {
       rule.days === null || rule.days === undefined || !Array.isArray(rule.days) || rule.days.length === 0
     );
 
-    // Use specific rules if available, otherwise fall back to general rules
+    // Priority: Use specific rules if available, otherwise fall back to general rules
+    // Specific rules override general rules for the same time period
     const matchingRules = specificRules.length > 0 ? specificRules : generalRules;
 
     console.log(`[Recommendations] Specific rules: ${specificRules.length}, General rules: ${generalRules.length}, Using: ${matchingRules.length}`);
+    
+    if (specificRules.length > 0 && generalRules.length > 0) {
+      console.log(`[Recommendations] Specific rules override general rules for current time/day`);
+    }
 
     // Collect all allowed vibes from matching rules
     const allowedVibes = new Set();
