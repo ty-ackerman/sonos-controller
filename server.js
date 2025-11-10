@@ -31,15 +31,75 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
 
-let tokens = await loadTokens();
-let speakerVolumes = await loadSpeakerVolumes();
-let playlistVibes = await loadPlaylistVibes();
+// Initialize data storage (lazy-loaded for serverless compatibility)
+let tokens = null;
+let speakerVolumes = null;
+let playlistVibes = null;
+let initialized = false;
+let initializationPromise = null;
 
 const activeFavoritesByGroup = new Map();
 
 let oauthState;
+
+// Initialize data stores (lazy loading for serverless)
+async function ensureInitialized() {
+  if (initialized) {
+    return;
+  }
+  
+  if (initializationPromise) {
+    return initializationPromise;
+  }
+  
+  initializationPromise = (async () => {
+    try {
+      if (!tokens) {
+        tokens = await loadTokens();
+        // Ensure tokens object exists
+        if (!tokens) {
+          tokens = { access_token: null, refresh_token: null, expires_at: 0 };
+        }
+      }
+      if (!speakerVolumes) {
+        speakerVolumes = await loadSpeakerVolumes();
+        // Ensure speakerVolumes object exists
+        if (!speakerVolumes) {
+          speakerVolumes = {};
+        }
+      }
+      if (!playlistVibes) {
+        playlistVibes = await loadPlaylistVibes();
+        // Ensure playlistVibes object exists
+        if (!playlistVibes) {
+          playlistVibes = {};
+        }
+      }
+      initialized = true;
+    } catch (error) {
+      console.error('Error initializing data stores:', error);
+      // Set defaults on error
+      tokens = tokens || { access_token: null, refresh_token: null, expires_at: 0 };
+      speakerVolumes = speakerVolumes || {};
+      playlistVibes = playlistVibes || {};
+      initialized = true;
+      throw error;
+    }
+  })();
+  
+  return initializationPromise;
+}
+
+// Middleware to ensure initialization before handling API/auth requests
+// Note: Static files are served by Netlify, so we only initialize for dynamic routes
+app.use(/^\/(api|auth|healthz)/, async (req, res, next) => {
+  await ensureInitialized();
+  next();
+});
+
+// Serve static files (only needed for local development, Netlify serves these directly)
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok' });
@@ -1123,7 +1183,10 @@ async function refreshAccessToken() {
 }
 
 async function ensureValidAccessToken() {
-  if (!tokens.access_token) {
+  // Ensure tokens are initialized
+  await ensureInitialized();
+  
+  if (!tokens || !tokens.access_token) {
     throw Object.assign(new Error('Not authenticated with Sonos'), { status: 401 });
   }
 
