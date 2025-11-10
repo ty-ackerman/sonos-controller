@@ -949,47 +949,6 @@
       }
 
 
-      .currently-playing-playback-controls {
-        display: none;
-        justify-content: center;
-        align-items: center;
-        gap: 24px;
-        margin: 20px 0 16px 0;
-        padding: 0 16px;
-      }
-
-      .currently-playing.expanded .currently-playing-playback-controls {
-        display: flex;
-      }
-
-      .playback-control-btn {
-        width: 40px;
-        height: 40px;
-        border: none;
-        background: transparent;
-        color: var(--text-primary);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        transition: all 0.2s ease;
-        padding: 0;
-      }
-
-
-
-      .playback-control-btn:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-        transform: none;
-      }
-
-      .playback-control-btn svg {
-        width: 20px;
-        height: 20px;
-        fill: currentColor;
-      }
 
 
       .currently-playing-master-volume {
@@ -1721,18 +1680,6 @@
             </div>
           </div>
         </div>
-        <div class="currently-playing-playback-controls" id="currently-playing-playback-controls">
-          <button class="playback-control-btn" id="playback-prev-btn" type="button" aria-label="Previous">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            </svg>
-          </button>
-          <button class="playback-control-btn" id="playback-next-btn" type="button" aria-label="Next">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
-            </svg>
-          </button>
-        </div>
         <div class="currently-playing-volume" id="currently-playing-volume">
           <div class="currently-playing-master-volume" id="currently-playing-master-volume">
             <div class="master-volume-label">Master Volume</div>
@@ -1789,10 +1736,6 @@
       const menuItemPlaylistManagement = document.getElementById('menu-item-playlist-management');
       const menuItemSettings = document.getElementById('menu-item-settings');
       const menuItemSignout = document.getElementById('menu-item-signout');
-      
-      // Playback controls in now-playing section
-      const playbackPrevBtn = document.getElementById('playback-prev-btn');
-      const playbackNextBtn = document.getElementById('playback-next-btn');
       
       // Master volume controls
       const masterVolumeSlider = document.getElementById('master-volume-slider');
@@ -1968,16 +1911,6 @@ async function checkAuthAndInit() {
       }
 
       // Playback control handlers for now-playing section
-      playbackPrevBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await handlePlaybackAction('previous');
-      });
-
-
-      playbackNextBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await handlePlaybackAction('next');
-      });
 
       // Master volume handler
       masterVolumeSlider.addEventListener('input', (e) => {
@@ -2761,7 +2694,9 @@ async function checkAuthAndInit() {
       }
 
       async function updatePlaylistRecommendations() {
+        console.log('[Client] updatePlaylistRecommendations called');
         if (!isSonosConnected || !currentHouseholdId) {
+          console.log('[Client] Not connected or no household ID');
           recommendedPlaylistContainer.innerHTML = '';
           alternativesDropdown.innerHTML = '';
           recommendationRuleInfo.textContent = '';
@@ -2770,14 +2705,24 @@ async function checkAuthAndInit() {
 
         try {
           const params = new URLSearchParams({ householdId: currentHouseholdId });
-          const response = await fetch(`/api/playlist-recommendations?${params.toString()}`);
+          const url = `/api/playlist-recommendations?${params.toString()}`;
+          console.log('[Client] Fetching recommendations from:', url);
+          
+          const response = await fetch(url);
 
           if (!response.ok) {
             throw new Error('Failed to fetch recommendations');
           }
 
           const data = await response.json();
+          console.log('[Client] Recommendations response:', data);
           const { primary, alternatives, currentRule } = data;
+          
+          console.log('[Client] Primary:', primary?.name || 'none');
+          console.log('[Client] Alternatives:', alternatives?.length || 0);
+          console.log('[Client] Current rule:', currentRule ? 
+            `ID ${currentRule.id}, ${currentRule.start_hour}-${currentRule.end_hour}, days: ${currentRule.days ? currentRule.days.join(',') : 'all'}, vibes: ${currentRule.allowed_vibes?.join(',') || 'none'}` : 
+            'none');
 
           // Update rule info
           if (currentRule) {
@@ -3317,46 +3262,6 @@ async function checkAuthAndInit() {
         });
       }
 
-      async function handlePlaybackAction(action) {
-        const groupId = getSelectedGroupId();
-        if (!groupId) {
-          // Auto-grouping is handled on load, but if we still don't have a group, try to create one
-          if (currentHouseholdId && latestPlayers.length > 0) {
-            try {
-              const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
-                method: 'POST'
-              });
-              if (groupResponse.ok) {
-                const groupData = await groupResponse.json();
-                if (groupData.groupId) {
-                  setActiveGroup(groupData.groupId, groupData.groupName || 'All Rooms');
-                  // Retry the action
-                  handlePlaybackAction(action);
-                  return;
-                }
-              }
-            } catch (error) {
-              console.error('Failed to auto-create group:', error);
-            }
-          }
-          showFeedback('Unable to control playback. Please try again.', true);
-          return;
-        }
-
-        const endpoints = {
-          next: `/api/groups/${encodeURIComponent(groupId)}/next`,
-          previous: `/api/groups/${encodeURIComponent(groupId)}/previous`
-        };
-
-        const endpoint = endpoints[action];
-        if (!endpoint) {
-          console.warn(`Unknown playback action requested: ${action}`);
-          return;
-        }
-
-        await sendCommand(endpoint);
-        setTimeout(() => updateCurrentlyPlaying(), 500);
-      }
 
       async function setMasterVolume(level) {
         const groupId = getSelectedGroupId();
@@ -3974,11 +3879,9 @@ async function checkAuthAndInit() {
         const roomVolume = e.target.closest('.currently-playing-room-volume');
         const roomSlider = e.target.closest('.currently-playing-room-slider');
         const rangeInput = e.target.closest('input[type="range"]');
-        const playbackControls = e.target.closest('.currently-playing-playback-controls');
-        const playbackControlBtn = e.target.closest('.playback-control-btn');
         const masterVolume = e.target.closest('.currently-playing-master-volume');
         
-        if (roomVolume || roomSlider || rangeInput || playbackControls || playbackControlBtn || masterVolume) {
+        if (roomVolume || roomSlider || rangeInput || masterVolume) {
           return;
         }
         
