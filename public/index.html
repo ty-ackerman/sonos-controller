@@ -475,6 +475,70 @@
         transition: border-color 0.2s ease;
       }
 
+      .playlist-vibe-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .playlist-vibe-pill.down {
+        background: #000000;
+        color: #ffffff;
+      }
+
+      .playlist-vibe-pill.down-mid {
+        background: #808080;
+        color: #ffffff;
+      }
+
+      .playlist-vibe-pill.mid {
+        background: #ffffff;
+        color: #000000;
+        border: 1px solid var(--border-color);
+      }
+
+      .favorites-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .favorites-toggle {
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        cursor: pointer;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        transition: all 0.2s ease;
+      }
+
+      .favorites-toggle:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .favorites-content {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .favorites-content.hidden {
+        display: none;
+      }
+
 
       .settings-actions {
         display: flex;
@@ -1480,10 +1544,17 @@
             <div id="alternatives-dropdown" class="alternatives-dropdown"></div>
           </div>
           <div class="favorites">
-            <span class="section-title">Favorites</span>
-            <div id="vibe-filters" class="vibe-filters"></div>
-            <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
-            <div id="favorites-grid" class="favorites-grid"></div>
+            <div class="favorites-header">
+              <span class="section-title">Favorites</span>
+              <button id="favorites-toggle" class="favorites-toggle" type="button">
+                View All Favorites <span>▼</span>
+              </button>
+            </div>
+            <div id="favorites-content" class="favorites-content hidden">
+              <div id="vibe-filters" class="vibe-filters"></div>
+              <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
+              <div id="favorites-grid" class="favorites-grid"></div>
+            </div>
           </div>
         </section>
 
@@ -1683,6 +1754,8 @@
       const favoritesGrid = document.getElementById('favorites-grid');
       const favoritesStatus = document.getElementById('favorites-status');
       const vibeFiltersContainer = document.getElementById('vibe-filters');
+      const favoritesToggle = document.getElementById('favorites-toggle');
+      const favoritesContent = document.getElementById('favorites-content');
       const currentlyPlayingPanel = document.getElementById('currently-playing');
       const currentlyPlayingArt = document.getElementById('currently-playing-art');
       const currentlyPlayingLocation = document.getElementById('currently-playing-location');
@@ -1843,6 +1916,17 @@ menuItemSettings.addEventListener('click', () => {
 
 menuItemSignout.addEventListener('click', () => {
   signout();
+});
+
+// Favorites toggle handler
+favoritesToggle.addEventListener('click', () => {
+  const isHidden = favoritesContent.classList.contains('hidden');
+  favoritesContent.classList.toggle('hidden', !isHidden);
+  const arrow = favoritesToggle.querySelector('span');
+  if (arrow) {
+    arrow.textContent = isHidden ? '▲' : '▼';
+  }
+  favoritesToggle.innerHTML = `${isHidden ? 'Hide' : 'View'} All Favorites <span>${isHidden ? '▲' : '▼'}</span>`;
 });
 
 function setAuthUI(loggedIn) {
@@ -2923,25 +3007,29 @@ async function checkAuthAndInit() {
         vibeSelector.className = 'playlist-vibe-selector';
         const vibeLabel = document.createElement('label');
         vibeLabel.textContent = 'Vibe:';
-        const vibeSelect = document.createElement('select');
-        vibeSelect.dataset.favoriteId = favorite.id;
-        const defaultOption = document.createElement('option');
-        defaultOption.value = '';
-        defaultOption.textContent = '—';
-        vibeSelect.appendChild(defaultOption);
-        ['Down', 'Down/Mid', 'Mid'].forEach((vibe) => {
-          const option = document.createElement('option');
-          option.value = vibe;
-          option.textContent = vibe;
-          vibeSelect.appendChild(option);
-        });
-        vibeSelect.value = playlistVibes[favorite.id] || '';
-        vibeSelect.addEventListener('change', (event) => {
-          event.stopPropagation();
-          setPlaylistVibe(favorite.id, event.target.value);
-        });
+        
+        const vibePill = document.createElement('span');
+        const vibe = playlistVibes[favorite.id] || '';
+        if (vibe) {
+          vibePill.className = 'playlist-vibe-pill';
+          if (vibe === 'Down') {
+            vibePill.className += ' down';
+            vibePill.textContent = 'Down';
+          } else if (vibe === 'Down/Mid') {
+            vibePill.className += ' down-mid';
+            vibePill.textContent = 'Down/Mid';
+          } else if (vibe === 'Mid') {
+            vibePill.className += ' mid';
+            vibePill.textContent = 'Mid';
+          }
+        } else {
+          vibePill.textContent = '—';
+          vibePill.style.color = 'var(--text-tertiary)';
+          vibePill.style.fontSize = '0.8125rem';
+        }
+        
         vibeSelector.appendChild(vibeLabel);
-        vibeSelector.appendChild(vibeSelect);
+        vibeSelector.appendChild(vibePill);
 
         button.appendChild(cardContent);
         button.appendChild(vibeSelector);
@@ -2952,13 +3040,10 @@ async function checkAuthAndInit() {
           statusEl: status,
           loading: false,
           statusMessage: SELECT_GROUP_MESSAGE,
-          vibeSelect
+          vibePill
         };
 
         button.addEventListener('click', (event) => {
-          if (event.target === vibeSelect || event.target.closest('.playlist-vibe-selector')) {
-            return;
-          }
           playFavorite(entry);
         });
 
