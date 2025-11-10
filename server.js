@@ -1,5 +1,4 @@
 import express from 'express';
-import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import path from 'path';
@@ -7,6 +6,9 @@ import { fileURLToPath } from 'url';
 import { loadTokens, saveTokens, clearTokens } from './tokenStore.js';
 import { loadSpeakerVolumes, saveSpeakerVolumes } from './settingsStore.js';
 import { loadPlaylistVibes, savePlaylistVibes } from './playlistVibesStore.js';
+
+// Use native fetch (Node.js 18+) - Netlify Functions supports it
+// No need to import node-fetch which causes bundling issues
 
 dotenv.config();
 
