@@ -2590,9 +2590,19 @@ async function checkAuthAndInit() {
             const groupInfo = latestGroups.find((g) => g.id === groupId || g.groupId === groupId);
             const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
 
+            // Sync currentActiveFavoriteId with status to keep highlighted favorite in sync with now playing
+            const activeFavoriteId = status.activeFavoriteId || null;
+            if (activeFavoriteId !== currentActiveFavoriteId) {
+              currentActiveFavoriteId = activeFavoriteId;
+              markActiveFavorite(activeFavoriteId);
+            } else if (activeFavoriteId === null && currentActiveFavoriteId !== null) {
+              // Clear active favorite if status says there's none (e.g., Spotify playlist)
+              currentActiveFavoriteId = null;
+              markActiveFavorite(null);
+            }
+
             let playlistName = null;
             let playlistImageUrl = null;
-            const activeFavoriteId = status.activeFavoriteId || currentActiveFavoriteId;
             if (activeFavoriteId) {
               const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
               if (favoriteEntry && favoriteEntry.favorite) {

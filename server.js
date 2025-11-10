@@ -893,6 +893,9 @@ app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
 
     await sonosRequest(`/groups/${encodedGroupId}/playback/play`, { method: 'POST' });
 
+    // Clear active favorite since this is a Spotify playlist, not a Sonos favorite
+    activeFavoritesByGroup.delete(groupId);
+
     res.json({ status: 'ok' });
   } catch (error) {
     handleProxyError(res, error);
@@ -1036,6 +1039,11 @@ async function applyDefaultVolumes(householdId) {
   }
 
   try {
+    // Reload volumes from database to ensure we have the latest values
+    const volumes = await loadSpeakerVolumes();
+    // Update cache to keep it in sync
+    speakerVolumes = volumes;
+
     const response = await sonosFetch(`/households/${encodeURIComponent(householdId)}/groups`);
     if (!response.ok) {
       return;
@@ -1046,7 +1054,7 @@ async function applyDefaultVolumes(householdId) {
 
     const jobs = players
       .map((player) => {
-        const target = speakerVolumes[player?.id];
+        const target = volumes[player?.id];
         if (typeof target === 'number' && Number.isFinite(target)) {
           return sonosFetch(`/players/${encodeURIComponent(player.id)}/playerVolume`, {
             method: 'POST',
