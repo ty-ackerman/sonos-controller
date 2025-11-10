@@ -3,6 +3,9 @@
   publish = "public"
   functions = "netlify/functions"
 
+# Note: Real secrets have been removed from documentation files
+# All values in DEPLOYMENT.md and env.template are now placeholders
+
 # Netlify will serve static files from the publish directory automatically
 # We need to route API and auth requests to the serverless function
 # Static files (/, /index.html, etc.) will be served from the publish directory

@@ -64,9 +64,9 @@ Supabase is just where you **copy** the values from. You'll **paste** them into 
    - You should see a page with an **"Add a variable"** or **"Add environment variable"** button
 
 5. **Add each variable** (click "Add a variable" for each one):
-   - `SONOS_CLIENT_ID` = `80539796-7048-4727-8c1d-40dd6d98242a` (from your Sonos account)
-   - `SONOS_CLIENT_SECRET` = `12773327-71d9-43f5-a062-b73b0a96e744` (from your Sonos account)
-   - `REDIRECT_URI` = `https://sonos-controller.netlify.app/auth/sonos/callback` (your Netlify URL)
+   - `SONOS_CLIENT_ID` = (your Sonos Client ID from your Sonos Developer account)
+   - `SONOS_CLIENT_SECRET` = (your Sonos Client Secret from your Sonos Developer account)
+   - `REDIRECT_URI` = `https://your-app.netlify.app/auth/sonos/callback` (replace `your-app` with your actual Netlify site name)
    - `SUPABASE_URL` = (the URL you copied from Supabase in Step 2)
    - `SUPABASE_KEY` = (the service_role key you copied from Supabase in Step 2)
 
