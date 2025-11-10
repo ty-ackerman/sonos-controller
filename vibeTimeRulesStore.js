@@ -6,7 +6,7 @@ export async function loadVibeTimeRules() {
   try {
     const { data, error } = await supabase
       .from('vibe_time_rules')
-      .select('id, start_hour, end_hour, allowed_vibes, created_at, updated_at')
+      .select('id, start_hour, end_hour, allowed_vibes, days, created_at, updated_at')
       .order('start_hour', { ascending: true });
 
     if (error) {
@@ -32,11 +32,27 @@ export async function loadVibeTimeRules() {
           typeof vibe === 'string' && VALID_VIBES.includes(vibe)
         );
         if (validVibes.length > 0) {
+          // Validate days array (0-6 for Sunday-Saturday, or null for all days)
+          let validDays = null;
+          if (row.days !== null && row.days !== undefined) {
+            if (Array.isArray(row.days)) {
+              const filteredDays = row.days.filter(
+                (day) => typeof day === 'number' && day >= 0 && day <= 6
+              );
+              // Remove duplicates
+              validDays = [...new Set(filteredDays)].sort();
+              if (validDays.length === 0) {
+                validDays = null; // Empty array means all days
+              }
+            }
+          }
+
           sanitized.push({
             id: row.id,
             start_hour: row.start_hour,
             end_hour: row.end_hour,
-            allowed_vibes: validVibes
+            allowed_vibes: validVibes,
+            days: validDays
           });
         }
       }
@@ -71,10 +87,26 @@ export async function saveVibeTimeRule(rule) {
       throw new Error('At least one valid vibe is required');
     }
 
+    // Validate and sanitize days
+    let days = null;
+    if (rule.days !== null && rule.days !== undefined) {
+      if (Array.isArray(rule.days) && rule.days.length > 0) {
+        const validDays = rule.days.filter(
+          (day) => typeof day === 'number' && day >= 0 && day <= 6
+        );
+        // Remove duplicates and sort
+        days = [...new Set(validDays)].sort();
+        if (days.length === 0) {
+          days = null; // Empty array means all days
+        }
+      }
+    }
+
     const row = {
       start_hour: rule.start_hour,
       end_hour: rule.end_hour,
-      allowed_vibes: validVibes
+      allowed_vibes: validVibes,
+      days: days
     };
 
     if (rule.id) {
@@ -94,7 +126,8 @@ export async function saveVibeTimeRule(rule) {
         id: data.id,
         start_hour: data.start_hour,
         end_hour: data.end_hour,
-        allowed_vibes: data.allowed_vibes
+        allowed_vibes: data.allowed_vibes,
+        days: data.days
       };
     } else {
       // Create new rule
@@ -112,7 +145,8 @@ export async function saveVibeTimeRule(rule) {
         id: data.id,
         start_hour: data.start_hour,
         end_hour: data.end_hour,
-        allowed_vibes: data.allowed_vibes
+        allowed_vibes: data.allowed_vibes,
+        days: data.days
       };
     }
   } catch (error) {

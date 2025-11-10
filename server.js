@@ -613,30 +613,57 @@ app.delete('/api/vibe-time-rules/:id', async (req, res) => {
 // Helper function to get recommended playlists based on current time
 async function getRecommendedPlaylists(householdId) {
   try {
-    // Get current hour (0-23)
+    // Get current hour (0-23) and day of week (0 = Sunday, 6 = Saturday)
     const now = new Date();
     const currentHour = now.getHours();
+    const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
     // Load time rules and find matching ones
     const rules = await loadVibeTimeRules();
-    console.log(`[Recommendations] Current hour: ${currentHour}, Total rules: ${rules.length}`);
+    console.log(`[Recommendations] Current hour: ${currentHour}, Current day: ${currentDay}, Total rules: ${rules.length}`);
     
-    const matchingRules = rules.filter((rule) => {
+    // First, filter by time and day
+    const timeMatchingRules = rules.filter((rule) => {
+      // Check day match (null means all days, array means specific days)
+      let dayMatches = true;
+      if (rule.days !== null && rule.days !== undefined && Array.isArray(rule.days) && rule.days.length > 0) {
+        dayMatches = rule.days.includes(currentDay);
+      }
+
+      if (!dayMatches) {
+        return false;
+      }
+
       // Handle time ranges that span midnight (e.g., 22-6)
-      let matches = false;
+      let timeMatches = false;
       if (rule.start_hour <= rule.end_hour) {
         // Normal range (e.g., 7-12 means 7:00 AM to 12:00 PM, inclusive of 12:00 PM)
-        // For end_hour, we include the full hour, so use <= instead of <
-        matches = currentHour >= rule.start_hour && currentHour <= rule.end_hour;
+        timeMatches = currentHour >= rule.start_hour && currentHour <= rule.end_hour;
       } else {
         // Wraps around midnight (e.g., 22-6 means 10 PM to 6 AM)
-        matches = currentHour >= rule.start_hour || currentHour <= rule.end_hour;
+        timeMatches = currentHour >= rule.start_hour || currentHour <= rule.end_hour;
       }
-      console.log(`[Recommendations] Rule ${rule.id}: ${rule.start_hour}-${rule.end_hour} (${rule.allowed_vibes.join(', ')}) matches: ${matches}`);
+
+      const matches = dayMatches && timeMatches;
+      const daysStr = rule.days ? rule.days.join(',') : 'all';
+      console.log(`[Recommendations] Rule ${rule.id}: ${rule.start_hour}-${rule.end_hour} days:[${daysStr}] (${rule.allowed_vibes.join(', ')}) matches: ${matches}`);
       return matches;
     });
 
-    console.log(`[Recommendations] Matching rules: ${matchingRules.length}`);
+    console.log(`[Recommendations] Time/day matching rules: ${timeMatchingRules.length}`);
+
+    // Separate rules into specific (with days) and general (without days)
+    const specificRules = timeMatchingRules.filter((rule) => 
+      rule.days !== null && rule.days !== undefined && Array.isArray(rule.days) && rule.days.length > 0
+    );
+    const generalRules = timeMatchingRules.filter((rule) => 
+      rule.days === null || rule.days === undefined || !Array.isArray(rule.days) || rule.days.length === 0
+    );
+
+    // Use specific rules if available, otherwise fall back to general rules
+    const matchingRules = specificRules.length > 0 ? specificRules : generalRules;
+
+    console.log(`[Recommendations] Specific rules: ${specificRules.length}, General rules: ${generalRules.length}, Using: ${matchingRules.length}`);
 
     // Collect all allowed vibes from matching rules
     const allowedVibes = new Set();

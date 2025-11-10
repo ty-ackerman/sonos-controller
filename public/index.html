@@ -487,8 +487,9 @@
       }
 
       .playlist-vibe-pill.down {
-        background: #000000;
-        color: #ffffff;
+        background: #ffffff;
+        color: #000000;
+        border: 1px solid var(--border-color);
       }
 
       .playlist-vibe-pill.down-mid {
@@ -497,9 +498,8 @@
       }
 
       .playlist-vibe-pill.mid {
-        background: #ffffff;
-        color: #000000;
-        border: 1px solid var(--border-color);
+        background: #808080;
+        color: #ffffff;
       }
 
       .favorites-header {
@@ -1253,6 +1253,28 @@
         font-size: 0.875rem;
       }
 
+      .time-rule-days {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .time-rule-day-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 0.875rem;
+        color: var(--text-primary);
+      }
+
+      .time-rule-day-checkbox input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+        accent-color: var(--accent);
+      }
+
       .time-rule-vibes {
         display: flex;
         flex-direction: column;
@@ -1629,6 +1651,43 @@
                     <option value="22">10:00 PM</option>
                     <option value="23">11:00 PM</option>
                   </select>
+                </div>
+                <div class="time-rule-field">
+                  <label>Days</label>
+                  <div class="time-rule-days">
+                    <label class="time-rule-day-checkbox">
+                      <input type="checkbox" value="everyday" id="time-rule-day-everyday">
+                      <span>Every day</span>
+                    </label>
+                    <label class="time-rule-day-checkbox">
+                      <input type="checkbox" value="0" id="time-rule-day-0">
+                      <span>Sunday</span>
+                    </label>
+                    <label class="time-rule-day-checkbox">
+                      <input type="checkbox" value="1" id="time-rule-day-1">
+                      <span>Monday</span>
+                    </label>
+                    <label class="time-rule-day-checkbox">
+                      <input type="checkbox" value="2" id="time-rule-day-2">
+                      <span>Tuesday</span>
+                    </label>
+                    <label class="time-rule-day-checkbox">
+                      <input type="checkbox" value="3" id="time-rule-day-3">
+                      <span>Wednesday</span>
+                    </label>
+                    <label class="time-rule-day-checkbox">
+                      <input type="checkbox" value="4" id="time-rule-day-4">
+                      <span>Thursday</span>
+                    </label>
+                    <label class="time-rule-day-checkbox">
+                      <input type="checkbox" value="5" id="time-rule-day-5">
+                      <span>Friday</span>
+                    </label>
+                    <label class="time-rule-day-checkbox">
+                      <input type="checkbox" value="6" id="time-rule-day-6">
+                      <span>Saturday</span>
+                    </label>
+                  </div>
                 </div>
                 <div class="time-rule-field">
                   <label>Allowed Vibes</label>
@@ -2483,7 +2542,14 @@ async function checkAuthAndInit() {
           const endHour = rule.end_hour;
           const startTime = formatHour(startHour);
           const endTime = formatHour(endHour);
-          time.textContent = `${startTime} - ${endTime}`;
+          
+          let daysText = 'Every day';
+          if (rule.days && Array.isArray(rule.days) && rule.days.length > 0) {
+            const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            daysText = rule.days.map(d => dayNames[d]).join(', ');
+          }
+          
+          time.textContent = `${startTime} - ${endTime} (${daysText})`;
 
           const vibes = document.createElement('div');
           vibes.className = 'time-rule-vibes';
@@ -2504,6 +2570,21 @@ async function checkAuthAndInit() {
             timeRuleVibeDown.checked = rule.allowed_vibes.includes('Down');
             timeRuleVibeDownMid.checked = rule.allowed_vibes.includes('Down/Mid');
             timeRuleVibeMid.checked = rule.allowed_vibes.includes('Mid');
+            
+            // Set day checkboxes
+            const everydayCheckbox = document.getElementById('time-rule-day-everyday');
+            if (!rule.days || !Array.isArray(rule.days) || rule.days.length === 0) {
+              everydayCheckbox.checked = true;
+              for (let i = 0; i <= 6; i++) {
+                document.getElementById(`time-rule-day-${i}`).checked = false;
+              }
+            } else {
+              everydayCheckbox.checked = false;
+              for (let i = 0; i <= 6; i++) {
+                document.getElementById(`time-rule-day-${i}`).checked = rule.days.includes(i);
+              }
+            }
+            
             timeRuleEditor.classList.remove('hidden');
           });
 
@@ -2551,8 +2632,36 @@ async function checkAuthAndInit() {
         timeRuleVibeDown.checked = false;
         timeRuleVibeDownMid.checked = false;
         timeRuleVibeMid.checked = false;
+        
+        // Set "Every day" as default
+        document.getElementById('time-rule-day-everyday').checked = true;
+        for (let i = 0; i <= 6; i++) {
+          document.getElementById(`time-rule-day-${i}`).checked = false;
+        }
+        
         timeRuleEditor.classList.remove('hidden');
       });
+
+      // Handle "Every day" checkbox
+      const everydayCheckbox = document.getElementById('time-rule-day-everyday');
+      everydayCheckbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          // Uncheck all individual days
+          for (let i = 0; i <= 6; i++) {
+            document.getElementById(`time-rule-day-${i}`).checked = false;
+          }
+        }
+      });
+
+      // Handle individual day checkboxes - uncheck "Every day" if any specific day is selected
+      for (let i = 0; i <= 6; i++) {
+        const dayCheckbox = document.getElementById(`time-rule-day-${i}`);
+        dayCheckbox.addEventListener('change', () => {
+          if (dayCheckbox.checked) {
+            everydayCheckbox.checked = false;
+          }
+        });
+      }
 
       timeRuleCancelBtn.addEventListener('click', () => {
         editingRuleId = null;
@@ -2572,11 +2681,29 @@ async function checkAuthAndInit() {
           return;
         }
 
+        // Get selected days
+        let days = null;
+        const everydayCheckbox = document.getElementById('time-rule-day-everyday');
+        if (!everydayCheckbox.checked) {
+          days = [];
+          for (let i = 0; i <= 6; i++) {
+            const dayCheckbox = document.getElementById(`time-rule-day-${i}`);
+            if (dayCheckbox.checked) {
+              days.push(i);
+            }
+          }
+          // If no days selected, treat as "every day" (null)
+          if (days.length === 0) {
+            days = null;
+          }
+        }
+
         try {
           const rule = {
             start_hour: startHour,
             end_hour: endHour,
-            allowed_vibes: allowedVibes
+            allowed_vibes: allowedVibes,
+            days: days
           };
 
           if (editingRuleId) {
