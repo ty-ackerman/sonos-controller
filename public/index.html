@@ -343,10 +343,6 @@
         transition: all 0.2s ease;
       }
 
-      .vibe-filter-btn:hover {
-        background: var(--bg-tertiary);
-        color: var(--text-primary);
-      }
 
       .vibe-filter-btn.active {
         background: var(--accent);
@@ -991,13 +987,10 @@
         transition: background 0.2s ease;
       }
 
-      .menu-item:hover {
-        background: var(--bg-tertiary);
-      }
 
       .menu-item.active {
-        background: var(--bg-tertiary);
         color: var(--accent);
+        /* Removed background change to prevent contrast issues */
       }
 
       .menu-signout {
@@ -1010,9 +1003,6 @@
         color: var(--error);
       }
 
-      .menu-signout .menu-item:hover {
-        background: var(--bg-tertiary);
-      }
 
       .currently-playing-playback-controls {
         display: none;
@@ -1342,6 +1332,7 @@ settingsStatusLabel.textContent = '';
       let currentGroupId = null;
       let currentGroupName = 'No group selected';
       let currentActiveFavoriteId = null;
+      let currentActiveFavoriteIdTimestamp = 0; // Track when favorite was set
       const favoritesRegistry = new Map();
       let latestPlayers = [];
       let latestGroups = [];
@@ -1353,6 +1344,7 @@ settingsStatusLabel.textContent = '';
       // Track playback state locally (since API is unreliable)
       let trackedPlaybackState = null; // 'PLAYING' | 'PAUSED' | null
       let currentImageUrl = null;
+      let lastPlayActionTime = 0; // Track when last play action occurred to prevent refresh interference
 
       function login() {
         window.location.href = '/auth/sonos/login';
@@ -2070,6 +2062,13 @@ async function checkAuthAndInit() {
 
           setActiveGroup(groupId, groupData.groupName || 'All Rooms');
 
+          // Set favorite as active immediately for optimistic UI update
+          markActiveFavorite(entry.favorite.id);
+          // Track play action time to prevent refresh interference
+          lastPlayActionTime = Date.now();
+          // Update now playing immediately with this favorite's metadata
+          updateCurrentlyPlaying();
+
           const commandPromise = sendCommand(
             `/api/groups/${encodeURIComponent(groupId)}/favorites/play`,
             {
@@ -2088,16 +2087,46 @@ async function checkAuthAndInit() {
           if (success) {
             // Store the group ID before loadPlayers might clear it
             const savedGroupId = groupId;
+            // Load players before updating currently playing to ensure group state is fresh
             await loadPlayers(currentHouseholdId);
             // Restore the group ID if it was cleared
             if (!getSelectedGroupId() && savedGroupId) {
               setActiveGroup(savedGroupId, groupData.groupName || 'All Rooms');
             }
-            markActiveFavorite(entry.favorite.id);
-            setTimeout(() => {
-              updateCurrentlyPlaying();
-            }, 1000);
+            
+            // Retry logic: if status doesn't match expected favoriteId, retry after short delay
+            let retryCount = 0;
+            const maxRetries = 3;
+            const checkStatus = async () => {
+              try {
+                const response = await fetch(`/api/groups/${encodeURIComponent(savedGroupId)}/playback/status`);
+                if (response.ok) {
+                  const status = await response.json();
+                  if (status.activeFavoriteId === entry.favorite.id) {
+                    // Status matches, update UI
+                    updateCurrentlyPlaying();
+                  } else if (retryCount < maxRetries) {
+                    // Status doesn't match yet, retry
+                    retryCount++;
+                    setTimeout(checkStatus, 500);
+                  } else {
+                    // Max retries reached, update anyway
+                    updateCurrentlyPlaying();
+                  }
+                } else {
+                  updateCurrentlyPlaying();
+                }
+              } catch (error) {
+                console.error('Failed to check status:', error);
+                updateCurrentlyPlaying();
+              }
+            };
+            
+            // Check status after a short delay to allow server to update
+            setTimeout(checkStatus, 300);
           } else {
+            // Playback failed, clear active favorite
+            markActiveFavorite(null);
             updateFavoriteStatus(entry, FAVORITE_ERROR_MESSAGE);
           }
         } catch (error) {
@@ -2156,6 +2185,7 @@ async function checkAuthAndInit() {
 
       function markActiveFavorite(favoriteId) {
         currentActiveFavoriteId = favoriteId || null;
+        currentActiveFavoriteIdTimestamp = Date.now();
 
         favoritesRegistry.forEach((entry) => {
           if (entry.loading) {
@@ -2591,21 +2621,30 @@ async function checkAuthAndInit() {
             const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
 
             // Sync currentActiveFavoriteId with status to keep highlighted favorite in sync with now playing
-            // Use status.activeFavoriteId if available, otherwise fall back to currentActiveFavoriteId
-            // This handles cases where status hasn't updated yet but we know what's playing
+            // Use currentActiveFavoriteId as source of truth for display, only sync FROM status if status is newer/more reliable
             const statusActiveFavoriteId = status.activeFavoriteId;
-            // For display purposes, use status if available, otherwise fall back to currentActiveFavoriteId
-            const activeFavoriteId = (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) 
-              ? statusActiveFavoriteId 
-              : currentActiveFavoriteId;
             
-            // Sync currentActiveFavoriteId with status when status explicitly provides a value
-            if (statusActiveFavoriteId !== undefined) {
+            // For display purposes, prefer currentActiveFavoriteId (optimistic update)
+            // Only use status if it has a non-null value AND differs from current
+            let activeFavoriteId = currentActiveFavoriteId;
+            
+            // Only sync FROM status if:
+            // 1. Status has a non-null value (not null, not undefined)
+            // 2. Status value differs from current
+            // 3. Don't clear currentActiveFavoriteId if status returns null/undefined (might be stale)
+            if (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) {
               if (statusActiveFavoriteId !== currentActiveFavoriteId) {
+                // Status has a different non-null value - update to match
                 currentActiveFavoriteId = statusActiveFavoriteId;
+                currentActiveFavoriteIdTimestamp = Date.now();
                 markActiveFavorite(statusActiveFavoriteId);
+                activeFavoriteId = statusActiveFavoriteId;
+              } else {
+                // Status matches current - use it for display
+                activeFavoriteId = statusActiveFavoriteId;
               }
             }
+            // If status is null/undefined, keep using currentActiveFavoriteId (don't clear it - might be stale)
 
             let playlistName = null;
             let playlistImageUrl = null;
@@ -2872,10 +2911,19 @@ async function checkAuthAndInit() {
         clearInterval(playbackRefreshTimer);
         playbackRefreshTimer = setInterval(() => {
           if (isSonosConnected && getSelectedGroupId()) {
-            updateCurrentlyPlaying();
+            // Don't refresh if a play action just occurred (within last 2 seconds)
+            // This prevents refresh from overwriting correct metadata during play operations
+            const timeSinceLastPlayAction = Date.now() - lastPlayActionTime;
+            if (timeSinceLastPlayAction > 2000) {
+              updateCurrentlyPlaying();
+            }
           }
         }, 3000);
-        updateCurrentlyPlaying();
+        // Only update immediately if no recent play action
+        const timeSinceLastPlayAction = Date.now() - lastPlayActionTime;
+        if (timeSinceLastPlayAction > 2000) {
+          updateCurrentlyPlaying();
+        }
       }
       
       function stopPlaybackRefresh() {

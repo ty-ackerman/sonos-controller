@@ -614,6 +614,12 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
       }
     }
 
+    // Set active favorite BEFORE starting playback so status endpoint returns correct favoriteId immediately
+    activeFavoritesByGroup.set(groupId, {
+      favoriteId,
+      updatedAt: Date.now()
+    });
+
     await sonosRequest(`/groups/${encodedGroupId}/playback/playMode`, {
       method: 'POST',
       body: JSON.stringify({
@@ -626,11 +632,6 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
     });
 
     await sonosRequest(`/groups/${encodedGroupId}/playback/play`, { method: 'POST' });
-
-    activeFavoritesByGroup.set(groupId, {
-      favoriteId,
-      updatedAt: Date.now()
-    });
 
     res.json({ status: 'ok', favoriteId });
   } catch (error) {
