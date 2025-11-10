@@ -26,8 +26,20 @@ const SONOS_AUTH_BASE = 'https://api.sonos.com';
 const SONOS_CONTROL_BASE = 'https://api.ws.sonos.com/control/api/v1';
 const SCOPES = 'playback-control-all';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Get directory path for static files (only needed for local development)
+// In Netlify Functions, static files are served directly by Netlify, not Express
+// Avoid declaring __filename/__dirname to prevent conflicts with bundler-provided globals
+function getDirname() {
+  try {
+    // Try to use import.meta.url to get the directory
+    const currentFileUrl = import.meta.url;
+    const currentFilePath = fileURLToPath(currentFileUrl);
+    return path.dirname(currentFilePath);
+  } catch (error) {
+    // Fallback: use process.cwd()
+    return process.cwd();
+  }
+}
 
 const app = express();
 app.use(express.json());
@@ -99,7 +111,7 @@ app.use(/^\/(api|auth|healthz)/, async (req, res, next) => {
 });
 
 // Serve static files (only needed for local development, Netlify serves these directly)
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(getDirname(), 'public')));
 
 app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok' });
