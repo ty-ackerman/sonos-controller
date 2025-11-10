@@ -653,12 +653,21 @@ async function getRecommendedPlaylists(householdId) {
     console.log(`[Recommendations] Time/day matching rules: ${timeMatchingRules.length}`);
 
     // Separate rules into specific (with days) and general (without days)
-    const specificRules = timeMatchingRules.filter((rule) => 
-      rule.days !== null && rule.days !== undefined && Array.isArray(rule.days) && rule.days.length > 0
-    );
-    const generalRules = timeMatchingRules.filter((rule) => 
-      rule.days === null || rule.days === undefined || !Array.isArray(rule.days) || rule.days.length === 0
-    );
+    const specificRules = timeMatchingRules.filter((rule) => {
+      const isSpecific = rule.days !== null && rule.days !== undefined && Array.isArray(rule.days) && rule.days.length > 0;
+      if (isSpecific) {
+        console.log(`[Recommendations] Specific rule found: ID ${rule.id}, days: [${rule.days.join(',')}], time: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(',')}]`);
+      }
+      return isSpecific;
+    });
+    
+    const generalRules = timeMatchingRules.filter((rule) => {
+      const isGeneral = rule.days === null || rule.days === undefined || !Array.isArray(rule.days) || rule.days.length === 0;
+      if (isGeneral) {
+        console.log(`[Recommendations] General rule found: ID ${rule.id}, days: all, time: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(',')}]`);
+      }
+      return isGeneral;
+    });
 
     // Priority: Use specific rules if available, otherwise fall back to general rules
     // Specific rules override general rules for the same time period
@@ -667,16 +676,24 @@ async function getRecommendedPlaylists(householdId) {
     console.log(`[Recommendations] Specific rules: ${specificRules.length}, General rules: ${generalRules.length}, Using: ${matchingRules.length}`);
     
     if (specificRules.length > 0 && generalRules.length > 0) {
-      console.log(`[Recommendations] Specific rules override general rules for current time/day`);
+      console.log(`[Recommendations] ⚠️ Specific rules override general rules for current time/day`);
+      console.log(`[Recommendations] ⚠️ Ignoring ${generalRules.length} general rule(s) in favor of ${specificRules.length} specific rule(s)`);
+    } else if (specificRules.length > 0) {
+      console.log(`[Recommendations] ✓ Using ${specificRules.length} specific rule(s)`);
+    } else if (generalRules.length > 0) {
+      console.log(`[Recommendations] ✓ Using ${generalRules.length} general rule(s) (no specific rules match)`);
     }
 
     // Collect all allowed vibes from matching rules
     const allowedVibes = new Set();
     matchingRules.forEach((rule) => {
       rule.allowed_vibes.forEach((vibe) => allowedVibes.add(vibe));
+      const ruleType = specificRules.includes(rule) ? 'SPECIFIC' : 'GENERAL';
+      console.log(`[Recommendations] Adding vibes from ${ruleType} rule ID ${rule.id}: [${rule.allowed_vibes.join(', ')}]`);
     });
 
-    console.log(`[Recommendations] Allowed vibes: ${Array.from(allowedVibes).join(', ')}`);
+    console.log(`[Recommendations] Final allowed vibes: ${Array.from(allowedVibes).join(', ')}`);
+    console.log(`[Recommendations] Rules used: ${matchingRules.map(r => `ID ${r.id} (${specificRules.includes(r) ? 'specific' : 'general'})`).join(', ')}`);
 
     // If no rules match, return empty recommendations
     if (allowedVibes.size === 0) {
