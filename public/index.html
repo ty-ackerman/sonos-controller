@@ -80,13 +80,22 @@
         gap: 24px;
       }
 
+      .header-wrapper {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        background: var(--bg-secondary);
+        margin: -20px -20px 0 -20px;
+        padding: 12px 20px;
+        border-bottom: 1px solid var(--border-color);
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      }
+
       .header-container {
         display: grid;
         grid-template-columns: 40px 1fr 40px;
         align-items: center;
         gap: 12px;
-        margin-bottom: 8px;
-        position: relative;
       }
 
       .hamburger-menu-btn {
@@ -1158,13 +1167,15 @@
     </div>
 
     <main class="container">
-      <div class="header-container">
-        <button id="hamburger-menu-btn" class="hamburger-menu-btn" type="button" aria-label="Open menu">
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
-        <h1>Sonos Controller</h1>
+      <div class="header-wrapper">
+        <div class="header-container">
+          <button id="hamburger-menu-btn" class="hamburger-menu-btn" type="button" aria-label="Open menu">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+          <h1>Sonos Controller</h1>
+        </div>
       </div>
       <p id="status" class="status disconnected">Checking connection…</p>
       <div id="feedback" class="feedback"></div>
