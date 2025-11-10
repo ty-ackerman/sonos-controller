@@ -27,33 +27,64 @@ export async function loadSpeakerVolumes() {
   }
 }
 
+export async function deleteSpeakerVolumes(playerIds) {
+  try {
+    if (!Array.isArray(playerIds) || playerIds.length === 0) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('speaker_volumes')
+      .delete()
+      .in('player_id', playerIds);
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error deleting speaker volumes:', error);
+    throw error;
+  }
+}
+
 export async function saveSpeakerVolumes(map) {
   try {
     const sanitized = {};
     const rows = [];
+    const toDelete = [];
 
     Object.entries(map || {}).forEach(([playerId, value]) => {
+      // Handle null/undefined/empty string as deletion
+      if (value === null || value === undefined || value === '') {
+        toDelete.push(playerId);
+        return;
+      }
+
       const numeric = Number(value);
-      const normalized = Number.isFinite(numeric) ? numeric : 0;
-      const volume = Math.max(0, Math.min(100, normalized));
-      sanitized[playerId] = volume;
-      rows.push({
-        player_id: playerId,
-        volume: volume
-      });
+      if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+        const normalized = Math.max(0, Math.min(100, numeric));
+        sanitized[playerId] = normalized;
+        rows.push({
+          player_id: playerId,
+          volume: normalized
+        });
+      }
     });
 
-    if (rows.length === 0) {
-      return sanitized;
+    // Delete volumes that were cleared
+    if (toDelete.length > 0) {
+      await deleteSpeakerVolumes(toDelete);
     }
 
-    // Upsert all volumes
-    const { error } = await supabase
-      .from('speaker_volumes')
-      .upsert(rows, { onConflict: 'player_id' });
+    // Upsert remaining volumes
+    if (rows.length > 0) {
+      const { error } = await supabase
+        .from('speaker_volumes')
+        .upsert(rows, { onConflict: 'player_id' });
 
-    if (error) {
-      throw error;
+      if (error) {
+        throw error;
+      }
     }
 
     return sanitized;

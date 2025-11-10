@@ -502,27 +502,32 @@ app.get('/api/favorites', async (req, res) => {
   }
 });
 
-app.get('/api/settings/volumes', (_req, res) => {
-  res.json(speakerVolumes);
+app.get('/api/settings/volumes', async (_req, res) => {
+  try {
+    // Reload from database to ensure fresh data across devices
+    const volumes = await loadSpeakerVolumes();
+    // Update cache to keep it in sync
+    speakerVolumes = volumes;
+    res.json(volumes);
+  } catch (error) {
+    console.error('Error loading speaker volumes:', error);
+    // Fallback to cached value if database load fails
+    res.json(speakerVolumes || {});
+  }
 });
 
 app.put('/api/settings/volumes', async (req, res) => {
   try {
     const incoming = req.body ?? {};
-    const sanitized = {};
-    Object.entries(incoming).forEach(([playerId, value]) => {
-      const numeric = Number(value);
-      if (!Number.isNaN(numeric)) {
-        const normalized = Math.max(0, Math.min(100, numeric));
-        sanitized[playerId] = normalized;
-      }
-    });
-
-    // Save updated volumes to database (upsert updates existing, adds new)
-    await saveSpeakerVolumes(sanitized);
-    // Merge updated volumes into cache to keep it in sync
-    speakerVolumes = { ...speakerVolumes, ...sanitized };
-    res.json(speakerVolumes);
+    // Pass the raw incoming data to handle null/empty values for deletion
+    // saveSpeakerVolumes will handle sanitization and deletion
+    const saved = await saveSpeakerVolumes(incoming);
+    
+    // Reload from database to get the complete current state (including deletions)
+    const volumes = await loadSpeakerVolumes();
+    // Update cache to keep it in sync
+    speakerVolumes = volumes;
+    res.json(volumes);
   } catch (error) {
     res
       .status(400)

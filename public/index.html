@@ -1651,9 +1651,16 @@ async function checkAuthAndInit() {
         }
 
         try {
+          // Always fetch fresh data from the database when settings panel loads
+          // This ensures settings saved on other devices are immediately visible
           const [snapshot, defaults] = await Promise.all([
             fetchGroupsPlayers(householdId),
-            fetch('/api/settings/volumes').then((response) => {
+            fetch('/api/settings/volumes', {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache'
+              }
+            }).then((response) => {
               if (!response.ok) {
                 throw new Error('Failed to load saved volumes');
               }
@@ -1749,9 +1756,9 @@ async function checkAuthAndInit() {
                 }
 
                 const value = input.value.trim();
-                if (value !== '') {
-                  payload[playerId] = Number(value);
-                }
+                // Send all players: empty string for cleared values, number for set values
+                // This allows the backend to delete volumes that are cleared
+                payload[playerId] = value !== '' ? Number(value) : '';
               });
 
               const response = await fetch('/api/settings/volumes', {
