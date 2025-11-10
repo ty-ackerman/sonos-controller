@@ -772,60 +772,6 @@
         place-items: center;
       }
 
-      .currently-playing-play-btn {
-        width: 56px;
-        height: 56px;
-        border-radius: 50%;
-        background: var(--bg-primary);
-        border: 2px solid var(--border-color);
-        color: var(--text-primary);
-        display: grid;
-        place-items: center;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        flex-shrink: 0;
-        box-shadow: var(--shadow-sm);
-        padding: 0;
-      }
-
-
-
-      .currently-playing-play-btn svg {
-        width: 24px;
-        height: 24px;
-        display: block;
-      }
-
-      .currently-playing-play-btn .play-icon {
-        fill: currentColor;
-      }
-
-      .currently-playing-play-btn .pause-icon {
-        display: none;
-        stroke: currentColor;
-        stroke-width: 2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-      }
-
-      .currently-playing-play-btn.playing .play-icon {
-        display: none;
-      }
-
-      .currently-playing-play-btn.playing .pause-icon {
-        display: block;
-      }
-
-      /* Hide play button when expanded */
-      .currently-playing.expanded .currently-playing-play-btn {
-        display: none;
-      }
-
-      .currently-playing-play-btn:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        transform: none;
-      }
 
       .currently-playing-volume {
         flex-direction: column;
@@ -1045,43 +991,6 @@
         fill: currentColor;
       }
 
-      .playback-control-btn.play-pause {
-        width: 56px;
-        height: 56px;
-        background: var(--bg-primary);
-        border: 2px solid var(--border-color);
-        box-shadow: var(--shadow-sm);
-      }
-
-
-      .playback-control-btn.play-pause.playing {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: var(--bg-primary);
-      }
-
-
-      .playback-control-btn.play-pause svg {
-        width: 24px;
-        height: 24px;
-      }
-
-      /* Show/hide play/pause icons in expanded section */
-      .playback-control-btn.play-pause #play-icon {
-        display: block;
-      }
-
-      .playback-control-btn.play-pause #pause-icon {
-        display: none;
-      }
-
-      .playback-control-btn.play-pause.playing #play-icon {
-        display: none;
-      }
-
-      .playback-control-btn.play-pause.playing #pause-icon {
-        display: block;
-      }
 
       .currently-playing-master-volume {
         display: flex;
@@ -1810,30 +1719,12 @@
               <span>🔊</span>
               <span class="currently-playing-group-count" id="currently-playing-group-count" style="display: none;">1</span>
             </div>
-            <button class="currently-playing-play-btn" id="currently-playing-play-btn" type="button">
-              <svg class="play-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              <svg class="pause-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="6" y="4" width="4" height="16" rx="1"/>
-                <rect x="14" y="4" width="4" height="16" rx="1"/>
-              </svg>
-            </button>
           </div>
         </div>
         <div class="currently-playing-playback-controls" id="currently-playing-playback-controls">
           <button class="playback-control-btn" id="playback-prev-btn" type="button" aria-label="Previous">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
-            </svg>
-          </button>
-          <button class="playback-control-btn play-pause" id="playback-play-pause-btn" type="button" aria-label="Play/Pause">
-            <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
-            <svg id="pause-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: none;">
-              <rect x="6" y="4" width="4" height="16" rx="1"/>
-              <rect x="14" y="4" width="4" height="16" rx="1"/>
             </svg>
           </button>
           <button class="playback-control-btn" id="playback-next-btn" type="button" aria-label="Next">
@@ -1883,7 +1774,6 @@
       const currentlyPlayingArtist = document.getElementById('currently-playing-artist');
       const currentlyPlayingGroupIndicator = document.getElementById('currently-playing-group-indicator');
       const currentlyPlayingGroupCount = document.getElementById('currently-playing-group-count');
-      const currentlyPlayingPlayBtn = document.getElementById('currently-playing-play-btn');
       const currentlyPlayingVolume = document.getElementById('currently-playing-volume');
       const currentlyPlayingRoomsList = document.getElementById('currently-playing-rooms-list');
       const recommendedPlaylistContainer = document.getElementById('recommended-playlist-container');
@@ -1902,10 +1792,7 @@
       
       // Playback controls in now-playing section
       const playbackPrevBtn = document.getElementById('playback-prev-btn');
-      const playbackPlayPauseBtn = document.getElementById('playback-play-pause-btn');
       const playbackNextBtn = document.getElementById('playback-next-btn');
-      const playIcon = document.getElementById('play-icon');
-      const pauseIcon = document.getElementById('pause-icon');
       
       // Master volume controls
       const masterVolumeSlider = document.getElementById('master-volume-slider');
@@ -1954,8 +1841,6 @@ settingsStatusLabel.textContent = '';
       let currentVibeFilter = null;
       let playbackRefreshTimer = null;
       let currentPlaybackState = null;
-      // Track playback state locally (since API is unreliable)
-      let trackedPlaybackState = null; // 'PLAYING' | 'PAUSED' | null
       let currentImageUrl = null;
       let lastPlayActionTime = 0; // Track when last play action occurred to prevent refresh interference
 
@@ -2088,10 +1973,6 @@ async function checkAuthAndInit() {
         await handlePlaybackAction('previous');
       });
 
-      playbackPlayPauseBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await handlePlaybackAction('playpause');
-      });
 
       playbackNextBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -3462,21 +3343,7 @@ async function checkAuthAndInit() {
           return;
         }
 
-        // Track state change for play/pause - toggle based on current tracked state
-        if (action === 'playpause') {
-          // Determine current state to toggle from
-          const currentIsPlaying = trackedPlaybackState === 'PLAYING' || (trackedPlaybackState === null && currentPlaybackState?.playbackState === 'PLAYING');
-          // Toggle tracked state
-          if (currentIsPlaying) {
-            trackedPlaybackState = 'PAUSED';
-          } else {
-            trackedPlaybackState = 'PLAYING';
-          }
-          console.log('[PlayPause] Tracked state after toggle:', trackedPlaybackState, '(was playing:', currentIsPlaying + ')');
-        }
-
         const endpoints = {
-          playpause: `/api/groups/${encodeURIComponent(groupId)}/playpause`,
           next: `/api/groups/${encodeURIComponent(groupId)}/next`,
           previous: `/api/groups/${encodeURIComponent(groupId)}/previous`
         };
@@ -3802,40 +3669,10 @@ async function checkAuthAndInit() {
             }
           }
           
-          // Use tracked state if available (more reliable than API), otherwise use normalized API state
-          let playbackState;
-          if (trackedPlaybackState !== null) {
-            // Use tracked state (from user actions) - this is more reliable than the API
-            playbackState = trackedPlaybackState;
-            console.log('[PlayPause] Using tracked state:', trackedPlaybackState, '(API said:', normalizedApiState + ')');
-          } else if (normalizedApiState === 'STOPPED') {
-            // API says STOPPED - trust it
-            playbackState = 'STOPPED';
-            trackedPlaybackState = 'STOPPED';
-            console.log('[PlayPause] Using API STOPPED state');
-          } else if (normalizedApiState === 'PAUSED') {
-            // API says PAUSED - trust it
-            playbackState = 'PAUSED';
-            trackedPlaybackState = 'PAUSED';
-            console.log('[PlayPause] Using API PAUSED state');
-          } else {
-            // API says PLAYING but we have no tracked state - initialize to PLAYING
-            // (This happens on first load when music is already playing)
-            playbackState = 'PLAYING';
-            trackedPlaybackState = 'PLAYING';
-            console.log('[PlayPause] Initializing tracked state to PLAYING (first load, API:', normalizedApiState + ')');
-          }
+          // Use normalized API state for playback state
+          let playbackState = normalizedApiState;
           
           const isPlaying = playbackState === 'PLAYING';
-          
-          // DEBUG: Play/Pause state
-          console.log('[PlayPause] State check:', {
-            apiPlaybackState: status.playbackState || status.state || 'STOPPED',
-            finalPlaybackState: playbackState,
-            trackedPlaybackState,
-            isPlaying,
-            statusKeys: Object.keys(status)
-          });
           
           const item = status.currentItem || status.item || status.playback?.currentItem || null;
           const track = item?.track || item?.container?.metadata || status.track || null;
@@ -4005,40 +3842,6 @@ async function checkAuthAndInit() {
             // Toggle play/pause icon for right-side button using CSS classes
             // When isPlaying is true, show pause icon (add .playing class)
             // When isPlaying is false, show play icon (remove .playing class)
-            const hadPlayingClass = currentlyPlayingPlayBtn.classList.contains('playing');
-            if (isPlaying) {
-              currentlyPlayingPlayBtn.classList.add('playing');
-            } else {
-              currentlyPlayingPlayBtn.classList.remove('playing');
-            }
-            const hasPlayingClass = currentlyPlayingPlayBtn.classList.contains('playing');
-            
-            // Update playback controls in expanded section using CSS classes
-            const hadExpandedPlayingClass = playbackPlayPauseBtn.classList.contains('playing');
-            if (isPlaying) {
-              playbackPlayPauseBtn.classList.add('playing');
-            } else {
-              playbackPlayPauseBtn.classList.remove('playing');
-            }
-            const hasExpandedPlayingClass = playbackPlayPauseBtn.classList.contains('playing');
-            
-            // DEBUG: Button state updates
-            console.log('[PlayPause] Button updates:', {
-              isPlaying,
-              playbackState,
-              rightButton: {
-                exists: !!currentlyPlayingPlayBtn,
-                hadPlaying: hadPlayingClass,
-                hasPlaying: hasPlayingClass,
-                classList: Array.from(currentlyPlayingPlayBtn.classList)
-              },
-              expandedButton: {
-                exists: !!playbackPlayPauseBtn,
-                hadPlaying: hadExpandedPlayingClass,
-                hasPlaying: hasExpandedPlayingClass,
-                classList: Array.from(playbackPlayPauseBtn.classList)
-              }
-            });
 
             // Update master volume from group volume
             const groupVolume = status.volume || 0;
@@ -4168,7 +3971,6 @@ async function checkAuthAndInit() {
       // Use event delegation on the panel itself - simpler and more reliable
       currentlyPlayingPanel.addEventListener('click', (e) => {
         // Don't toggle if clicking on interactive elements
-        const playBtn = e.target.closest('.currently-playing-play-btn');
         const roomVolume = e.target.closest('.currently-playing-room-volume');
         const roomSlider = e.target.closest('.currently-playing-room-slider');
         const rangeInput = e.target.closest('input[type="range"]');
@@ -4176,7 +3978,7 @@ async function checkAuthAndInit() {
         const playbackControlBtn = e.target.closest('.playback-control-btn');
         const masterVolume = e.target.closest('.currently-playing-master-volume');
         
-        if (playBtn || roomVolume || roomSlider || rangeInput || playbackControls || playbackControlBtn || masterVolume) {
+        if (roomVolume || roomSlider || rangeInput || playbackControls || playbackControlBtn || masterVolume) {
           return;
         }
         
@@ -4252,28 +4054,6 @@ async function checkAuthAndInit() {
         }, 150);
       }, { passive: true });
 
-      currentlyPlayingPlayBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const groupId = getSelectedGroupId();
-        if (!groupId) {
-          return;
-        }
-        
-        const wasPlaying = currentlyPlayingPlayBtn.classList.contains('playing');
-        currentlyPlayingPlayBtn.disabled = true;
-        
-        try {
-          await handlePlaybackAction('playpause');
-          setTimeout(() => {
-            updateCurrentlyPlaying();
-            currentlyPlayingPlayBtn.disabled = false;
-          }, 600);
-        } catch (error) {
-          console.error('Playback toggle failed:', error);
-          currentlyPlayingPlayBtn.disabled = false;
-          setTimeout(() => updateCurrentlyPlaying(), 500);
-        }
-      });
 
       function setActiveGroup(groupId, name, { refreshFavorites = false } = {}) {
         currentGroupId = groupId || null;
