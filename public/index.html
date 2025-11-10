@@ -2591,14 +2591,20 @@ async function checkAuthAndInit() {
             const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
 
             // Sync currentActiveFavoriteId with status to keep highlighted favorite in sync with now playing
-            const activeFavoriteId = status.activeFavoriteId || null;
-            if (activeFavoriteId !== currentActiveFavoriteId) {
-              currentActiveFavoriteId = activeFavoriteId;
-              markActiveFavorite(activeFavoriteId);
-            } else if (activeFavoriteId === null && currentActiveFavoriteId !== null) {
-              // Clear active favorite if status says there's none (e.g., Spotify playlist)
-              currentActiveFavoriteId = null;
-              markActiveFavorite(null);
+            // Use status.activeFavoriteId if available, otherwise fall back to currentActiveFavoriteId
+            // This handles cases where status hasn't updated yet but we know what's playing
+            const statusActiveFavoriteId = status.activeFavoriteId;
+            // For display purposes, use status if available, otherwise fall back to currentActiveFavoriteId
+            const activeFavoriteId = (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) 
+              ? statusActiveFavoriteId 
+              : currentActiveFavoriteId;
+            
+            // Sync currentActiveFavoriteId with status when status explicitly provides a value
+            if (statusActiveFavoriteId !== undefined) {
+              if (statusActiveFavoriteId !== currentActiveFavoriteId) {
+                currentActiveFavoriteId = statusActiveFavoriteId;
+                markActiveFavorite(statusActiveFavoriteId);
+              }
             }
 
             let playlistName = null;
