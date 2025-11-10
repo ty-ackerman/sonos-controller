@@ -26,9 +26,20 @@ CREATE TABLE IF NOT EXISTS playlist_vibes (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Table for storing vibe time rules
+CREATE TABLE IF NOT EXISTS vibe_time_rules (
+  id SERIAL PRIMARY KEY,
+  start_hour INTEGER NOT NULL CHECK (start_hour >= 0 AND start_hour <= 23),
+  end_hour INTEGER NOT NULL CHECK (end_hour >= 0 AND end_hour <= 23),
+  allowed_vibes TEXT[] NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_speaker_volumes_updated_at ON speaker_volumes(updated_at);
 CREATE INDEX IF NOT EXISTS idx_playlist_vibes_updated_at ON playlist_vibes(updated_at);
+CREATE INDEX IF NOT EXISTS idx_vibe_time_rules_updated_at ON vibe_time_rules(updated_at);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -47,6 +58,9 @@ CREATE TRIGGER update_speaker_volumes_updated_at BEFORE UPDATE ON speaker_volume
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_playlist_vibes_updated_at BEFORE UPDATE ON playlist_vibes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_vibe_time_rules_updated_at BEFORE UPDATE ON vibe_time_rules
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert initial token row if it doesn't exist

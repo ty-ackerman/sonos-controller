@@ -6,6 +6,11 @@ import { fileURLToPath } from 'url';
 import { loadTokens, saveTokens, clearTokens } from './tokenStore.js';
 import { loadSpeakerVolumes, saveSpeakerVolumes } from './settingsStore.js';
 import { loadPlaylistVibes, savePlaylistVibes } from './playlistVibesStore.js';
+import {
+  loadVibeTimeRules,
+  saveVibeTimeRule,
+  deleteVibeTimeRule
+} from './vibeTimeRulesStore.js';
 
 // Use native fetch (Node.js 18+) - Netlify Functions supports it
 // No need to import node-fetch which causes bundling issues
@@ -548,6 +553,147 @@ app.put('/api/playlist-vibes', async (req, res) => {
     res
       .status(400)
       .json({ error: 'playlist_vibes_save_failed', detail: error?.message ?? String(error) });
+  }
+});
+
+// Vibe time rules endpoints
+app.get('/api/vibe-time-rules', async (_req, res) => {
+  try {
+    const rules = await loadVibeTimeRules();
+    res.json(rules);
+  } catch (error) {
+    console.error('Error loading vibe time rules:', error);
+    res.status(500).json({ error: 'Failed to load vibe time rules', detail: error?.message ?? String(error) });
+  }
+});
+
+app.post('/api/vibe-time-rules', async (req, res) => {
+  try {
+    const rule = req.body ?? {};
+    const saved = await saveVibeTimeRule(rule);
+    res.json(saved);
+  } catch (error) {
+    res
+      .status(400)
+      .json({ error: 'vibe_time_rule_save_failed', detail: error?.message ?? String(error) });
+  }
+});
+
+app.put('/api/vibe-time-rules/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid rule ID' });
+    }
+    const rule = { ...req.body, id };
+    const saved = await saveVibeTimeRule(rule);
+    res.json(saved);
+  } catch (error) {
+    res
+      .status(400)
+      .json({ error: 'vibe_time_rule_save_failed', detail: error?.message ?? String(error) });
+  }
+});
+
+app.delete('/api/vibe-time-rules/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid rule ID' });
+    }
+    await deleteVibeTimeRule(id);
+    res.json({ success: true });
+  } catch (error) {
+    res
+      .status(400)
+      .json({ error: 'vibe_time_rule_delete_failed', detail: error?.message ?? String(error) });
+  }
+});
+
+// Helper function to get recommended playlists based on current time
+async function getRecommendedPlaylists(householdId) {
+  try {
+    // Get current hour (0-23)
+    const now = new Date();
+    const currentHour = now.getHours();
+
+    // Load time rules and find matching ones
+    const rules = await loadVibeTimeRules();
+    const matchingRules = rules.filter((rule) => {
+      // Handle time ranges that span midnight (e.g., 22-6)
+      if (rule.start_hour <= rule.end_hour) {
+        return currentHour >= rule.start_hour && currentHour < rule.end_hour;
+      } else {
+        // Wraps around midnight
+        return currentHour >= rule.start_hour || currentHour < rule.end_hour;
+      }
+    });
+
+    // Collect all allowed vibes from matching rules
+    const allowedVibes = new Set();
+    matchingRules.forEach((rule) => {
+      rule.allowed_vibes.forEach((vibe) => allowedVibes.add(vibe));
+    });
+
+    // If no rules match, return empty recommendations
+    if (allowedVibes.size === 0) {
+      return {
+        primary: null,
+        alternatives: [],
+        currentRule: null
+      };
+    }
+
+    // Get all favorites
+    const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`);
+    const payload = await response.json();
+    const favorites = Array.isArray(payload.items) ? payload.items : [];
+
+    // Load playlist vibes
+    const vibes = await loadPlaylistVibes();
+
+    // Filter favorites by allowed vibes
+    const matchingPlaylists = favorites.filter((favorite) => {
+      const vibe = vibes[favorite.id];
+      return vibe && allowedVibes.has(vibe);
+    });
+
+    if (matchingPlaylists.length === 0) {
+      return {
+        primary: null,
+        alternatives: [],
+        currentRule: matchingRules.length > 0 ? matchingRules[0] : null
+      };
+    }
+
+    // Randomly select primary recommendation
+    const primaryIndex = Math.floor(Math.random() * matchingPlaylists.length);
+    const primary = matchingPlaylists[primaryIndex];
+    const alternatives = matchingPlaylists.filter((_, index) => index !== primaryIndex);
+
+    return {
+      primary,
+      alternatives,
+      currentRule: matchingRules.length > 0 ? matchingRules[0] : null
+    };
+  } catch (error) {
+    console.error('Error getting recommended playlists:', error);
+    throw error;
+  }
+}
+
+app.get('/api/playlist-recommendations', async (req, res) => {
+  try {
+    const preferredHousehold =
+      typeof req.query.householdId === 'string' && req.query.householdId.trim().length > 0
+        ? req.query.householdId.trim()
+        : undefined;
+    const householdId = await resolveHouseholdId(preferredHousehold);
+
+    const recommendations = await getRecommendedPlaylists(householdId);
+    res.json(recommendations);
+  } catch (error) {
+    handleProxyError(res, error);
   }
 });
 

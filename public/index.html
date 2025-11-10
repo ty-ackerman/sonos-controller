@@ -1055,6 +1055,376 @@
         color: var(--text-secondary);
         font-variant-numeric: tabular-nums;
       }
+
+      .playlist-management-section {
+        margin-bottom: 32px;
+      }
+
+      .time-rules-section {
+        margin-top: 32px;
+        padding-top: 32px;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .time-rules-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .time-rule-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        gap: 12px;
+      }
+
+      .time-rule-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .time-rule-time {
+        font-size: 0.9375rem;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .time-rule-vibes {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+      }
+
+      .time-rule-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .time-rule-actions button {
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-size: 0.8125rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .time-rule-actions button:hover {
+        background: var(--bg-primary);
+      }
+
+      .time-rule-actions button.delete {
+        color: var(--error);
+      }
+
+      .time-rule-actions button.delete:hover {
+        background: var(--error);
+        color: var(--bg-primary);
+      }
+
+      .add-rule-btn {
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--accent);
+        color: var(--bg-primary);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .add-rule-btn:hover {
+        background: var(--accent-hover);
+      }
+
+      .time-rule-editor {
+        margin-top: 16px;
+        padding: 16px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+
+      .time-rule-editor-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 16px;
+      }
+
+      .time-rule-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .time-rule-field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .time-rule-field label {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .time-rule-field select {
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+      }
+
+      .time-rule-vibes {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .time-rule-vibe-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        font-size: 0.875rem;
+        color: var(--text-primary);
+      }
+
+      .time-rule-vibe-checkbox input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+        accent-color: var(--accent);
+      }
+
+      .time-rule-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .time-rule-actions button {
+        padding: 8px 16px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .time-rule-actions button:hover {
+        background: var(--bg-primary);
+      }
+
+      .time-rule-actions button:first-child {
+        background: var(--accent);
+        color: var(--bg-primary);
+      }
+
+      .time-rule-actions button:first-child:hover {
+        background: var(--accent-hover);
+      }
+
+      .playlist-recommendations {
+        margin-top: 16px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border-color);
+      }
+
+      .recommendation-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .recommendation-title {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .recommendation-rule-info {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+        margin-bottom: 12px;
+      }
+
+      .recommended-playlist {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin-bottom: 12px;
+      }
+
+      .recommended-playlist-art {
+        width: 48px;
+        height: 48px;
+        border-radius: 6px;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: var(--bg-tertiary);
+        display: grid;
+        place-items: center;
+      }
+
+      .recommended-playlist-art img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .recommended-playlist-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .recommended-playlist-name {
+        font-size: 0.9375rem;
+        font-weight: 500;
+        color: var(--text-primary);
+        margin-bottom: 2px;
+      }
+
+      .recommended-playlist-vibe {
+        font-size: 0.8125rem;
+        color: var(--text-secondary);
+      }
+
+      .recommended-playlist-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .recommended-playlist-actions button {
+        padding: 8px 16px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--accent);
+        color: var(--bg-primary);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .recommended-playlist-actions button:hover {
+        background: var(--accent-hover);
+      }
+
+      .recommended-playlist-actions button.secondary {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+      }
+
+      .recommended-playlist-actions button.secondary:hover {
+        background: var(--bg-primary);
+      }
+
+      .alternatives-dropdown {
+        margin-top: 12px;
+      }
+
+      .alternatives-toggle {
+        width: 100%;
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        cursor: pointer;
+        text-align: left;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .alternatives-toggle:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .alternatives-list {
+        margin-top: 8px;
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .alternatives-list.visible {
+        display: flex;
+      }
+
+      .alternative-playlist {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .alternative-playlist:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .alternative-playlist-art {
+        width: 40px;
+        height: 40px;
+        border-radius: 4px;
+        overflow: hidden;
+        flex-shrink: 0;
+        background: var(--bg-tertiary);
+        display: grid;
+        place-items: center;
+      }
+
+      .alternative-playlist-art img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .alternative-playlist-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .alternative-playlist-name {
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .alternative-playlist-vibe {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+      }
     </style>
   </head>
   <body>
@@ -1071,6 +1441,7 @@
       </div>
       <div class="menu-items">
         <button id="menu-item-controls" class="menu-item active" type="button">Controls</button>
+        <button id="menu-item-playlist-management" class="menu-item" type="button">Playlist Management</button>
         <button id="menu-item-settings" class="menu-item" type="button">Settings</button>
       </div>
       <div class="menu-signout">
@@ -1105,6 +1476,104 @@
             <div id="vibe-filters" class="vibe-filters"></div>
             <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
             <div id="favorites-grid" class="favorites-grid"></div>
+          </div>
+        </section>
+
+        <section id="panel-playlist-management" class="hidden">
+          <div class="playlist-management-section">
+            <h3 class="section-title">Playlists</h3>
+            <p id="playlist-management-status" class="favorites-status">Sign in to load playlists.</p>
+            <div id="playlist-management-grid" class="favorites-grid"></div>
+          </div>
+          <div class="time-rules-section">
+            <h3 class="section-title">Time-Based Rules</h3>
+            <p class="favorites-status">Configure which vibes are allowed at different times of day.</p>
+            <div id="time-rules-list"></div>
+            <button id="add-time-rule-btn" type="button" class="add-rule-btn">Add Rule</button>
+            <div id="time-rule-editor" class="time-rule-editor hidden">
+              <h4 class="time-rule-editor-title">Edit Time Rule</h4>
+              <div class="time-rule-form">
+                <div class="time-rule-field">
+                  <label>Start Hour</label>
+                  <select id="time-rule-start-hour">
+                    <option value="0">12:00 AM</option>
+                    <option value="1">1:00 AM</option>
+                    <option value="2">2:00 AM</option>
+                    <option value="3">3:00 AM</option>
+                    <option value="4">4:00 AM</option>
+                    <option value="5">5:00 AM</option>
+                    <option value="6">6:00 AM</option>
+                    <option value="7">7:00 AM</option>
+                    <option value="8">8:00 AM</option>
+                    <option value="9">9:00 AM</option>
+                    <option value="10">10:00 AM</option>
+                    <option value="11">11:00 AM</option>
+                    <option value="12">12:00 PM</option>
+                    <option value="13">1:00 PM</option>
+                    <option value="14">2:00 PM</option>
+                    <option value="15">3:00 PM</option>
+                    <option value="16">4:00 PM</option>
+                    <option value="17">5:00 PM</option>
+                    <option value="18">6:00 PM</option>
+                    <option value="19">7:00 PM</option>
+                    <option value="20">8:00 PM</option>
+                    <option value="21">9:00 PM</option>
+                    <option value="22">10:00 PM</option>
+                    <option value="23">11:00 PM</option>
+                  </select>
+                </div>
+                <div class="time-rule-field">
+                  <label>End Hour</label>
+                  <select id="time-rule-end-hour">
+                    <option value="0">12:00 AM</option>
+                    <option value="1">1:00 AM</option>
+                    <option value="2">2:00 AM</option>
+                    <option value="3">3:00 AM</option>
+                    <option value="4">4:00 AM</option>
+                    <option value="5">5:00 AM</option>
+                    <option value="6">6:00 AM</option>
+                    <option value="7">7:00 AM</option>
+                    <option value="8">8:00 AM</option>
+                    <option value="9">9:00 AM</option>
+                    <option value="10">10:00 AM</option>
+                    <option value="11">11:00 AM</option>
+                    <option value="12">12:00 PM</option>
+                    <option value="13">1:00 PM</option>
+                    <option value="14">2:00 PM</option>
+                    <option value="15">3:00 PM</option>
+                    <option value="16">4:00 PM</option>
+                    <option value="17">5:00 PM</option>
+                    <option value="18">6:00 PM</option>
+                    <option value="19">7:00 PM</option>
+                    <option value="20">8:00 PM</option>
+                    <option value="21">9:00 PM</option>
+                    <option value="22">10:00 PM</option>
+                    <option value="23">11:00 PM</option>
+                  </select>
+                </div>
+                <div class="time-rule-field">
+                  <label>Allowed Vibes</label>
+                  <div class="time-rule-vibes">
+                    <label class="time-rule-vibe-checkbox">
+                      <input type="checkbox" value="Down" id="time-rule-vibe-down">
+                      <span>Down</span>
+                    </label>
+                    <label class="time-rule-vibe-checkbox">
+                      <input type="checkbox" value="Down/Mid" id="time-rule-vibe-down-mid">
+                      <span>Down/Mid</span>
+                    </label>
+                    <label class="time-rule-vibe-checkbox">
+                      <input type="checkbox" value="Mid" id="time-rule-vibe-mid">
+                      <span>Mid</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="time-rule-actions">
+                  <button id="time-rule-save-btn" type="button">Save</button>
+                  <button id="time-rule-cancel-btn" type="button">Cancel</button>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -1184,6 +1653,14 @@
           </div>
           <div id="currently-playing-rooms-list"></div>
         </div>
+        <div class="playlist-recommendations" id="playlist-recommendations">
+          <div class="recommendation-header">
+            <div class="recommendation-title">Recommended Playlist</div>
+          </div>
+          <div id="recommendation-rule-info" class="recommendation-rule-info"></div>
+          <div id="recommended-playlist-container"></div>
+          <div id="alternatives-dropdown" class="alternatives-dropdown"></div>
+        </div>
       </div>
     </main>
 
@@ -1201,6 +1678,7 @@
       const panelsContainer = document.getElementById('app-panels');
       const panelControl = document.getElementById('panel-control');
       const panelSettings = document.getElementById('panel-settings');
+      const panelPlaylistManagement = document.getElementById('panel-playlist-management');
       const householdTitle = document.getElementById('household-title');
       const favoritesGrid = document.getElementById('favorites-grid');
       const favoritesStatus = document.getElementById('favorites-status');
@@ -1215,6 +1693,9 @@
       const currentlyPlayingPlayBtn = document.getElementById('currently-playing-play-btn');
       const currentlyPlayingVolume = document.getElementById('currently-playing-volume');
       const currentlyPlayingRoomsList = document.getElementById('currently-playing-rooms-list');
+      const recommendedPlaylistContainer = document.getElementById('recommended-playlist-container');
+      const alternativesDropdown = document.getElementById('alternatives-dropdown');
+      const recommendationRuleInfo = document.getElementById('recommendation-rule-info');
       
       // Hamburger menu elements
       const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
@@ -1222,6 +1703,7 @@
       const menuPanel = document.getElementById('menu-panel');
       const menuCloseBtn = document.getElementById('menu-close-btn');
       const menuItemControls = document.getElementById('menu-item-controls');
+      const menuItemPlaylistManagement = document.getElementById('menu-item-playlist-management');
       const menuItemSettings = document.getElementById('menu-item-settings');
       const menuItemSignout = document.getElementById('menu-item-signout');
       
@@ -1245,6 +1727,20 @@ const settingsPlayersWrap = document.getElementById('settings-players');
 const settingsSaveButton = document.getElementById('settings-save');
 const settingsStatusLabel = document.getElementById('settings-status');
 const settingsHelpLabel = document.getElementById('settings-help');
+
+// Playlist management elements
+const playlistManagementGrid = document.getElementById('playlist-management-grid');
+const playlistManagementStatus = document.getElementById('playlist-management-status');
+const timeRulesList = document.getElementById('time-rules-list');
+const addTimeRuleBtn = document.getElementById('add-time-rule-btn');
+const timeRuleEditor = document.getElementById('time-rule-editor');
+const timeRuleStartHour = document.getElementById('time-rule-start-hour');
+const timeRuleEndHour = document.getElementById('time-rule-end-hour');
+const timeRuleVibeDown = document.getElementById('time-rule-vibe-down');
+const timeRuleVibeDownMid = document.getElementById('time-rule-vibe-down-mid');
+const timeRuleVibeMid = document.getElementById('time-rule-vibe-mid');
+const timeRuleSaveBtn = document.getElementById('time-rule-save-btn');
+const timeRuleCancelBtn = document.getElementById('time-rule-cancel-btn');
 
 settingsSaveButton.disabled = true;
 settingsStatusLabel.textContent = '';
@@ -1297,14 +1793,23 @@ function closeMenu() {
 
 function showView(name) {
   const isControl = name === 'control';
+  const isPlaylistManagement = name === 'playlist-management';
+  const isSettings = name === 'settings';
+  
   menuItemControls.classList.toggle('active', isControl);
-  menuItemSettings.classList.toggle('active', !isControl);
+  menuItemPlaylistManagement.classList.toggle('active', isPlaylistManagement);
+  menuItemSettings.classList.toggle('active', isSettings);
+  
   panelControl.classList.toggle('hidden', !isControl);
-  panelSettings.classList.toggle('hidden', isControl);
+  panelPlaylistManagement.classList.toggle('hidden', !isPlaylistManagement);
+  panelSettings.classList.toggle('hidden', !isSettings);
+  
   closeMenu();
   
-  if (!isControl) {
+  if (isSettings) {
     renderSettings();
+  } else if (isPlaylistManagement) {
+    renderPlaylistManagement();
   }
 }
 
@@ -1323,6 +1828,10 @@ menuBackdrop.addEventListener('click', () => {
 
 menuItemControls.addEventListener('click', () => {
   showView('control');
+});
+
+menuItemPlaylistManagement.addEventListener('click', () => {
+  showView('playlist-management');
 });
 
 menuItemSettings.addEventListener('click', () => {
@@ -1702,6 +2211,307 @@ async function checkAuthAndInit() {
         }
       }
 
+      // Playlist management functions
+      let timeRules = [];
+      let editingRuleId = null;
+
+      async function renderPlaylistManagement() {
+        if (panelPlaylistManagement.classList.contains('hidden')) {
+          return;
+        }
+
+        if (!isSonosConnected || !currentHouseholdId) {
+          playlistManagementStatus.textContent = 'Sign in to load playlists.';
+          playlistManagementGrid.innerHTML = '';
+          timeRulesList.innerHTML = '';
+          return;
+        }
+
+        try {
+          await loadPlaylistVibes();
+          await loadTimeRules();
+
+          // Load favorites for playlist management
+          const params = new URLSearchParams({ householdId: currentHouseholdId });
+          const response = await fetch(`/api/favorites?${params.toString()}`);
+
+          if (response.status === 401) {
+            setAuthUI(false);
+            playlistManagementStatus.textContent = 'Login required to load playlists.';
+            return;
+          }
+
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+          const items = Array.isArray(data.items) ? data.items : [];
+
+          if (!items.length) {
+            playlistManagementStatus.textContent = 'No playlists found.';
+            playlistManagementGrid.innerHTML = '';
+            renderTimeRules();
+            return;
+          }
+
+          playlistManagementStatus.textContent = '';
+          playlistManagementGrid.innerHTML = '';
+
+          items.forEach((favorite) => {
+            const entry = createPlaylistManagementCard(favorite);
+            playlistManagementGrid.appendChild(entry.button);
+          });
+
+          renderTimeRules();
+        } catch (error) {
+          console.error('Failed to load playlists:', error);
+          playlistManagementStatus.textContent = 'Could not load playlists. Please try again.';
+          playlistManagementGrid.innerHTML = '';
+          timeRulesList.innerHTML = '';
+        }
+      }
+
+      function createPlaylistManagementCard(favorite) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'playlist-card';
+        button.dataset.favoriteId = favorite.id;
+
+        const cardContent = document.createElement('div');
+        cardContent.className = 'playlist-card-content';
+
+        const artWrapper = document.createElement('div');
+        artWrapper.className = 'playlist-art-wrapper';
+
+        const imageUrl =
+          favorite && favorite.imageUrl
+            ? favorite.imageUrl
+            : favorite && favorite.images && favorite.images.length && favorite.images[0].url
+              ? favorite.images[0].url
+              : favorite && favorite.container && favorite.container.imageUrl
+                ? favorite.container.imageUrl
+                : null;
+
+        if (imageUrl) {
+          const img = document.createElement('img');
+          img.className = 'playlist-art';
+          img.alt = `${favorite.name || 'Playlist'} cover art`;
+          img.loading = 'lazy';
+          img.src = imageUrl;
+          img.addEventListener('error', () => img.classList.add('hidden'));
+          artWrapper.appendChild(img);
+        } else {
+          const placeholder = document.createElement('span');
+          placeholder.className = 'playlist-placeholder';
+          placeholder.textContent = '★';
+          artWrapper.appendChild(placeholder);
+        }
+
+        const meta = document.createElement('div');
+        meta.className = 'playlist-meta';
+
+        const title = document.createElement('span');
+        title.className = 'playlist-name';
+        title.textContent = favorite.name || 'Unnamed Playlist';
+
+        meta.appendChild(title);
+        cardContent.appendChild(artWrapper);
+        cardContent.appendChild(meta);
+
+        const vibeSelector = document.createElement('div');
+        vibeSelector.className = 'playlist-vibe-selector';
+
+        const vibeLabel = document.createElement('label');
+        vibeLabel.textContent = 'Vibe: ';
+
+        const vibeSelect = document.createElement('select');
+        vibeSelect.appendChild(new Option('', ''));
+        ['Down', 'Down/Mid', 'Mid'].forEach((vibe) => {
+          const option = document.createElement('option');
+          option.value = vibe;
+          option.textContent = vibe;
+          vibeSelect.appendChild(option);
+        });
+        vibeSelect.value = playlistVibes[favorite.id] || '';
+        vibeSelect.addEventListener('change', (event) => {
+          event.stopPropagation();
+          setPlaylistVibe(favorite.id, event.target.value);
+        });
+        vibeSelector.appendChild(vibeLabel);
+        vibeSelector.appendChild(vibeSelect);
+
+        button.appendChild(cardContent);
+        button.appendChild(vibeSelector);
+
+        return { favorite, button, vibeSelect };
+      }
+
+      async function loadTimeRules() {
+        try {
+          const response = await fetch('/api/vibe-time-rules');
+          if (response.ok) {
+            timeRules = await response.json();
+          } else {
+            timeRules = [];
+          }
+        } catch (error) {
+          console.error('Failed to load time rules:', error);
+          timeRules = [];
+        }
+      }
+
+      function renderTimeRules() {
+        timeRulesList.innerHTML = '';
+
+        if (timeRules.length === 0) {
+          const emptyMsg = document.createElement('p');
+          emptyMsg.className = 'favorites-status';
+          emptyMsg.textContent = 'No time rules configured. Add a rule to get started.';
+          timeRulesList.appendChild(emptyMsg);
+          return;
+        }
+
+        timeRules.forEach((rule) => {
+          const item = document.createElement('div');
+          item.className = 'time-rule-item';
+
+          const info = document.createElement('div');
+          info.className = 'time-rule-info';
+
+          const time = document.createElement('div');
+          time.className = 'time-rule-time';
+          const startHour = rule.start_hour;
+          const endHour = rule.end_hour;
+          const startTime = formatHour(startHour);
+          const endTime = formatHour(endHour);
+          time.textContent = `${startTime} - ${endTime}`;
+
+          const vibes = document.createElement('div');
+          vibes.className = 'time-rule-vibes';
+          vibes.textContent = `Vibes: ${rule.allowed_vibes.join(', ')}`;
+
+          info.appendChild(time);
+          info.appendChild(vibes);
+
+          const actions = document.createElement('div');
+          actions.className = 'time-rule-actions';
+
+          const editBtn = document.createElement('button');
+          editBtn.textContent = 'Edit';
+          editBtn.addEventListener('click', () => {
+            editingRuleId = rule.id;
+            timeRuleStartHour.value = rule.start_hour;
+            timeRuleEndHour.value = rule.end_hour;
+            timeRuleVibeDown.checked = rule.allowed_vibes.includes('Down');
+            timeRuleVibeDownMid.checked = rule.allowed_vibes.includes('Down/Mid');
+            timeRuleVibeMid.checked = rule.allowed_vibes.includes('Mid');
+            timeRuleEditor.classList.remove('hidden');
+          });
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.textContent = 'Delete';
+          deleteBtn.className = 'delete';
+          deleteBtn.addEventListener('click', async () => {
+            if (confirm('Are you sure you want to delete this rule?')) {
+              try {
+                const response = await fetch(`/api/vibe-time-rules/${rule.id}`, {
+                  method: 'DELETE'
+                });
+                if (response.ok) {
+                  await loadTimeRules();
+                  renderTimeRules();
+                } else {
+                  throw new Error('Failed to delete rule');
+                }
+              } catch (error) {
+                console.error('Failed to delete rule:', error);
+                alert('Failed to delete rule. Please try again.');
+              }
+            }
+          });
+
+          actions.appendChild(editBtn);
+          actions.appendChild(deleteBtn);
+
+          item.appendChild(info);
+          item.appendChild(actions);
+          timeRulesList.appendChild(item);
+        });
+      }
+
+      function formatHour(hour) {
+        const h = hour % 12 || 12;
+        const ampm = hour < 12 ? 'AM' : 'PM';
+        return `${h}:00 ${ampm}`;
+      }
+
+      addTimeRuleBtn.addEventListener('click', () => {
+        editingRuleId = null;
+        timeRuleStartHour.value = '7';
+        timeRuleEndHour.value = '12';
+        timeRuleVibeDown.checked = false;
+        timeRuleVibeDownMid.checked = false;
+        timeRuleVibeMid.checked = false;
+        timeRuleEditor.classList.remove('hidden');
+      });
+
+      timeRuleCancelBtn.addEventListener('click', () => {
+        editingRuleId = null;
+        timeRuleEditor.classList.add('hidden');
+      });
+
+      timeRuleSaveBtn.addEventListener('click', async () => {
+        const startHour = parseInt(timeRuleStartHour.value, 10);
+        const endHour = parseInt(timeRuleEndHour.value, 10);
+        const allowedVibes = [];
+        if (timeRuleVibeDown.checked) allowedVibes.push('Down');
+        if (timeRuleVibeDownMid.checked) allowedVibes.push('Down/Mid');
+        if (timeRuleVibeMid.checked) allowedVibes.push('Mid');
+
+        if (allowedVibes.length === 0) {
+          alert('Please select at least one vibe.');
+          return;
+        }
+
+        try {
+          const rule = {
+            start_hour: startHour,
+            end_hour: endHour,
+            allowed_vibes: allowedVibes
+          };
+
+          if (editingRuleId) {
+            rule.id = editingRuleId;
+            const response = await fetch(`/api/vibe-time-rules/${editingRuleId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(rule)
+            });
+            if (!response.ok) {
+              throw new Error('Failed to update rule');
+            }
+          } else {
+            const response = await fetch('/api/vibe-time-rules', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(rule)
+            });
+            if (!response.ok) {
+              throw new Error('Failed to create rule');
+            }
+          }
+
+          editingRuleId = null;
+          timeRuleEditor.classList.add('hidden');
+          await loadTimeRules();
+          renderTimeRules();
+        } catch (error) {
+          console.error('Failed to save time rule:', error);
+          alert('Failed to save rule. Please try again.');
+        }
+      });
+
       async function loadPlaylistVibes() {
         try {
           const response = await fetch('/api/playlist-vibes');
@@ -1732,9 +2542,177 @@ async function checkAuthAndInit() {
           }
 
           applyVibeFilter();
+          // Update recommendations when vibes change
+          if (currentlyPlayingPanel.classList.contains('visible')) {
+            updatePlaylistRecommendations();
+          }
         } catch (error) {
           console.error('Failed to save playlist vibe:', error);
         }
+      }
+
+      async function updatePlaylistRecommendations() {
+        if (!isSonosConnected || !currentHouseholdId) {
+          recommendedPlaylistContainer.innerHTML = '';
+          alternativesDropdown.innerHTML = '';
+          recommendationRuleInfo.textContent = '';
+          return;
+        }
+
+        try {
+          const params = new URLSearchParams({ householdId: currentHouseholdId });
+          const response = await fetch(`/api/playlist-recommendations?${params.toString()}`);
+
+          if (!response.ok) {
+            throw new Error('Failed to fetch recommendations');
+          }
+
+          const data = await response.json();
+          const { primary, alternatives, currentRule } = data;
+
+          // Update rule info
+          if (currentRule) {
+            const startTime = formatHour(currentRule.start_hour);
+            const endTime = formatHour(currentRule.end_hour);
+            recommendationRuleInfo.textContent = `Current rule: ${startTime} - ${endTime} (${currentRule.allowed_vibes.join(', ')})`;
+          } else {
+            recommendationRuleInfo.textContent = 'No time rule active for current time.';
+          }
+
+          // Clear containers
+          recommendedPlaylistContainer.innerHTML = '';
+          alternativesDropdown.innerHTML = '';
+
+          if (!primary) {
+            const noRecs = document.createElement('p');
+            noRecs.className = 'favorites-status';
+            noRecs.textContent = 'No playlists match the current time rule.';
+            recommendedPlaylistContainer.appendChild(noRecs);
+            return;
+          }
+
+          // Render primary recommendation
+          const primaryCard = createRecommendationCard(primary, true);
+          recommendedPlaylistContainer.appendChild(primaryCard);
+
+          // Render alternatives if any
+          if (alternatives && alternatives.length > 0) {
+            const toggle = document.createElement('button');
+            toggle.className = 'alternatives-toggle';
+            toggle.textContent = `View ${alternatives.length} other option${alternatives.length > 1 ? 's' : ''}`;
+            toggle.innerHTML = `${toggle.textContent} <span>▼</span>`;
+            
+            let isOpen = false;
+            toggle.addEventListener('click', () => {
+              isOpen = !isOpen;
+              alternativesList.classList.toggle('visible', isOpen);
+              toggle.innerHTML = `${isOpen ? 'Hide' : 'View'} ${alternatives.length} other option${alternatives.length > 1 ? 's' : ''} <span>${isOpen ? '▲' : '▼'}</span>`;
+            });
+
+            const alternativesList = document.createElement('div');
+            alternativesList.className = 'alternatives-list';
+
+            alternatives.forEach((alt) => {
+              const altCard = createRecommendationCard(alt, false);
+              alternativesList.appendChild(altCard);
+            });
+
+            alternativesDropdown.appendChild(toggle);
+            alternativesDropdown.appendChild(alternativesList);
+          }
+        } catch (error) {
+          console.error('Failed to update playlist recommendations:', error);
+          recommendedPlaylistContainer.innerHTML = '';
+          alternativesDropdown.innerHTML = '';
+          recommendationRuleInfo.textContent = '';
+        }
+      }
+
+      function createRecommendationCard(favorite, isPrimary) {
+        const card = document.createElement('div');
+        card.className = isPrimary ? 'recommended-playlist' : 'alternative-playlist';
+
+        const art = document.createElement('div');
+        art.className = isPrimary ? 'recommended-playlist-art' : 'alternative-playlist-art';
+
+        const imageUrl =
+          favorite && favorite.imageUrl
+            ? favorite.imageUrl
+            : favorite && favorite.images && favorite.images.length && favorite.images[0].url
+              ? favorite.images[0].url
+              : favorite && favorite.container && favorite.container.imageUrl
+                ? favorite.container.imageUrl
+                : null;
+
+        if (imageUrl) {
+          const img = document.createElement('img');
+          img.src = imageUrl;
+          img.alt = `${favorite.name || 'Playlist'} cover art`;
+          img.loading = 'lazy';
+          img.addEventListener('error', () => {
+            const placeholder = document.createElement('span');
+            placeholder.textContent = '★';
+            art.innerHTML = '';
+            art.appendChild(placeholder);
+          });
+          art.appendChild(img);
+        } else {
+          const placeholder = document.createElement('span');
+          placeholder.textContent = '★';
+          art.appendChild(placeholder);
+        }
+
+        const info = document.createElement('div');
+        info.className = isPrimary ? 'recommended-playlist-info' : 'alternative-playlist-info';
+
+        const name = document.createElement('div');
+        name.className = isPrimary ? 'recommended-playlist-name' : 'alternative-playlist-name';
+        name.textContent = favorite.name || 'Unnamed Playlist';
+
+        const vibe = document.createElement('div');
+        vibe.className = isPrimary ? 'recommended-playlist-vibe' : 'alternative-playlist-vibe';
+        const vibeValue = playlistVibes[favorite.id] || 'No vibe assigned';
+        vibe.textContent = `Vibe: ${vibeValue}`;
+
+        info.appendChild(name);
+        info.appendChild(vibe);
+
+        card.appendChild(art);
+        card.appendChild(info);
+
+        if (isPrimary) {
+          const actions = document.createElement('div');
+          actions.className = 'recommended-playlist-actions';
+
+          const playBtn = document.createElement('button');
+          playBtn.textContent = 'Play Recommended';
+          playBtn.addEventListener('click', async () => {
+            const entry = favoritesRegistry.get(favorite.id);
+            if (entry) {
+              await playFavorite(entry);
+            } else {
+              // Create a temporary entry
+              const tempEntry = { favorite, button: null, statusEl: null, loading: false };
+              await playFavorite(tempEntry);
+            }
+          });
+
+          actions.appendChild(playBtn);
+          card.appendChild(actions);
+        } else {
+          card.style.cursor = 'pointer';
+          card.addEventListener('click', async () => {
+            const entry = favoritesRegistry.get(favorite.id);
+            if (entry) {
+              await playFavorite(entry);
+            } else {
+              const tempEntry = { favorite, button: null, statusEl: null, loading: false };
+              await playFavorite(tempEntry);
+            }
+          });
+        }
+
+        return card;
       }
 
       function renderVibeFilters() {
@@ -2738,6 +3716,8 @@ async function checkAuthAndInit() {
 
             currentlyPlayingPanel.classList.add('visible');
             document.body.classList.add('has-playing');
+            // Update playlist recommendations when panel becomes visible
+            updatePlaylistRecommendations();
           } else {
             // Only hide if we're truly stopped - use a delay to prevent flickering
             if (playbackState === 'STOPPED' && !isPlaying) {
