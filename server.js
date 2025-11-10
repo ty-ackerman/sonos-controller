@@ -740,10 +740,26 @@ async function getRecommendedPlaylists(householdId) {
     const primary = matchingPlaylists[primaryIndex];
     const alternatives = matchingPlaylists.filter((_, index) => index !== primaryIndex);
 
+    // Include debug info about which rules were considered
+    const debugInfo = {
+      currentHour,
+      currentDay,
+      totalRules: rules.length,
+      timeMatchingRulesCount: timeMatchingRules.length,
+      specificRulesCount: specificRules.length,
+      generalRulesCount: generalRules.length,
+      specificRuleIds: specificRules.map(r => r.id),
+      generalRuleIds: generalRules.map(r => r.id),
+      usedRuleIds: matchingRules.map(r => r.id),
+      ruleTypes: matchingRules.map(r => specificRules.includes(r) ? 'specific' : 'general')
+    };
+    console.log(`[Recommendations] Debug info:`, JSON.stringify(debugInfo, null, 2));
+
     return {
       primary,
       alternatives,
-      currentRule: matchingRules.length > 0 ? matchingRules[0] : null
+      currentRule: matchingRules.length > 0 ? matchingRules[0] : null,
+      debug: debugInfo
     };
   } catch (error) {
     console.error('Error getting recommended playlists:', error);

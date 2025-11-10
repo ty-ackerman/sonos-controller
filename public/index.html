@@ -2716,13 +2716,36 @@ async function checkAuthAndInit() {
 
           const data = await response.json();
           console.log('[Client] Recommendations response:', data);
-          const { primary, alternatives, currentRule } = data;
+          const { primary, alternatives, currentRule, debug } = data;
           
           console.log('[Client] Primary:', primary?.name || 'none');
           console.log('[Client] Alternatives:', alternatives?.length || 0);
           console.log('[Client] Current rule:', currentRule ? 
             `ID ${currentRule.id}, ${currentRule.start_hour}-${currentRule.end_hour}, days: ${currentRule.days ? currentRule.days.join(',') : 'all'}, vibes: ${currentRule.allowed_vibes?.join(',') || 'none'}` : 
             'none');
+          
+          if (debug) {
+            console.log('[Client] Debug info:', {
+              currentHour: debug.currentHour,
+              currentDay: debug.currentDay,
+              totalRules: debug.totalRules,
+              timeMatchingRules: debug.timeMatchingRulesCount,
+              specificRules: debug.specificRulesCount,
+              generalRules: debug.generalRulesCount,
+              specificRuleIds: debug.specificRuleIds,
+              generalRuleIds: debug.generalRuleIds,
+              usedRuleIds: debug.usedRuleIds,
+              ruleTypes: debug.ruleTypes
+            });
+            
+            if (debug.specificRulesCount > 0 && debug.generalRulesCount > 0) {
+              console.warn('[Client] ⚠️ Specific rules should override general rules, but both are present. Check server logs for details.');
+            } else if (debug.specificRulesCount > 0) {
+              console.log('[Client] ✓ Using specific rules only');
+            } else if (debug.generalRulesCount > 0) {
+              console.log('[Client] ✓ Using general rules (no specific rules match current time/day)');
+            }
+          }
 
           // Update rule info
           if (currentRule) {
