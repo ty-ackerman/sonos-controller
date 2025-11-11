@@ -11,6 +11,7 @@ import {
   saveVibeTimeRule,
   deleteVibeTimeRule
 } from './vibeTimeRulesStore.js';
+import { loadHiddenFavorites, setFavoriteHidden } from './hiddenFavoritesStore.js';
 
 // Use native fetch (Node.js 18+) - Netlify Functions supports it
 // No need to import node-fetch which causes bundling issues
@@ -55,6 +56,7 @@ app.use(express.json());
 let tokens = null;
 let speakerVolumes = null;
 let playlistVibes = null;
+let hiddenFavorites = null;
 let initialized = false;
 let initializationPromise = null;
 
@@ -95,6 +97,13 @@ async function ensureInitialized() {
           playlistVibes = {};
         }
       }
+      if (!hiddenFavorites) {
+        hiddenFavorites = await loadHiddenFavorites();
+        // Ensure hiddenFavorites is a Set
+        if (!(hiddenFavorites instanceof Set)) {
+          hiddenFavorites = new Set();
+        }
+      }
       initialized = true;
     } catch (error) {
       console.error('Error initializing data stores:', error);
@@ -102,6 +111,7 @@ async function ensureInitialized() {
       tokens = tokens || { access_token: null, refresh_token: null, expires_at: 0 };
       speakerVolumes = speakerVolumes || {};
       playlistVibes = playlistVibes || {};
+      hiddenFavorites = hiddenFavorites || new Set();
       initialized = true;
       throw error;
     }
@@ -506,8 +516,22 @@ app.get('/api/favorites', async (req, res) => {
         ? req.query.groupId.trim()
         : undefined;
 
+    // Check if we should filter hidden favorites (default: true for Controls section)
+    const includeHidden = req.query.includeHidden === 'true';
+
     const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`);
     const payload = await response.json();
+
+    // Reload hidden favorites to ensure we have the latest state
+    hiddenFavorites = await loadHiddenFavorites();
+    if (!(hiddenFavorites instanceof Set)) {
+      hiddenFavorites = new Set();
+    }
+
+    // Filter out hidden favorites if not including them
+    if (!includeHidden && payload.items && Array.isArray(payload.items)) {
+      payload.items = payload.items.filter((item) => !hiddenFavorites.has(item.id));
+    }
 
     const activeInfo = groupId ? activeFavoritesByGroup.get(groupId) : undefined;
     const activeFavoriteId = activeInfo ? activeInfo.favoriteId : null;
@@ -522,31 +546,47 @@ app.get('/api/favorites', async (req, res) => {
   }
 });
 
-app.delete('/api/favorites/:favoriteId', async (req, res) => {
+app.put('/api/favorites/:favoriteId/hidden', async (req, res) => {
   try {
     const { favoriteId } = req.params;
     if (!favoriteId) {
       return res.status(400).json({ error: 'favoriteId is required.' });
     }
 
-    const preferredHousehold =
-      typeof req.query.householdId === 'string' && req.query.householdId.trim().length > 0
-        ? req.query.householdId.trim()
-        : undefined;
-    const householdId = await resolveHouseholdId(preferredHousehold);
+    const { hidden } = req.body;
+    if (typeof hidden !== 'boolean') {
+      return res.status(400).json({ error: 'hidden must be a boolean value.' });
+    }
 
-    // Remove from active favorites if it's currently active
-    activeFavoritesByGroup.forEach((value, key) => {
-      if (value.favoriteId === favoriteId) {
-        activeFavoritesByGroup.delete(key);
-      }
-    });
+    await setFavoriteHidden(favoriteId, hidden);
 
-    await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites/${encodeURIComponent(favoriteId)}`, {
-      method: 'DELETE'
-    });
+    // Reload hidden favorites to ensure we have the latest state
+    hiddenFavorites = await loadHiddenFavorites();
+    if (!(hiddenFavorites instanceof Set)) {
+      hiddenFavorites = new Set();
+    }
 
-    res.json({ success: true, favoriteId });
+    res.json({ success: true, favoriteId, hidden });
+  } catch (error) {
+    handleProxyError(res, error);
+  }
+});
+
+app.get('/api/favorites/:favoriteId/hidden', async (req, res) => {
+  try {
+    const { favoriteId } = req.params;
+    if (!favoriteId) {
+      return res.status(400).json({ error: 'favoriteId is required.' });
+    }
+
+    // Reload hidden favorites to ensure we have the latest state
+    hiddenFavorites = await loadHiddenFavorites();
+    if (!(hiddenFavorites instanceof Set)) {
+      hiddenFavorites = new Set();
+    }
+
+    const isHidden = hiddenFavorites.has(favoriteId);
+    res.json({ favoriteId, hidden: isHidden });
   } catch (error) {
     handleProxyError(res, error);
   }

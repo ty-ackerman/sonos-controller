@@ -501,6 +501,41 @@
         border-color: var(--error);
       }
 
+      .playlist-card-actions button.hide {
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-primary);
+        color: var(--text-secondary);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .playlist-card-actions button.hide:hover {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+      }
+
+      .playlist-card-actions button.show {
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-primary);
+        color: var(--accent);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .playlist-card-actions button.show:hover {
+        background: var(--accent);
+        color: var(--bg-primary);
+        border-color: var(--accent);
+      }
+
       .playlist-vibe-pill {
         display: inline-flex;
         align-items: center;
@@ -2784,8 +2819,8 @@ async function checkAuthAndInit() {
           await loadPlaylistVibes();
           await loadTimeRules();
 
-          // Load favorites for playlist management
-          const params = new URLSearchParams({ householdId: currentHouseholdId });
+          // Load favorites for playlist management (include hidden ones)
+          const params = new URLSearchParams({ householdId: currentHouseholdId, includeHidden: 'true' });
           const response = await fetch(`/api/favorites?${params.toString()}`);
 
           if (response.status === 401) {
@@ -2909,46 +2944,66 @@ async function checkAuthAndInit() {
         const cardActions = document.createElement('div');
         cardActions.className = 'playlist-card-actions';
 
-        const deleteBtn = document.createElement('button');
-        deleteBtn.textContent = 'Remove from Favorites';
-        deleteBtn.className = 'delete';
-        deleteBtn.type = 'button';
-        deleteBtn.addEventListener('click', async (event) => {
+        // Load hidden state for this favorite
+        let isHidden = false;
+        try {
+          const hiddenResponse = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden`);
+          if (hiddenResponse.ok) {
+            const hiddenData = await hiddenResponse.json();
+            isHidden = hiddenData.hidden === true;
+          }
+        } catch (error) {
+          console.error('Failed to load hidden state:', error);
+        }
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.textContent = isHidden ? 'Show in Controls' : 'Hide from Controls';
+        toggleBtn.className = isHidden ? 'show' : 'hide';
+        toggleBtn.type = 'button';
+        toggleBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
+          const newHiddenState = !isHidden;
           const playlistName = favorite.name || 'this playlist';
-          if (confirm(`Are you sure you want to remove "${playlistName}" from favorites?`)) {
-            try {
-              const params = new URLSearchParams();
-              if (currentHouseholdId) {
-                params.set('householdId', currentHouseholdId);
-              }
-              const response = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}?${params.toString()}`, {
-                method: 'DELETE'
-              });
+          
+          try {
+            const response = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ hidden: newHiddenState })
+            });
 
-              if (!response.ok) {
+            if (!response.ok) {
+              let errorMessage = 'Failed to update favorite visibility';
+              try {
+                const errorData = await response.json();
+                if (errorData.detail) {
+                  errorMessage = errorData.detail;
+                } else if (errorData.error) {
+                  errorMessage = errorData.error;
+                }
+              } catch (parseError) {
                 const errorText = await response.text();
-                throw new Error(errorText || 'Failed to remove favorite');
+                errorMessage = errorText || errorMessage;
               }
-
-              // Remove the card from the grid
-              button.remove();
-
-              // Refresh the playlist management view
-              await renderPlaylistManagement();
-
-              // If favorites view is open, refresh it too
-              if (!panelControl.classList.contains('hidden')) {
-                await loadFavorites(currentHouseholdId);
-              }
-            } catch (error) {
-              console.error('Failed to remove favorite:', error);
-              alert(`Failed to remove favorite. ${error.message || 'Please try again.'}`);
+              throw new Error(errorMessage);
             }
+
+            // Update the button state
+            isHidden = newHiddenState;
+            toggleBtn.textContent = isHidden ? 'Show in Controls' : 'Hide from Controls';
+            toggleBtn.className = isHidden ? 'show' : 'hide';
+
+            // Refresh the favorites view if it's open (to reflect the change)
+            if (!panelControl.classList.contains('hidden')) {
+              await loadFavorites(currentHouseholdId);
+            }
+          } catch (error) {
+            console.error('Failed to update favorite visibility:', error);
+            alert(`Failed to update favorite visibility. ${error.message || 'Please try again.'}`);
           }
         });
 
-        cardActions.appendChild(deleteBtn);
+        cardActions.appendChild(toggleBtn);
 
         button.appendChild(cardContent);
         button.appendChild(vibeSelector);
