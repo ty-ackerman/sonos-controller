@@ -4748,21 +4748,32 @@ async function checkAuthAndInit() {
               const replayGain = Number(track.replayGain);
               const loudnessLabel = currentlyPlayingLoudness.querySelector('.loudness-label');
               
-              // Determine loudness category
-              let loudnessText = '';
-              if (replayGain > 3) {
-                loudnessText = 'Loud';
-              } else if (replayGain > -3) {
-                loudnessText = 'Normal';
-              } else {
-                loudnessText = 'Quiet';
+              if (loudnessLabel) {
+                // Determine loudness category
+                let loudnessText = '';
+                if (replayGain > 3) {
+                  loudnessText = 'Loud';
+                } else if (replayGain > -3) {
+                  loudnessText = 'Normal';
+                } else {
+                  loudnessText = 'Quiet';
+                }
+                
+                // Display with dB value
+                loudnessLabel.textContent = `${loudnessText} (${replayGain > 0 ? '+' : ''}${replayGain.toFixed(1)} dB)`;
+                currentlyPlayingLoudness.style.display = 'block';
               }
-              
-              // Display with dB value
-              loudnessLabel.textContent = `${loudnessText} (${replayGain > 0 ? '+' : ''}${replayGain.toFixed(1)} dB)`;
-              currentlyPlayingLoudness.style.display = 'block';
             } else {
               currentlyPlayingLoudness.style.display = 'none';
+              // Debug: log when replayGain is not available
+              if (track) {
+                console.log('[Loudness] Track metadata:', {
+                  hasReplayGain: track.replayGain !== undefined && track.replayGain !== null,
+                  replayGainValue: track.replayGain,
+                  trackName: track.name || track.title,
+                  trackKeys: Object.keys(track)
+                });
+              }
             }
 
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;

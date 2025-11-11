@@ -346,6 +346,11 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
             replayGain = gainValue;
           }
         }
+        
+        // Debug: log replayGain availability for troubleshooting
+        if (track.name || track.title) {
+          console.log('[ReplayGain] Track:', track.name || track.title, 'replayGain:', replayGain, 'available fields:', Object.keys(track).filter(k => k.toLowerCase().includes('gain') || k.toLowerCase().includes('loud')));
+        }
 
         track = {
           name: normalizeField(track.name) || normalizeField(track.title),
