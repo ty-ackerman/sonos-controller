@@ -2430,6 +2430,7 @@
       
       // Master volume controls
       const masterVolumeSlider = document.getElementById('master-volume-slider');
+      let isMasterVolumeDragging = false;
       const masterVolumeValue = document.getElementById('master-volume-value');
       
       // Track panel state to prevent flickering
@@ -2804,9 +2805,26 @@ async function checkAuthAndInit() {
         masterVolumeValue.textContent = `${Number(e.target.value)}%`;
       });
 
+      masterVolumeSlider.addEventListener('mousedown', () => {
+        isMasterVolumeDragging = true;
+      });
+
+      masterVolumeSlider.addEventListener('touchstart', () => {
+        isMasterVolumeDragging = true;
+      });
+
       masterVolumeSlider.addEventListener('change', async (e) => {
         e.stopPropagation();
+        isMasterVolumeDragging = false;
         await setMasterVolume(Number(e.target.value));
+      });
+
+      masterVolumeSlider.addEventListener('mouseup', () => {
+        isMasterVolumeDragging = false;
+      });
+
+      masterVolumeSlider.addEventListener('touchend', () => {
+        isMasterVolumeDragging = false;
       });
       const authMessages = {
         error: 'Authorization failed. Please try logging in again.',
@@ -4996,7 +5014,10 @@ async function checkAuthAndInit() {
             if (roomRow) {
               const slider = roomRow.querySelector('.currently-playing-room-slider');
               const value = roomRow.querySelector('.currently-playing-room-value');
-              if (slider) slider.value = updatedLevel;
+              // Only update slider if user is not currently dragging it
+              if (slider && slider.dataset.isDragging !== 'true') {
+                slider.value = updatedLevel;
+              }
               if (value) value.textContent = updatedLevel;
             }
           }
@@ -5156,7 +5177,7 @@ async function checkAuthAndInit() {
             // Only sync FROM status if:
             // 1. Status has a non-null value (not null, not undefined)
             // 2. Status value differs from current
-            // 3. Don't clear currentActiveFavoriteId if status returns null/undefined (might be stale)
+            // 3. Don't clear currentActiveFavoriteId if status returns null/undefined during active playback (might be stale)
             if (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) {
               if (statusActiveFavoriteId !== currentActiveFavoriteId) {
                 // Status has a different non-null value - update to match
@@ -5169,21 +5190,23 @@ async function checkAuthAndInit() {
                 // Status matches current - use it for display
                 activeFavoriteId = statusActiveFavoriteId;
               }
-            } else if (statusActiveFavoriteId === null && currentActiveFavoriteId) {
-              // Status explicitly says null - clear it
-              console.log(`[Client] activeFavoriteId cleared by status: ${currentActiveFavoriteId} -> null`);
+            } else if (statusActiveFavoriteId === null && currentActiveFavoriteId && !isPlaying && playbackState === 'STOPPED') {
+              // Only clear if playback has actually stopped (not just paused or during transitions)
+              console.log(`[Client] activeFavoriteId cleared by status: ${currentActiveFavoriteId} -> null (playback stopped)`);
               currentActiveFavoriteId = null;
               activeFavoriteId = null;
             }
-            // If status is undefined, keep using currentActiveFavoriteId (don't clear it - might be stale)
+            // If status is undefined or null during active playback, keep using currentActiveFavoriteId (don't clear it - might be stale)
 
             let playlistName = null;
             let playlistImageUrl = null;
             if (activeFavoriteId) {
               // Prefer favorite data from status response (more reliable, works across households)
-              if (status.activeFavorite && status.activeFavorite.id === activeFavoriteId) {
-                playlistName = status.activeFavorite.name || null;
-                playlistImageUrl = status.activeFavorite.imageUrl || null;
+              const statusFavorite = status.activeFavorite;
+              
+              if (statusFavorite && statusFavorite.id === activeFavoriteId && statusFavorite.name) {
+                playlistName = statusFavorite.name;
+                playlistImageUrl = statusFavorite.imageUrl || null;
                 console.log(`[Client] Using playlist name from status.activeFavorite: "${playlistName}" for activeFavoriteId=${activeFavoriteId}`);
               } else {
                 // Fallback to favoritesRegistry (client-side cache)
@@ -5199,9 +5222,19 @@ async function checkAuthAndInit() {
                       : favorite?.container?.imageUrl
                         ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
                         : null;
-                  console.log(`[Client] Using playlist name from favoritesRegistry: "${playlistName}" for activeFavoriteId=${activeFavoriteId} (status.activeFavorite was ${status.activeFavorite ? 'present but ID mismatch' : 'missing'})`);
+                  const reason = statusFavorite 
+                    ? (statusFavorite.id === activeFavoriteId ? `missing name` : 'ID mismatch')
+                    : 'missing';
+                  console.log(`[Client] Using playlist name from favoritesRegistry: "${playlistName}" for activeFavoriteId=${activeFavoriteId} (status.activeFavorite ${reason})`);
                 } else {
-                  console.warn(`[Client] activeFavoriteId=${activeFavoriteId} but NO playlist name found (status.activeFavorite=${status.activeFavorite ? 'present but ID mismatch' : 'missing'}, favoritesRegistry=${favoriteEntry ? 'present but no favorite' : 'missing'})`);
+                  // Last resort: use status name if available
+                  if (statusFavorite && statusFavorite.id === activeFavoriteId && statusFavorite.name) {
+                    playlistName = statusFavorite.name;
+                    playlistImageUrl = statusFavorite.imageUrl || null;
+                    console.log(`[Client] Using playlist name from status.activeFavorite (fallback): "${playlistName}" for activeFavoriteId=${activeFavoriteId}`);
+                  } else {
+                    console.warn(`[Client] activeFavoriteId=${activeFavoriteId} but NO playlist name found (status.activeFavorite=${statusFavorite ? (statusFavorite.id === activeFavoriteId ? 'present but no name' : 'ID mismatch') : 'missing'}, favoritesRegistry=${favoriteEntry ? 'present but no favorite' : 'missing'})`);
+                  }
                 }
               }
             }
@@ -5342,10 +5375,12 @@ async function checkAuthAndInit() {
             // When isPlaying is true, show pause icon (add .playing class)
             // When isPlaying is false, show play icon (remove .playing class)
 
-            // Update master volume from group volume
-            const groupVolume = status.volume || 0;
-            masterVolumeSlider.value = groupVolume;
-            masterVolumeValue.textContent = `${groupVolume}%`;
+            // Update master volume from group volume (only if user is not dragging)
+            if (!isMasterVolumeDragging) {
+              const groupVolume = status.volume || 0;
+              masterVolumeSlider.value = groupVolume;
+              masterVolumeValue.textContent = `${groupVolume}%`;
+            }
 
             updateCurrentlyPlayingRooms(groupId);
 
@@ -5399,6 +5434,7 @@ async function checkAuthAndInit() {
           slider.min = '0';
           slider.max = '100';
           slider.value = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+          slider.dataset.isDragging = 'false';
 
           const value = document.createElement('span');
           value.className = 'currently-playing-room-value';
@@ -5409,12 +5445,29 @@ async function checkAuthAndInit() {
             value.textContent = e.target.value;
           });
 
+          slider.addEventListener('mousedown', () => {
+            slider.dataset.isDragging = 'true';
+          });
+
+          slider.addEventListener('touchstart', () => {
+            slider.dataset.isDragging = 'true';
+          });
+
           slider.addEventListener('change', async (e) => {
             e.stopPropagation();
+            slider.dataset.isDragging = 'false';
             const playerId = roomRow.dataset.playerId;
             if (playerId) {
               await setPlayerVolume(playerId, Number(e.target.value));
             }
+          });
+
+          slider.addEventListener('mouseup', () => {
+            slider.dataset.isDragging = 'false';
+          });
+
+          slider.addEventListener('touchend', () => {
+            slider.dataset.isDragging = 'false';
           });
 
           // Prevent panel from closing when interacting with slider
