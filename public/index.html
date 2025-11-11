@@ -5200,12 +5200,10 @@ async function checkAuthAndInit() {
             markActiveFavorite(activeFavoriteId);
             updateRecommendationCardButtons(activeFavoriteId);
 
+            // Get playlist name from activeFavorite.name
             let playlistName = null;
-            let playlistImageUrl = null;
             if (activeFavoriteId && status.activeFavorite) {
-              // Use favorite data from status response (server found it on-demand)
               playlistName = status.activeFavorite.name || null;
-              playlistImageUrl = status.activeFavorite.imageUrl || null;
               console.log('[Client] Playlist name resolved:', {
                 source: 'status.activeFavorite',
                 activeFavoriteId,
@@ -5216,14 +5214,6 @@ async function checkAuthAndInit() {
               const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
               if (favoriteEntry && favoriteEntry.favorite) {
                 playlistName = favoriteEntry.favorite.name || null;
-                const favorite = favoriteEntry.favorite;
-                playlistImageUrl = favorite?.imageUrl
-                  ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
-                  : favorite?.images && favorite.images.length && favorite.images[0]?.url
-                    ? favorite.images[0].url
-                    : favorite?.container?.imageUrl
-                      ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
-                      : null;
                 console.log('[Client] Playlist name resolved:', {
                   source: 'favoritesRegistry',
                   activeFavoriteId,
@@ -5256,8 +5246,13 @@ async function checkAuthAndInit() {
               album = typeof track.albumName === 'string' ? track.albumName : track.albumName?.name || track.albumName?.value || '';
             }
             
-            // Use playlist image instead of track image
-            let imageUrl = playlistImageUrl;
+            // Use track.images[0].url for cover art
+            let imageUrl = null;
+            if (track?.images && Array.isArray(track.images) && track.images.length > 0) {
+              imageUrl = track.images[0]?.url || null;
+            } else if (track?.imageUrl) {
+              imageUrl = typeof track.imageUrl === 'string' ? track.imageUrl : track.imageUrl?.url || null;
+            }
             
             if (imageUrl && !imageUrl.startsWith('http')) {
               imageUrl = null;

@@ -355,8 +355,6 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     };
     
     let track = null;
-    let playlistName = null;
-    let playlistImageUrl = null;
     
     if (currentItem) {
       track = currentItem.track || currentItem.container?.metadata || currentItem;
@@ -371,41 +369,29 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
           }
         }
 
+        // Extract track image from images array
+        let trackImageUrl = null;
+        if (track.images && Array.isArray(track.images) && track.images.length > 0) {
+          trackImageUrl = normalizeField(track.images[0]?.url);
+        } else {
+          trackImageUrl = normalizeField(track.imageUrl) || 
+                         normalizeField(track.albumArtUri) || 
+                         normalizeField(track.albumArtURL);
+        }
+
         track = {
           name: normalizeField(track.name) || normalizeField(track.title),
           artist: normalizeField(track.artist) || normalizeField(track.albumArtist) || normalizeField(track.creator),
           album: normalizeField(track.album) || normalizeField(track.albumName),
-          imageUrl: normalizeField(track.imageUrl) || normalizeField(track.albumArtUri) || normalizeField(track.albumArtURL),
+          imageUrl: trackImageUrl,
           replayGain: replayGain,
+          images: track.images, // Preserve images array for client
           ...track
         };
       }
     }
     
-    // Extract playlist/container name and image directly from metadata (same source as track)
-    if (container && typeof container === 'object') {
-      try {
-        playlistName = normalizeField(container.name) || 
-                       normalizeField(container.title) ||
-                       normalizeField(container.service?.name);
-        
-        playlistImageUrl = normalizeField(container.imageUrl) ||
-                           normalizeField(container.albumArtUri) ||
-                           normalizeField(container.albumArtURL) ||
-                           (container.images && Array.isArray(container.images) && container.images.length ? normalizeField(container.images[0]?.url) : null);
-        
-        console.log('[SonosData] Container metadata:', {
-          containerId: container.id || container.serviceId || null,
-          playlistName,
-          hasImageUrl: !!playlistImageUrl,
-          containerKeys: Object.keys(container || {})
-        });
-      } catch (error) {
-        console.warn('[SonosData] Error extracting container metadata:', error.message);
-      }
-    }
-    
-    // Try to find matching favorite ID for UI highlighting (optional - doesn't affect display)
+    // Find matching favorite to get playlist name
     let activeFavoriteId = null;
     let activeFavorite = null;
     if (container?.id || container?.serviceId) {
@@ -414,24 +400,18 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
         const favoriteMatch = await findFavoriteByContainerId(containerId, preferredHousehold);
         if (favoriteMatch) {
           activeFavoriteId = favoriteMatch.id;
-          // Use favorite data if container doesn't have name/image
-          if (!playlistName) playlistName = favoriteMatch.name;
-          if (!playlistImageUrl) playlistImageUrl = favoriteMatch.imageUrl;
-          activeFavorite = favoriteMatch;
+          // Use activeFavorite.name for playlist name
+          activeFavorite = {
+            id: favoriteMatch.id,
+            name: favoriteMatch.name,
+            // Cover art comes from track.images[0].url, not from favorite
+            imageUrl: null
+          };
         }
       } catch (error) {
-        // Non-fatal - we still have container name/image from metadata
+        // Non-fatal
         console.warn('[SonosData] Failed to find favorite match:', error.message);
       }
-    }
-    
-    // If we have playlist info from container, use it even if no favorite match
-    if (playlistName || playlistImageUrl) {
-      activeFavorite = {
-        id: activeFavoriteId,
-        name: playlistName,
-        imageUrl: playlistImageUrl
-      };
     }
 
     // Try multiple possible field names for playback state
