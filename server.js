@@ -725,12 +725,14 @@ app.delete('/api/vibe-time-rules/:id', async (req, res) => {
 });
 
 // Helper function to check if a time range contains an hour
+// Note: endHour is INCLUSIVE - a rule from 19-0 means 7 PM through 12:59 AM
 function timeRangeContainsHour(startHour, endHour, hour) {
   if (startHour <= endHour) {
-    // Normal range (e.g., 7-12)
+    // Normal range (e.g., 7-12 means 7:00 AM through 12:59 PM)
     return hour >= startHour && hour <= endHour;
   } else {
-    // Wraps around midnight (e.g., 22-6)
+    // Wraps around midnight (e.g., 19-0 means 7:00 PM through 12:59 AM)
+    // This includes both hours >= startHour (evening) AND hours <= endHour (early morning)
     return hour >= startHour || hour <= endHour;
   }
 }
@@ -792,8 +794,13 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
       }
       // Override must match current time
       const matches = timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
+      const ruleName = rule.name ? ` "${rule.name}"` : '';
+      const startTime = `${rule.start_hour}:00`;
+      const endTime = `${rule.end_hour}:00`;
       if (!matches) {
-        console.log(`[Recommendations] Override rule ID ${rule.id} does NOT match time: hour ${currentHour} is not in range ${rule.start_hour}-${rule.end_hour}`);
+        console.log(`[Recommendations] Override rule ID ${rule.id}${ruleName} does NOT match time: hour ${currentHour} is not in range ${startTime}-${endTime} (${rule.start_hour}-${rule.end_hour})`);
+      } else {
+        console.log(`[Recommendations] Override rule ID ${rule.id}${ruleName}: ${startTime}-${endTime} (${rule.start_hour}-${rule.end_hour}), current hour ${currentHour}, matches: ${matches}`);
       }
       return matches;
     });
