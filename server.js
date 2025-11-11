@@ -522,6 +522,36 @@ app.get('/api/favorites', async (req, res) => {
   }
 });
 
+app.delete('/api/favorites/:favoriteId', async (req, res) => {
+  try {
+    const { favoriteId } = req.params;
+    if (!favoriteId) {
+      return res.status(400).json({ error: 'favoriteId is required.' });
+    }
+
+    const preferredHousehold =
+      typeof req.query.householdId === 'string' && req.query.householdId.trim().length > 0
+        ? req.query.householdId.trim()
+        : undefined;
+    const householdId = await resolveHouseholdId(preferredHousehold);
+
+    // Remove from active favorites if it's currently active
+    activeFavoritesByGroup.forEach((value, key) => {
+      if (value.favoriteId === favoriteId) {
+        activeFavoritesByGroup.delete(key);
+      }
+    });
+
+    await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites/${encodeURIComponent(favoriteId)}`, {
+      method: 'DELETE'
+    });
+
+    res.json({ success: true, favoriteId });
+  } catch (error) {
+    handleProxyError(res, error);
+  }
+});
+
 app.get('/api/settings/volumes', async (_req, res) => {
   try {
     // Reload from database to ensure fresh data across devices

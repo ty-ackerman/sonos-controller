@@ -475,6 +475,32 @@
         transition: border-color 0.2s ease;
       }
 
+      .playlist-card-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+        margin-top: 12px;
+      }
+
+      .playlist-card-actions button.delete {
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-primary);
+        color: var(--error);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .playlist-card-actions button.delete:hover {
+        background: var(--error);
+        color: var(--bg-primary);
+        border-color: var(--error);
+      }
+
       .playlist-vibe-pill {
         display: inline-flex;
         align-items: center;
@@ -2880,8 +2906,53 @@ async function checkAuthAndInit() {
         vibeSelector.appendChild(vibeLabel);
         vibeSelector.appendChild(vibeSelect);
 
+        const cardActions = document.createElement('div');
+        cardActions.className = 'playlist-card-actions';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Remove from Favorites';
+        deleteBtn.className = 'delete';
+        deleteBtn.type = 'button';
+        deleteBtn.addEventListener('click', async (event) => {
+          event.stopPropagation();
+          const playlistName = favorite.name || 'this playlist';
+          if (confirm(`Are you sure you want to remove "${playlistName}" from favorites?`)) {
+            try {
+              const params = new URLSearchParams();
+              if (currentHouseholdId) {
+                params.set('householdId', currentHouseholdId);
+              }
+              const response = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}?${params.toString()}`, {
+                method: 'DELETE'
+              });
+
+              if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || 'Failed to remove favorite');
+              }
+
+              // Remove the card from the grid
+              button.remove();
+
+              // Refresh the playlist management view
+              await renderPlaylistManagement();
+
+              // If favorites view is open, refresh it too
+              if (!panelControl.classList.contains('hidden')) {
+                await loadFavorites(currentHouseholdId);
+              }
+            } catch (error) {
+              console.error('Failed to remove favorite:', error);
+              alert(`Failed to remove favorite. ${error.message || 'Please try again.'}`);
+            }
+          }
+        });
+
+        cardActions.appendChild(deleteBtn);
+
         button.appendChild(cardContent);
         button.appendChild(vibeSelector);
+        button.appendChild(cardActions);
 
         return { favorite, button, vibeSelect };
       }
