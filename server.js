@@ -592,6 +592,35 @@ app.get('/api/favorites/:favoriteId/hidden', async (req, res) => {
   }
 });
 
+app.delete('/api/favorites/:favoriteId', async (req, res) => {
+  try {
+    const { favoriteId } = req.params;
+    if (!favoriteId) {
+      return res.status(400).json({ error: 'favoriteId is required.' });
+    }
+
+    // Since Sonos API doesn't support deleting favorites, we hide it instead
+    await setFavoriteHidden(favoriteId, true);
+
+    // Remove from active favorites if it's currently active
+    activeFavoritesByGroup.forEach((value, key) => {
+      if (value.favoriteId === favoriteId) {
+        activeFavoritesByGroup.delete(key);
+      }
+    });
+
+    // Reload hidden favorites to ensure we have the latest state
+    hiddenFavorites = await loadHiddenFavorites();
+    if (!(hiddenFavorites instanceof Set)) {
+      hiddenFavorites = new Set();
+    }
+
+    res.json({ success: true, favoriteId, hidden: true });
+  } catch (error) {
+    handleProxyError(res, error);
+  }
+});
+
 app.get('/api/settings/volumes', async (_req, res) => {
   try {
     // Reload from database to ensure fresh data across devices
