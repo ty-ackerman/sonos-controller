@@ -383,22 +383,26 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     }
     
     // Extract playlist/container name and image directly from metadata (same source as track)
-    if (container) {
-      playlistName = normalizeField(container.name) || 
-                     normalizeField(container.title) ||
-                     normalizeField(container.service?.name);
-      
-      playlistImageUrl = normalizeField(container.imageUrl) ||
-                         normalizeField(container.albumArtUri) ||
-                         normalizeField(container.albumArtURL) ||
-                         (container.images && container.images.length ? normalizeField(container.images[0]?.url) : null);
-      
-      console.log('[SonosData] Container metadata:', {
-        containerId: container.id || container.serviceId,
-        playlistName,
-        hasImageUrl: !!playlistImageUrl,
-        containerKeys: Object.keys(container)
-      });
+    if (container && typeof container === 'object') {
+      try {
+        playlistName = normalizeField(container.name) || 
+                       normalizeField(container.title) ||
+                       normalizeField(container.service?.name);
+        
+        playlistImageUrl = normalizeField(container.imageUrl) ||
+                           normalizeField(container.albumArtUri) ||
+                           normalizeField(container.albumArtURL) ||
+                           (container.images && Array.isArray(container.images) && container.images.length ? normalizeField(container.images[0]?.url) : null);
+        
+        console.log('[SonosData] Container metadata:', {
+          containerId: container.id || container.serviceId || null,
+          playlistName,
+          hasImageUrl: !!playlistImageUrl,
+          containerKeys: Object.keys(container || {})
+        });
+      } catch (error) {
+        console.warn('[SonosData] Error extracting container metadata:', error.message);
+      }
     }
     
     // Try to find matching favorite ID for UI highlighting (optional - doesn't affect display)
@@ -442,14 +446,18 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       || 'STOPPED';
 
     // Normalize state values (handle both PLAYBACK_STATE_PLAYING and PLAYING)
-    if (finalPlaybackState.includes('PLAYING')) {
+    // Ensure finalPlaybackState is a string before calling includes()
+    const stateString = String(finalPlaybackState || 'STOPPED');
+    if (stateString.includes('PLAYING')) {
       finalPlaybackState = 'PLAYING';
-    } else if (finalPlaybackState.includes('PAUSED')) {
+    } else if (stateString.includes('PAUSED')) {
       finalPlaybackState = 'PAUSED';
-    } else if (finalPlaybackState.includes('IDLE')) {
+    } else if (stateString.includes('IDLE')) {
       // IDLE typically means paused for streaming content
       finalPlaybackState = 'PAUSED';
-    } else if (finalPlaybackState.includes('STOPPED') || finalPlaybackState === 'STOPPED') {
+    } else if (stateString.includes('STOPPED') || stateString === 'STOPPED') {
+      finalPlaybackState = 'STOPPED';
+    } else {
       finalPlaybackState = 'STOPPED';
     }
 

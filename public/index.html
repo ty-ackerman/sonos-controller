@@ -5061,9 +5061,14 @@ async function checkAuthAndInit() {
             params.set('householdId', currentHouseholdId);
           }
           const statusUrl = `/api/groups/${encodeURIComponent(groupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
-          const response = await fetch(statusUrl);
+          const response = await fetch(statusUrl).catch((fetchError) => {
+            console.error('[Client] Fetch error:', fetchError);
+            throw new Error(`Network error: ${fetchError.message || 'Failed to fetch'}`);
+          });
           if (!response.ok) {
-            throw new Error('Failed to fetch playback status');
+            const errorText = await response.text().catch(() => 'Unknown error');
+            console.error('[Client] Server error:', response.status, errorText);
+            throw new Error(`Server error: ${response.status} - ${errorText}`);
           }
 
           const status = await response.json();
