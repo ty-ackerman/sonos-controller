@@ -238,10 +238,10 @@
       /* Toast Notification */
       .toast {
         position: fixed;
-        top: 0;
+        top: 64px; /* Position below header (40px button + 12px top padding + 12px bottom padding) */
         left: 50%;
         transform: translateX(-50%) translateY(-100%);
-        z-index: 10000;
+        z-index: 100; /* Below loading overlay (9999) but above content */
         width: min(480px, 100vw);
         padding: 12px 20px;
         background: var(--bg-primary);
