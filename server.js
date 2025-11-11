@@ -333,6 +333,9 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`).catch(() => null);
     const volume = volumeResponse ? await volumeResponse.json().catch(() => ({})) : {};
     
+    const currentItem = metadata.currentItem || metadata.item || null;
+    const activeInfo = activeFavoritesByGroup.get(groupId);
+    
     // Log raw Sonos data for debugging
     console.log('[SonosData] Status response:', {
       groupId,
@@ -343,9 +346,6 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       metadataKeys: Object.keys(metadata),
       playbackStateKeys: Object.keys(playbackState)
     });
-
-
-    const currentItem = metadata.currentItem || metadata.item || null;
     let track = null;
     
     if (currentItem) {
@@ -382,7 +382,6 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       }
     }
 
-    const activeInfo = activeFavoritesByGroup.get(groupId);
     const activeFavoriteId = activeInfo ? activeInfo.favoriteId : null;
     
     // ALWAYS fetch favorite data directly from Sonos API when we have an activeFavoriteId
