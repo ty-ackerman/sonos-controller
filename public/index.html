@@ -228,6 +228,30 @@
         gap: 8px;
       }
 
+      .loading-text .alter-logo {
+        height: 1.5rem;
+        width: auto;
+        display: block;
+      }
+
+      .loading-text .alter-logo-light {
+        display: block;
+      }
+
+      .loading-text .alter-logo-dark {
+        display: none;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .loading-text .alter-logo-light {
+          display: none;
+        }
+
+        .loading-text .alter-logo-dark {
+          display: block;
+        }
+      }
+
       .loading-text .sonos-brand {
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
         font-weight: 400;
@@ -2062,7 +2086,11 @@
       <!-- Loading Screen Overlay -->
       <div id="loading-overlay" class="loading-overlay">
         <div class="loading-content">
-          <div class="loading-text">Alter x <span class="sonos-brand">Sonos</span></div>
+          <div class="loading-text">
+            <img src="/images/alter-logo-light.svg" alt="Alter" class="alter-logo alter-logo-light">
+            <img src="/images/alter-logo-dark.svg" alt="Alter" class="alter-logo alter-logo-dark">
+            <span class="sonos-brand">SONOS</span>
+          </div>
         </div>
       </div>
 
@@ -2756,7 +2784,6 @@ async function checkAuthAndInit() {
         await setMasterVolume(Number(e.target.value));
       });
       const authMessages = {
-        success: 'Sonos authorization complete. Ready to control playback.',
         error: 'Authorization failed. Please try logging in again.',
         missing_code: 'Login response missing authorization code.',
         invalid_state: 'Login validation failed. Please retry.'
@@ -2767,7 +2794,7 @@ async function checkAuthAndInit() {
         const state = params.get('auth');
 
         if (state && authMessages[state]) {
-          showFeedback(authMessages[state], state !== 'success');
+          showFeedback(authMessages[state], true);
           params.delete('auth');
           const newUrl = window.location.pathname + (params.toString() ? `?${params}` : '');
           window.history.replaceState({}, '', newUrl);
