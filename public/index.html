@@ -5410,92 +5410,85 @@ async function checkAuthAndInit() {
               }
             }
             
-            // Batch all DOM updates together using requestAnimationFrame to ensure they render simultaneously
-            requestAnimationFrame(() => {
-              // Update title and artist
-              currentlyPlayingTitle.textContent = title;
-              currentlyPlayingArtist.innerHTML = '';
-              if (artist) {
-                const artistSpan = document.createElement('span');
-                artistSpan.textContent = artist;
-                currentlyPlayingArtist.appendChild(artistSpan);
-              }
-              if (album && artist) {
-                const separator = document.createTextNode(' • ');
-                currentlyPlayingArtist.appendChild(separator);
-                const albumSpan = document.createElement('span');
-                albumSpan.textContent = album;
-                currentlyPlayingArtist.appendChild(albumSpan);
-              }
-              if (!artist && !album) {
-                currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
-              }
+            // Update all DOM elements together synchronously
+            // Update title and artist
+            currentlyPlayingTitle.textContent = title;
+            currentlyPlayingArtist.innerHTML = '';
+            if (artist) {
+              const artistSpan = document.createElement('span');
+              artistSpan.textContent = artist;
+              currentlyPlayingArtist.appendChild(artistSpan);
+            }
+            if (album && artist) {
+              const separator = document.createTextNode(' • ');
+              currentlyPlayingArtist.appendChild(separator);
+              const albumSpan = document.createElement('span');
+              albumSpan.textContent = album;
+              currentlyPlayingArtist.appendChild(albumSpan);
+            }
+            if (!artist && !album) {
+              currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
+            }
 
-              // Update loudness indicator if replayGain is available
-              if (track && track.replayGain !== null && track.replayGain !== undefined && Number.isFinite(track.replayGain)) {
-                const replayGain = Number(track.replayGain);
-                const loudnessLabel = currentlyPlayingLoudness.querySelector('.loudness-label');
+            // Update loudness indicator if replayGain is available
+            if (track && track.replayGain !== null && track.replayGain !== undefined && Number.isFinite(track.replayGain)) {
+              const replayGain = Number(track.replayGain);
+              const loudnessLabel = currentlyPlayingLoudness.querySelector('.loudness-label');
+              
+              if (loudnessLabel) {
+                // Determine loudness category
+                let loudnessText = '';
+                if (replayGain > 3) {
+                  loudnessText = 'Loud';
+                } else if (replayGain > -3) {
+                  loudnessText = 'Normal';
+                } else {
+                  loudnessText = 'Quiet';
+                }
                 
-                if (loudnessLabel) {
-                  // Determine loudness category
-                  let loudnessText = '';
-                  if (replayGain > 3) {
-                    loudnessText = 'Loud';
-                  } else if (replayGain > -3) {
-                    loudnessText = 'Normal';
-                  } else {
-                    loudnessText = 'Quiet';
-                  }
-                  
-                  // Display with dB value
-                  loudnessLabel.textContent = `${loudnessText} (${replayGain > 0 ? '+' : ''}${replayGain.toFixed(1)} dB)`;
-                  currentlyPlayingLoudness.style.display = 'block';
-                }
-              } else {
-                currentlyPlayingLoudness.style.display = 'none';
+                // Display with dB value
+                loudnessLabel.textContent = `${loudnessText} (${replayGain > 0 ? '+' : ''}${replayGain.toFixed(1)} dB)`;
+                currentlyPlayingLoudness.style.display = 'block';
               }
+            } else {
+              currentlyPlayingLoudness.style.display = 'none';
+            }
 
-              // Update playlist name/location
-              currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
+            // Update playlist name/location
+            currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
-              // Update image - only update if the final URL has actually changed
-              if (finalImageUrl && finalImageUrl !== currentImageUrl) {
-                loadImage(finalImageUrl, imageUrl);
-              } else if (!finalImageUrl) {
-                // No image - only show placeholder if there's no image element
-                if (!currentlyPlayingArt.querySelector('img')) {
-                  currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
-                }
-              }
-            });
-            
-            function loadImage(url, originalUrl) {
-              currentImageUrl = url;
+            // Update image - only update if the final URL has actually changed
+            if (finalImageUrl && finalImageUrl !== currentImageUrl) {
+              currentImageUrl = finalImageUrl;
               
               // Check if there's already an img element - if so, just update src
               const existingImg = currentlyPlayingArt.querySelector('img');
               if (existingImg) {
-                existingImg.src = url;
+                existingImg.src = finalImageUrl;
                 existingImg.alt = title;
-                return;
+              } else {
+                // Otherwise create new img element
+                const img = document.createElement('img');
+                img.alt = title;
+                img.loading = 'lazy';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
+                
+                img.onerror = () => {
+                  currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+                  currentImageUrl = null;
+                };
+                
+                currentlyPlayingArt.innerHTML = '';
+                currentlyPlayingArt.appendChild(img);
+                img.src = finalImageUrl;
               }
-              
-              // Otherwise create new img element
-              const img = document.createElement('img');
-              img.alt = title;
-              img.loading = 'lazy';
-              img.style.width = '100%';
-              img.style.height = '100%';
-              img.style.objectFit = 'cover';
-              
-              img.onerror = () => {
+            } else if (!finalImageUrl) {
+              // No image - only show placeholder if there's no image element
+              if (!currentlyPlayingArt.querySelector('img')) {
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
-                currentImageUrl = null;
-              };
-              
-              currentlyPlayingArt.innerHTML = '';
-              currentlyPlayingArt.appendChild(img);
-              img.src = url;
+              }
             }
 
             const playerCount = latestPlayers.filter((p) => p.groupId === groupId).length;
