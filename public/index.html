@@ -5325,14 +5325,22 @@ async function checkAuthAndInit() {
               imageUrl = null;
             }
 
-            // Handle image loading - always proxy through server
-            // Calculate the final URL we'll use (proxy URL if HTTP/HTTPS)
-            // Add aggressive cache-busting to force fresh image loads
+            // Handle image loading - proxy through server, but use direct URL for local network IPs
+            // Calculate the final URL we'll use
             let finalImageUrl = null;
             if (imageUrl) {
-              if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                // Use track ID + timestamp for aggressive cache-busting
-                // This ensures every track change gets a fresh image, even if URLs are similar
+              // Check if this is a local network IP - if so, use it directly (client can access local network)
+              const isLocalNetwork = /^http:\/\/192\.168\.|^http:\/\/10\.|^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.|^http:\/\/127\.|^http:\/\/localhost/.test(imageUrl);
+              
+              if (isLocalNetwork) {
+                // For local network IPs, use directly with cache-busting
+                // The client browser can access local network, but the server (on Netlify) cannot
+                const trackId = track?.id?.objectId || track?.id || item?.track?.id?.objectId || item?.track?.id || '';
+                const timestamp = Date.now();
+                const separator = imageUrl.includes('?') ? '&' : '?';
+                finalImageUrl = `${imageUrl}${separator}_cb=${encodeURIComponent(trackId)}_${timestamp}`;
+              } else if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+                // For external URLs, proxy through server
                 const trackId = track?.id?.objectId || track?.id || item?.track?.id?.objectId || item?.track?.id || '';
                 const timestamp = Date.now();
                 const cacheBuster = `${trackId}_${timestamp}`;

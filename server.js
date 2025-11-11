@@ -546,13 +546,28 @@ app.get('/api/image-proxy', async (req, res) => {
       return res.status(400).json({ error: 'Invalid URL' });
     }
 
+    // Check if this is a local network IP - serverless functions can't access these
+    const isLocalNetwork = /^http:\/\/192\.168\.|^http:\/\/10\.|^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.|^http:\/\/127\.|^http:\/\/localhost/.test(imageUrl);
+    
+    if (isLocalNetwork) {
+      console.warn('[ImageProxy] Local network URL detected - server may not be able to access:', imageUrl);
+      // Return a 503 to indicate the server can't access local network
+      // Client should handle this by fetching directly
+      return res.status(503).json({ 
+        error: 'Local network URL - server cannot access',
+        localNetwork: true,
+        originalUrl: imageUrl
+      });
+    }
+
     const imageResponse = await fetch(imageUrl, {
       headers: {
         'User-Agent': 'Sonos-Controller/1.0',
         'Accept': 'image/*'
-      }
+      },
+      // Add timeout for image requests
+      signal: AbortSignal.timeout(10000) // 10 second timeout
     });
-
 
     if (!imageResponse.ok) {
       console.error(`[ImageProxy] Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText} for ${imageUrl}`);
