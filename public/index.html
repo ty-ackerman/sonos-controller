@@ -5305,7 +5305,7 @@ async function checkAuthAndInit() {
               imageUrl = status.activeFavorite.imageUrl;
             }
             
-            // Fallback 10: favoritesRegistry image
+            // Fallback 10: favoritesRegistry image (by activeFavoriteId)
             if (!imageUrl && activeFavoriteId) {
               const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
               if (favoriteEntry?.favorite) {
@@ -5317,6 +5317,37 @@ async function checkAuthAndInit() {
                     : favorite?.container?.imageUrl
                       ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
                       : null;
+              }
+            }
+            
+            // Fallback 11: Match playlist name to favorite playlist and use its artwork
+            if (!imageUrl && playlistName) {
+              // Search through all favorites to find one with matching name
+              for (const [favoriteId, favoriteEntry] of favoritesRegistry.entries()) {
+                if (favoriteEntry?.favorite?.name) {
+                  const favoriteName = favoriteEntry.favorite.name;
+                  // Case-insensitive comparison
+                  if (favoriteName.toLowerCase().trim() === playlistName.toLowerCase().trim()) {
+                    const favorite = favoriteEntry.favorite;
+                    // Found matching favorite - use its artwork
+                    imageUrl = favorite?.imageUrl
+                      ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
+                      : favorite?.images && favorite.images.length && favorite.images[0]?.url
+                        ? favorite.images[0].url
+                        : favorite?.container?.imageUrl
+                          ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
+                          : null;
+                    if (imageUrl) {
+                      console.log('[Client] Matched playlist name to favorite artwork:', {
+                        playlistName,
+                        favoriteName,
+                        favoriteId,
+                        hasImage: !!imageUrl
+                      });
+                      break; // Found a match, stop searching
+                    }
+                  }
+                }
               }
             }
             
