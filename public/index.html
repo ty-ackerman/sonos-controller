@@ -1372,36 +1372,19 @@
       }
 
       .recommendation-rule-info {
-        margin-bottom: 20px;
+        margin-bottom: 16px;
         padding: 0;
       }
 
       .recommendation-rule-card {
         display: flex;
-        flex-direction: column;
-        gap: 14px;
-        padding: 18px;
-        background: var(--bg-primary);
-        border-radius: 12px;
-        border: 1px solid var(--border-color);
-        box-shadow: var(--shadow-sm);
-        transition: all 0.2s ease;
-      }
-
-      .recommendation-rule-card:hover {
-        box-shadow: var(--shadow-md);
-      }
-
-      .recommendation-rule-header {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-
-      .recommendation-rule-header-top {
-        display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 12px;
+        padding: 10px 14px;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        font-size: 0.875rem;
         flex-wrap: wrap;
       }
 
@@ -1409,19 +1392,20 @@
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        padding: 4px 8px;
-        border-radius: 6px;
+        padding: 3px 7px;
+        border-radius: 4px;
         background: var(--accent);
         color: var(--bg-primary);
-        font-size: 0.75rem;
+        font-size: 0.6875rem;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.05em;
+        flex-shrink: 0;
       }
 
       .recommendation-rule-badge svg {
-        width: 12px;
-        height: 12px;
+        width: 10px;
+        height: 10px;
         stroke: currentColor;
         fill: none;
         stroke-width: 2.5;
@@ -1430,84 +1414,46 @@
       }
 
       .recommendation-rule-name {
-        font-size: 1.125rem;
+        font-size: 0.875rem;
         font-weight: 600;
         color: var(--text-primary);
         margin: 0;
-        line-height: 1.4;
-      }
-
-      .recommendation-rule-details {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .recommendation-rule-detail-row {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        font-size: 0.875rem;
-      }
-
-      .recommendation-rule-detail-label {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        color: var(--text-secondary);
-        font-weight: 500;
-        min-width: 90px;
         flex-shrink: 0;
       }
 
-      .recommendation-rule-detail-label svg {
-        width: 16px;
-        height: 16px;
-        stroke: currentColor;
-        fill: none;
-        stroke-width: 2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
+      .recommendation-rule-separator {
+        color: var(--text-tertiary);
+        margin: 0 4px;
         flex-shrink: 0;
       }
 
-      .recommendation-rule-detail-value {
+      .recommendation-rule-time {
         color: var(--text-primary);
         font-weight: 500;
-        flex: 1;
-      }
-
-      @media (max-width: 480px) {
-        .recommendation-rule-detail-row {
-          flex-direction: column;
-          gap: 6px;
-        }
-
-        .recommendation-rule-detail-label {
-          min-width: auto;
-        }
+        flex-shrink: 0;
       }
 
       .recommendation-rule-vibes-list {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 4px;
+        align-items: center;
       }
 
       .recommendation-rule-vibe-badge {
         display: inline-flex;
         align-items: center;
-        padding: 4px 10px;
-        border-radius: 12px;
+        padding: 3px 8px;
+        border-radius: 10px;
         background: var(--bg-tertiary);
         color: var(--text-primary);
-        font-size: 0.8125rem;
+        font-size: 0.75rem;
         font-weight: 500;
         border: 1px solid var(--border-color);
       }
 
       .recommendation-rule-empty {
-        padding: 12px 16px;
+        padding: 10px 14px;
         background: var(--bg-secondary);
         border-radius: 8px;
         border: 1px solid var(--border-color);
@@ -3582,7 +3528,7 @@ async function checkAuthAndInit() {
             }
           }
 
-          // Update rule info with improved design
+          // Update rule info with compact design
           if (currentRule) {
             const startTime = formatHour(currentRule.start_hour);
             const endTime = formatHour(currentRule.end_hour);
@@ -3591,69 +3537,39 @@ async function checkAuthAndInit() {
             const ruleCard = document.createElement('div');
             ruleCard.className = 'recommendation-rule-card';
             
-            // Header with active badge and rule name
-            const header = document.createElement('div');
-            header.className = 'recommendation-rule-header';
-            
-            const headerTop = document.createElement('div');
-            headerTop.className = 'recommendation-rule-header-top';
-            
-            const badge = document.createElement('div');
+            // Active badge
+            const badge = document.createElement('span');
             badge.className = 'recommendation-rule-badge';
-            badge.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Active Rule';
-            headerTop.appendChild(badge);
-            header.appendChild(headerTop);
+            badge.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Active';
+            ruleCard.appendChild(badge);
             
+            // Rule name
             if (currentRule.name) {
-              const name = document.createElement('h3');
+              const name = document.createElement('span');
               name.className = 'recommendation-rule-name';
               name.textContent = currentRule.name;
-              header.appendChild(name);
+              ruleCard.appendChild(name);
+              
+              const separator1 = document.createElement('span');
+              separator1.className = 'recommendation-rule-separator';
+              separator1.textContent = '•';
+              ruleCard.appendChild(separator1);
             }
-            
-            ruleCard.appendChild(header);
-            
-            // Details section
-            const details = document.createElement('div');
-            details.className = 'recommendation-rule-details';
             
             // Time range
-            const timeRow = document.createElement('div');
-            timeRow.className = 'recommendation-rule-detail-row';
-            const timeLabel = document.createElement('span');
-            timeLabel.className = 'recommendation-rule-detail-label';
-            timeLabel.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Time';
-            const timeValue = document.createElement('span');
-            timeValue.className = 'recommendation-rule-detail-value';
-            timeValue.textContent = `${startTime} - ${endTime}`;
-            timeRow.appendChild(timeLabel);
-            timeRow.appendChild(timeValue);
-            details.appendChild(timeRow);
-            
-            // Days (only show if not every day)
-            if (currentRule.days && Array.isArray(currentRule.days) && currentRule.days.length > 0 && currentRule.days.length < 7) {
-              const daysRow = document.createElement('div');
-              daysRow.className = 'recommendation-rule-detail-row';
-              const daysLabel = document.createElement('span');
-              daysLabel.className = 'recommendation-rule-detail-label';
-              daysLabel.innerHTML = '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Days';
-              const daysValue = document.createElement('span');
-              daysValue.className = 'recommendation-rule-detail-value';
-              const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-              daysValue.textContent = currentRule.days.map(d => dayNames[d]).join(', ');
-              daysRow.appendChild(daysLabel);
-              daysRow.appendChild(daysValue);
-              details.appendChild(daysRow);
-            }
+            const time = document.createElement('span');
+            time.className = 'recommendation-rule-time';
+            time.textContent = `${startTime} - ${endTime}`;
+            ruleCard.appendChild(time);
             
             // Matching vibes
             if (vibes.length > 0) {
-              const vibesRow = document.createElement('div');
-              vibesRow.className = 'recommendation-rule-detail-row';
-              const vibesLabel = document.createElement('span');
-              vibesLabel.className = 'recommendation-rule-detail-label';
-              vibesLabel.innerHTML = '<svg viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5"/></svg> Vibes';
-              const vibesList = document.createElement('div');
+              const separator2 = document.createElement('span');
+              separator2.className = 'recommendation-rule-separator';
+              separator2.textContent = '•';
+              ruleCard.appendChild(separator2);
+              
+              const vibesList = document.createElement('span');
               vibesList.className = 'recommendation-rule-vibes-list';
               vibes.forEach(vibe => {
                 const vibeBadge = document.createElement('span');
@@ -3661,12 +3577,9 @@ async function checkAuthAndInit() {
                 vibeBadge.textContent = vibe;
                 vibesList.appendChild(vibeBadge);
               });
-              vibesRow.appendChild(vibesLabel);
-              vibesRow.appendChild(vibesList);
-              details.appendChild(vibesRow);
+              ruleCard.appendChild(vibesList);
             }
             
-            ruleCard.appendChild(details);
             recommendationRuleInfo.innerHTML = '';
             recommendationRuleInfo.appendChild(ruleCard);
           } else {
