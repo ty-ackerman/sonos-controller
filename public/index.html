@@ -2488,6 +2488,7 @@ settingsStatusLabel.textContent = '';
       let currentImageUrl = null; // Store the source imageUrl (before proxying) for comparison
       let currentProxiedImageUrl = null; // Store the proxied URL for DOM updates
       let previousTrackId = null; // Track previous track identifier for change detection
+      let currentPlaylistName = null; // Track current playlist name to detect playlist changes
       let baseVolume = null; // Store base/reference volume level for loudness normalization
 
       function login() {
@@ -5420,19 +5421,19 @@ async function checkAuthAndInit() {
             // Update playlist name/location
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
-            // Update image - compare source imageUrl (not proxied URL) to detect actual changes
+            // Update image - only update if playlist name changed (to prevent constant refreshing)
             const existingImg = currentlyPlayingArt.querySelector('img');
             const sourceImageUrl = imageUrl; // The original source URL before proxying
             
-            // Check if track changed or source image URL changed
-            const trackId = track?.id?.objectId || track?.id || item?.track?.id?.objectId || item?.track?.id || '';
-            const trackChanged = trackId && trackId !== previousTrackId;
-            const imageUrlChanged = sourceImageUrl && sourceImageUrl !== currentImageUrl;
+            // Check if playlist name changed
+            const playlistNameChanged = playlistName && playlistName !== currentPlaylistName;
             
-            if (finalImageUrl && (trackChanged || imageUrlChanged)) {
-              // Track or image changed - force update
+            // Only update image if playlist name changed or we don't have an image yet
+            if (finalImageUrl && (playlistNameChanged || !currentImageUrl)) {
+              // Playlist changed or no image yet - update
               currentImageUrl = sourceImageUrl; // Store source URL for comparison
               currentProxiedImageUrl = finalImageUrl; // Store proxied URL
+              currentPlaylistName = playlistName; // Store playlist name
               
               if (existingImg) {
                 // Clear the old image first to force browser to reload
@@ -5455,35 +5456,34 @@ async function checkAuthAndInit() {
                   currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
                   currentImageUrl = null;
                   currentProxiedImageUrl = null;
+                  currentPlaylistName = null;
                 };
                 
                 currentlyPlayingArt.innerHTML = '';
                 currentlyPlayingArt.appendChild(img);
                 img.src = finalImageUrl;
               }
-            } else if (finalImageUrl && existingImg && existingImg.src !== finalImageUrl) {
-              // Proxied URL changed (due to cache-busting) but source is same - still update to force refresh
-              currentProxiedImageUrl = finalImageUrl;
-              existingImg.src = '';
-              requestAnimationFrame(() => {
-                existingImg.src = finalImageUrl;
-                existingImg.alt = title;
-              });
             } else if (existingImg && !finalImageUrl) {
               // Had image but now no image - show placeholder
               currentImageUrl = null;
               currentProxiedImageUrl = null;
+              currentPlaylistName = null;
               currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
             } else if (!finalImageUrl && !existingImg) {
               // No image and no existing img - show placeholder
               currentImageUrl = null;
               currentProxiedImageUrl = null;
+              currentPlaylistName = null;
               if (!currentlyPlayingArt.querySelector('.currently-playing-art-placeholder')) {
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
               }
+            } else if (playlistName) {
+              // Update playlist name tracking even if image didn't change
+              currentPlaylistName = playlistName;
             }
             
-            // Update previousTrackId for next comparison
+            // Update previousTrackId for other tracking purposes
+            const trackId = track?.id?.objectId || track?.id || item?.track?.id?.objectId || item?.track?.id || '';
             if (trackId) {
               previousTrackId = trackId;
             }
