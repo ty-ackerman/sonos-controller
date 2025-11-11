@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS vibe_time_rules (
   end_hour INTEGER NOT NULL CHECK (end_hour >= 0 AND end_hour <= 23),
   allowed_vibes TEXT[] NOT NULL,
   days INTEGER[] CHECK (days IS NULL OR (array_length(days, 1) > 0 AND array_length(days, 1) <= 7)),
+  rule_type TEXT NOT NULL CHECK (rule_type IN ('base', 'override')) DEFAULT 'base',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

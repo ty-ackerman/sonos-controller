@@ -610,6 +610,17 @@ app.delete('/api/vibe-time-rules/:id', async (req, res) => {
   }
 });
 
+// Helper function to check if a time range contains an hour
+function timeRangeContainsHour(startHour, endHour, hour) {
+  if (startHour <= endHour) {
+    // Normal range (e.g., 7-12)
+    return hour >= startHour && hour <= endHour;
+  } else {
+    // Wraps around midnight (e.g., 22-6)
+    return hour >= startHour || hour <= endHour;
+  }
+}
+
 // Helper function to get recommended playlists based on current time
 async function getRecommendedPlaylists(householdId) {
   try {
@@ -618,131 +629,83 @@ async function getRecommendedPlaylists(householdId) {
     const currentHour = now.getHours();
     const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
 
-    // Load time rules and find matching ones
-    const rules = await loadVibeTimeRules();
-    console.log(`[Recommendations] Current hour: ${currentHour}, Current day: ${currentDay}, Total rules: ${rules.length}`);
-    console.log(`[Recommendations] All rules loaded:`, rules.map(r => ({
-      id: r.id,
-      time: `${r.start_hour}-${r.end_hour}`,
-      days: r.days ? r.days.join(',') : 'all',
-      vibes: r.allowed_vibes.join(',')
-    })));
+    // Load all time rules
+    const allRules = await loadVibeTimeRules();
+    console.log(`[Recommendations] Current hour: ${currentHour}, Current day: ${currentDay}, Total rules: ${allRules.length}`);
+
+    // Separate base schedule rules and override rules
+    const baseRules = allRules.filter(r => r.rule_type === 'base');
+    const overrideRules = allRules.filter(r => r.rule_type === 'override');
     
-    // Helper function to check if a rule is day-specific
-    const isDaySpecific = (rule) => {
-      return rule.days !== null && 
-             rule.days !== undefined && 
-             Array.isArray(rule.days) && 
-             rule.days.length > 0;
-    };
+    console.log(`[Recommendations] Base schedule rules: ${baseRules.length}, Override rules: ${overrideRules.length}`);
 
-    // Helper function to check if a rule matches the current time
-    const matchesTime = (rule) => {
-      if (rule.start_hour <= rule.end_hour) {
-        // Normal range (e.g., 7-12 means 7:00 AM to 12:00 PM, inclusive of 12:00 PM)
-        return currentHour >= rule.start_hour && currentHour <= rule.end_hour;
-      } else {
-        // Wraps around midnight (e.g., 22-6 means 10 PM to 6 AM)
-        return currentHour >= rule.start_hour || currentHour <= rule.end_hour;
+    // Find base rules that match current time
+    const matchingBaseRules = baseRules.filter(rule => 
+      timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour)
+    );
+
+    // Find override rules for current day that match current time
+    const matchingOverrideRules = overrideRules.filter(rule => {
+      // Override must be for current day (override rules have exactly one day)
+      if (!rule.days || !Array.isArray(rule.days) || rule.days.length !== 1) {
+        return false;
       }
-    };
-
-    // Helper function to check if a rule matches the current day
-    const matchesDay = (rule) => {
-      if (!isDaySpecific(rule)) {
-        // General rule (days is null/undefined/empty) - matches all days
-        return true;
+      if (rule.days[0] !== currentDay) {
+        return false;
       }
-      // Specific rule - check if current day is in the days array
-      return rule.days.includes(currentDay);
-    };
-
-    // First, filter ALL rules to find those that match the current time
-    // We need to check ALL rules (both specific and general) for time matching
-    const timeMatchingRules = rules.filter((rule) => {
-      const timeMatches = matchesTime(rule);
-      const daysStr = isDaySpecific(rule) ? rule.days.join(',') : 'all';
-      const ruleType = isDaySpecific(rule) ? 'SPECIFIC' : 'GENERAL';
-      
-      console.log(`[Recommendations] Rule ${rule.id} (${ruleType}): ${rule.start_hour}-${rule.end_hour} days:[${daysStr}] (${rule.allowed_vibes.join(', ')})`);
-      console.log(`[Recommendations]   Time check: ${timeMatches ? `hour ${currentHour} matches` : `hour ${currentHour} does NOT match`}`);
-      
-      return timeMatches;
+      // Override must match current time
+      return timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
     });
 
-    console.log(`[Recommendations] Rules matching current time (${currentHour}): ${timeMatchingRules.length}`);
+    console.log(`[Recommendations] Base rules matching time: ${matchingBaseRules.length}`);
+    console.log(`[Recommendations] Override rules matching day+time: ${matchingOverrideRules.length}`);
 
-    // Now separate time-matching rules into day-specific and general
-    // Day-specific rules are those that:
-    // 1. Match the current time (already filtered above)
-    // 2. Are day-specific (have a days array)
-    // 3. Match the current day
-    const specificRules = timeMatchingRules.filter((rule) => {
-      if (!isDaySpecific(rule)) {
-        return false; // Not a day-specific rule
-      }
-      
-      const dayMatches = matchesDay(rule);
-      const daysStr = rule.days.join(',');
-      
-      console.log(`[Recommendations] Checking day-specific rule ${rule.id}: days [${daysStr}], current day ${currentDay}, matches: ${dayMatches}`);
-      
-      if (dayMatches) {
-        console.log(`[Recommendations] ✓ Day-specific rule MATCHES: ID ${rule.id}, days: [${daysStr}], time: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(',')}]`);
-      } else {
-        console.log(`[Recommendations] ✗ Day-specific rule does NOT match day: ID ${rule.id}, days: [${daysStr}], current day: ${currentDay}`);
-      }
-      
-      return dayMatches;
-    });
-    
-    // General rules are those that:
-    // 1. Match the current time (already filtered above)
-    // 2. Are NOT day-specific (days is null/undefined/empty)
-    // Note: General rules match all days by definition
-    const generalRules = timeMatchingRules.filter((rule) => {
-      const isGeneral = !isDaySpecific(rule);
-      if (isGeneral) {
-        console.log(`[Recommendations] General rule: ID ${rule.id}, time: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(',')}]`);
-      }
-      return isGeneral;
-    });
-
-    console.log(`[Recommendations] Day-specific rules matching: ${specificRules.length}`);
-    console.log(`[Recommendations] General rules matching: ${generalRules.length}`);
-
-    // CRITICAL: Day-specific rules ALWAYS override general rules
-    // If ANY day-specific rule matches, use ONLY day-specific rules and ignore all general rules
-    const matchingRules = specificRules.length > 0 ? specificRules : generalRules;
-
-    console.log(`[Recommendations] Specific rules: ${specificRules.length}, General rules: ${generalRules.length}, Using: ${matchingRules.length}`);
-    
-    if (specificRules.length > 0 && generalRules.length > 0) {
-      console.log(`[Recommendations] ⚠️ Specific rules override general rules for current time/day`);
-      console.log(`[Recommendations] ⚠️ Ignoring ${generalRules.length} general rule(s) in favor of ${specificRules.length} specific rule(s)`);
-    } else if (specificRules.length > 0) {
-      console.log(`[Recommendations] ✓ Using ${specificRules.length} specific rule(s)`);
-    } else if (generalRules.length > 0) {
-      console.log(`[Recommendations] ✓ Using ${generalRules.length} general rule(s) (no specific rules match)`);
+    // Merge logic: Overrides replace base rules for overlapping time
+    // Since we're checking a single hour, if any override matches, use overrides
+    // Otherwise, use base rules
+    let activeRules = [];
+    if (matchingOverrideRules.length > 0) {
+      // Override takes precedence - use override rules
+      activeRules = matchingOverrideRules;
+      console.log(`[Recommendations] Using override rules (${matchingOverrideRules.length}) - overriding base schedule`);
+      matchingOverrideRules.forEach(rule => {
+        console.log(`[Recommendations]   Override rule ID ${rule.id}: ${rule.start_hour}-${rule.end_hour}, day ${rule.days[0]}, vibes: [${rule.allowed_vibes.join(', ')}]`);
+      });
+    } else {
+      // No override matches - use base rules
+      activeRules = matchingBaseRules;
+      console.log(`[Recommendations] Using base schedule rules (${matchingBaseRules.length}) - no override for current time`);
+      matchingBaseRules.forEach(rule => {
+        console.log(`[Recommendations]   Base rule ID ${rule.id}: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(', ')}]`);
+      });
     }
 
-    // Collect all allowed vibes from matching rules
+    // Collect all allowed vibes from active rules
     const allowedVibes = new Set();
-    matchingRules.forEach((rule) => {
+    activeRules.forEach((rule) => {
       rule.allowed_vibes.forEach((vibe) => allowedVibes.add(vibe));
-      const ruleType = specificRules.includes(rule) ? 'SPECIFIC' : 'GENERAL';
-      console.log(`[Recommendations] Adding vibes from ${ruleType} rule ID ${rule.id}: [${rule.allowed_vibes.join(', ')}]`);
     });
 
     console.log(`[Recommendations] Final allowed vibes: ${Array.from(allowedVibes).join(', ')}`);
-    console.log(`[Recommendations] Rules used: ${matchingRules.map(r => `ID ${r.id} (${specificRules.includes(r) ? 'specific' : 'general'})`).join(', ')}`);
 
     // If no rules match, return empty recommendations
     if (allowedVibes.size === 0) {
       return {
         primary: null,
         alternatives: [],
-        currentRule: null
+        currentRule: null,
+        debug: {
+          currentHour,
+          currentDay,
+          totalRules: allRules.length,
+          baseRulesCount: baseRules.length,
+          overrideRulesCount: overrideRules.length,
+          matchingBaseRulesCount: matchingBaseRules.length,
+          matchingOverrideRulesCount: matchingOverrideRules.length,
+          activeRulesCount: activeRules.length,
+          activeRuleIds: activeRules.map(r => r.id),
+          activeRuleTypes: activeRules.map(r => r.rule_type)
+        }
       };
     }
 
@@ -755,7 +718,6 @@ async function getRecommendedPlaylists(householdId) {
     // Load playlist vibes
     const vibes = await loadPlaylistVibes();
     console.log(`[Recommendations] Playlists with vibes: ${Object.keys(vibes).length}`);
-    console.log(`[Recommendations] Vibe assignments:`, Object.entries(vibes).slice(0, 5));
 
     // Filter favorites by allowed vibes
     const matchingPlaylists = favorites.filter((favorite) => {
@@ -773,7 +735,19 @@ async function getRecommendedPlaylists(householdId) {
       return {
         primary: null,
         alternatives: [],
-        currentRule: matchingRules.length > 0 ? matchingRules[0] : null
+        currentRule: activeRules.length > 0 ? activeRules[0] : null,
+        debug: {
+          currentHour,
+          currentDay,
+          totalRules: allRules.length,
+          baseRulesCount: baseRules.length,
+          overrideRulesCount: overrideRules.length,
+          matchingBaseRulesCount: matchingBaseRules.length,
+          matchingOverrideRulesCount: matchingOverrideRules.length,
+          activeRulesCount: activeRules.length,
+          activeRuleIds: activeRules.map(r => r.id),
+          activeRuleTypes: activeRules.map(r => r.rule_type)
+        }
       };
     }
 
@@ -786,26 +760,20 @@ async function getRecommendedPlaylists(householdId) {
     const debugInfo = {
       currentHour,
       currentDay,
-      totalRules: rules.length,
-      timeMatchingRulesCount: timeMatchingRules.length,
-      specificRulesCount: specificRules.length,
-      generalRulesCount: generalRules.length,
-      specificRuleIds: specificRules.map(r => r.id),
-      generalRuleIds: generalRules.map(r => r.id),
-      usedRuleIds: matchingRules.map(r => r.id),
-      ruleTypes: matchingRules.map(r => specificRules.includes(r) ? 'specific' : 'general'),
-      allRules: rules.map(r => ({
+      totalRules: allRules.length,
+      baseRulesCount: baseRules.length,
+      overrideRulesCount: overrideRules.length,
+      matchingBaseRulesCount: matchingBaseRules.length,
+      matchingOverrideRulesCount: matchingOverrideRules.length,
+      activeRulesCount: activeRules.length,
+      activeRuleIds: activeRules.map(r => r.id),
+      activeRuleTypes: activeRules.map(r => r.rule_type),
+      allRules: allRules.map(r => ({
         id: r.id,
+        type: r.rule_type,
         time: `${r.start_hour}-${r.end_hour}`,
         days: r.days ? r.days.join(',') : 'all',
         vibes: r.allowed_vibes.join(',')
-      })),
-      matchingRules: timeMatchingRules.map(r => ({
-        id: r.id,
-        time: `${r.start_hour}-${r.end_hour}`,
-        days: r.days ? r.days.join(',') : 'all',
-        vibes: r.allowed_vibes.join(','),
-        type: (r.days && r.days.length > 0) ? 'specific' : 'general'
       }))
     };
     console.log(`[Recommendations] Debug info:`, JSON.stringify(debugInfo, null, 2));
@@ -813,7 +781,7 @@ async function getRecommendedPlaylists(householdId) {
     return {
       primary,
       alternatives,
-      currentRule: matchingRules.length > 0 ? matchingRules[0] : null,
+      currentRule: activeRules.length > 0 ? activeRules[0] : null,
       debug: debugInfo
     };
   } catch (error) {
