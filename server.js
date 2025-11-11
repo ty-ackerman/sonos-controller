@@ -378,8 +378,8 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       }
     }
 
-    // Find active favorite by matching currentItem container to favorites (on-demand, no cache)
-    const activeFavorite = await findActiveFavoriteByContainer(currentItem, preferredHousehold);
+    // Find active favorite by querying queue and matching to favorites (on-demand, no cache)
+    const activeFavorite = await findActiveFavoriteByQueue(groupId, preferredHousehold);
     const activeFavoriteId = activeFavorite ? activeFavorite.id : null;
 
     // Try multiple possible field names for playback state
@@ -1375,19 +1375,8 @@ async function listHouseholds() {
 }
 
 // Find active favorite by matching currentItem container to favorites
-async function findActiveFavoriteByContainer(currentItem, preferredHousehold) {
-  if (!currentItem) {
-    return null;
-  }
-
-  // Extract container ID from currentItem
-  const containerId = currentItem.container?.id || 
-                      currentItem.containerId || 
-                      currentItem.container?.serviceId ||
-                      null;
-
-  if (!containerId) {
-    // No container ID found - can't match to a favorite
+async function findActiveFavoriteByQueue(groupId, preferredHousehold) {
+  if (!groupId) {
     return null;
   }
 
@@ -1401,6 +1390,55 @@ async function findActiveFavoriteByContainer(currentItem, preferredHousehold) {
       return null;
     };
 
+    // Query the queue to get container information
+    const encodedGroupId = encodeURIComponent(groupId);
+    let queueContainerIds = new Set();
+    
+    try {
+      // Get first page of queue items (usually enough to identify the playlist)
+      const queueResponse = await sonosRequest(
+        `/groups/${encodedGroupId}/playback/queue/items?quantity=50&offset=0`
+      ).catch(() => null);
+
+      if (queueResponse && queueResponse.status !== 204) {
+        const queueData = await queueResponse.json().catch(() => ({}));
+        const queueItems = Array.isArray(queueData.items) ? queueData.items : [];
+        
+        console.log('[SonosData] Queue items:', {
+          groupId,
+          itemCount: queueItems.length,
+          firstItem: queueItems[0] ? {
+            id: queueItems[0].id,
+            container: queueItems[0].container,
+            containerId: queueItems[0].containerId,
+            serviceId: queueItems[0].serviceId
+          } : null
+        });
+        
+        // Extract container IDs from queue items
+        for (const item of queueItems) {
+          const containerId = item.container?.id || 
+                             item.containerId || 
+                             item.container?.serviceId ||
+                             item.serviceId ||
+                             null;
+          if (containerId) {
+            queueContainerIds.add(containerId);
+          }
+        }
+        
+        console.log('[SonosData] Queue container IDs:', Array.from(queueContainerIds));
+      }
+    } catch (error) {
+      console.warn('[SonosData] Failed to query queue:', error.message);
+      return null;
+    }
+
+    if (queueContainerIds.size === 0) {
+      // No container IDs found in queue - can't match to a favorite
+      return null;
+    }
+
     // Try preferred household first
     let householdId = preferredHousehold ? await resolveHouseholdId(preferredHousehold).catch(() => null) : null;
     let favorite = null;
@@ -1412,10 +1450,10 @@ async function findActiveFavoriteByContainer(currentItem, preferredHousehold) {
           const favoritesData = await favoritesResponse.json().catch(() => ({}));
           const favorites = Array.isArray(favoritesData.items) ? favoritesData.items : [];
           
-          // Match by container ID - check if favorite's container matches currentItem's container
+          // Match by container ID - check if any favorite's container matches queue container IDs
           favorite = favorites.find((f) => {
             const favoriteContainerId = f.container?.id || f.serviceId || f.id;
-            return favoriteContainerId === containerId;
+            return favoriteContainerId && queueContainerIds.has(favoriteContainerId);
           });
 
           if (favorite) {
@@ -1449,7 +1487,7 @@ async function findActiveFavoriteByContainer(currentItem, preferredHousehold) {
             // Match by container ID
             favorite = favorites.find((f) => {
               const favoriteContainerId = f.container?.id || f.serviceId || f.id;
-              return favoriteContainerId === containerId;
+              return favoriteContainerId && queueContainerIds.has(favoriteContainerId);
             });
 
             if (favorite) {
@@ -1475,8 +1513,8 @@ async function findActiveFavoriteByContainer(currentItem, preferredHousehold) {
 
     return null;
   } catch (error) {
-    console.warn('[SonosData] Failed to find active favorite by container:', {
-      containerId,
+    console.warn('[SonosData] Failed to find active favorite by queue:', {
+      groupId,
       error: error.message
     });
     return null;
