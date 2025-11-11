@@ -4613,7 +4613,12 @@ async function checkAuthAndInit() {
             const maxRetries = 3;
             const checkStatus = async () => {
               try {
-                const response = await fetch(`/api/groups/${encodeURIComponent(savedGroupId)}/playback/status`);
+                const params = new URLSearchParams();
+                if (currentHouseholdId) {
+                  params.set('householdId', currentHouseholdId);
+                }
+                const statusUrl = `/api/groups/${encodeURIComponent(savedGroupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
+                const response = await fetch(statusUrl);
                 if (response.ok) {
                   const status = await response.json();
                   if (status.activeFavoriteId === entry.favorite.id) {
@@ -4878,7 +4883,12 @@ async function checkAuthAndInit() {
                 if (!groupId) continue;
                 
                 try {
-                  const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playback/status`);
+                  const params = new URLSearchParams();
+                  if (currentHouseholdId) {
+                    params.set('householdId', currentHouseholdId);
+                  }
+                  const statusUrl = `/api/groups/${encodeURIComponent(groupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
+                  const response = await fetch(statusUrl);
                   if (response.ok) {
                     const status = await response.json();
                     const playbackState = status.playbackState || status.state || 'STOPPED';
@@ -5010,7 +5020,12 @@ async function checkAuthAndInit() {
         }
 
         try {
-          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playback/status`);
+          const params = new URLSearchParams();
+          if (currentHouseholdId) {
+            params.set('householdId', currentHouseholdId);
+          }
+          const statusUrl = `/api/groups/${encodeURIComponent(groupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
+          const response = await fetch(statusUrl);
           if (!response.ok) {
             throw new Error('Failed to fetch playback status');
           }
@@ -5140,18 +5155,25 @@ async function checkAuthAndInit() {
             let playlistName = null;
             let playlistImageUrl = null;
             if (activeFavoriteId) {
-              const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
-              if (favoriteEntry && favoriteEntry.favorite) {
-                playlistName = favoriteEntry.favorite.name || null;
-                // Get playlist cover art
-                const favorite = favoriteEntry.favorite;
-                playlistImageUrl = favorite?.imageUrl
-                  ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
-                  : favorite?.images && favorite.images.length && favorite.images[0]?.url
-                    ? favorite.images[0].url
-                    : favorite?.container?.imageUrl
-                      ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
-                      : null;
+              // Prefer favorite data from status response (more reliable, works across households)
+              if (status.activeFavorite && status.activeFavorite.id === activeFavoriteId) {
+                playlistName = status.activeFavorite.name || null;
+                playlistImageUrl = status.activeFavorite.imageUrl || null;
+              } else {
+                // Fallback to favoritesRegistry (client-side cache)
+                const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
+                if (favoriteEntry && favoriteEntry.favorite) {
+                  playlistName = favoriteEntry.favorite.name || null;
+                  // Get playlist cover art
+                  const favorite = favoriteEntry.favorite;
+                  playlistImageUrl = favorite?.imageUrl
+                    ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
+                    : favorite?.images && favorite.images.length && favorite.images[0]?.url
+                      ? favorite.images[0].url
+                      : favorite?.container?.imageUrl
+                        ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
+                        : null;
+                }
               }
             }
             
