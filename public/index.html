@@ -5200,32 +5200,30 @@ async function checkAuthAndInit() {
             markActiveFavorite(activeFavoriteId);
             updateRecommendationCardButtons(activeFavoriteId);
 
-            // Get playlist name from activeFavorite.name
+            // Get playlist name with multiple fallbacks
             let playlistName = null;
-            if (activeFavoriteId && status.activeFavorite) {
-              playlistName = status.activeFavorite.name || null;
-              console.log('[Client] Playlist name resolved:', {
-                source: 'status.activeFavorite',
-                activeFavoriteId,
-                playlistName
-              });
-            } else if (activeFavoriteId) {
-              // Fallback to favoritesRegistry if status doesn't have favorite data
+            // Primary: container.name from metadata
+            if (status.container?.name) {
+              playlistName = typeof status.container.name === 'string' 
+                ? status.container.name 
+                : status.container.name?.name || status.container.name?.value || null;
+            }
+            // Fallback 1: activeFavorite.name
+            if (!playlistName && status.activeFavorite?.name) {
+              playlistName = status.activeFavorite.name;
+            }
+            // Fallback 2: favoritesRegistry
+            if (!playlistName && activeFavoriteId) {
               const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
-              if (favoriteEntry && favoriteEntry.favorite) {
-                playlistName = favoriteEntry.favorite.name || null;
-                console.log('[Client] Playlist name resolved:', {
-                  source: 'favoritesRegistry',
-                  activeFavoriteId,
-                  playlistName,
-                  statusIssue: 'status missing favorite data'
-                });
-              } else {
-                console.warn('[Client] Playlist name NOT FOUND:', {
-                  activeFavoriteId,
-                  favoritesRegistry: favoriteEntry ? 'present but no favorite' : 'missing'
-                });
+              if (favoriteEntry?.favorite?.name) {
+                playlistName = favoriteEntry.favorite.name;
               }
+            }
+            // Fallback 3: container.title
+            if (!playlistName && status.container?.title) {
+              playlistName = typeof status.container.title === 'string'
+                ? status.container.title
+                : status.container.title?.name || status.container.title?.value || null;
             }
             
             const title = track?.name || track?.title || item?.name || (isPlaying ? 'Loading...' : 'Unknown Track');
@@ -5246,12 +5244,43 @@ async function checkAuthAndInit() {
               album = typeof track.albumName === 'string' ? track.albumName : track.albumName?.name || track.albumName?.value || '';
             }
             
-            // Use track.images[0].url for cover art
+            // Get cover art with multiple fallbacks
             let imageUrl = null;
+            // Primary: track.images[0].url
             if (track?.images && Array.isArray(track.images) && track.images.length > 0) {
               imageUrl = track.images[0]?.url || null;
-            } else if (track?.imageUrl) {
+            }
+            // Fallback 1: track.imageUrl
+            if (!imageUrl && track?.imageUrl) {
               imageUrl = typeof track.imageUrl === 'string' ? track.imageUrl : track.imageUrl?.url || null;
+            }
+            // Fallback 2: activeFavorite.imageUrl
+            if (!imageUrl && status.activeFavorite?.imageUrl) {
+              imageUrl = status.activeFavorite.imageUrl;
+            }
+            // Fallback 3: container.images[0].url
+            if (!imageUrl && status.container?.images && Array.isArray(status.container.images) && status.container.images.length > 0) {
+              imageUrl = status.container.images[0]?.url || null;
+            }
+            // Fallback 4: container.imageUrl
+            if (!imageUrl && status.container?.imageUrl) {
+              imageUrl = typeof status.container.imageUrl === 'string' 
+                ? status.container.imageUrl 
+                : status.container.imageUrl?.url || null;
+            }
+            // Fallback 5: favoritesRegistry image
+            if (!imageUrl && activeFavoriteId) {
+              const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
+              if (favoriteEntry?.favorite) {
+                const favorite = favoriteEntry.favorite;
+                imageUrl = favorite?.imageUrl
+                  ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
+                  : favorite?.images && favorite.images.length && favorite.images[0]?.url
+                    ? favorite.images[0].url
+                    : favorite?.container?.imageUrl
+                      ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
+                      : null;
+              }
             }
             
             if (imageUrl && !imageUrl.startsWith('http')) {

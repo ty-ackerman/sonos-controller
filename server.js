@@ -355,6 +355,8 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     };
     
     let track = null;
+    let playlistName = null;
+    let playlistImageUrl = null;
     
     if (currentItem) {
       track = currentItem.track || currentItem.container?.metadata || currentItem;
@@ -369,7 +371,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
           }
         }
 
-        // Extract track image from images array
+        // Extract track image from images array (primary source for cover art)
         let trackImageUrl = null;
         if (track.images && Array.isArray(track.images) && track.images.length > 0) {
           trackImageUrl = normalizeField(track.images[0]?.url);
@@ -391,7 +393,23 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       }
     }
     
-    // Find matching favorite to get playlist name
+    // Extract playlist name from container (primary source)
+    if (container && typeof container === 'object') {
+      playlistName = normalizeField(container.name) || 
+                     normalizeField(container.title) ||
+                     normalizeField(container.service?.name);
+      
+      // Container images as fallback for playlist cover art
+      if (container.images && Array.isArray(container.images) && container.images.length > 0) {
+        playlistImageUrl = normalizeField(container.images[0]?.url);
+      } else {
+        playlistImageUrl = normalizeField(container.imageUrl) ||
+                           normalizeField(container.albumArtUri) ||
+                           normalizeField(container.albumArtURL);
+      }
+    }
+    
+    // Try to find matching favorite for UI highlighting and as fallback for playlist name
     let activeFavoriteId = null;
     let activeFavorite = null;
     if (container?.id || container?.serviceId) {
@@ -400,18 +418,33 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
         const favoriteMatch = await findFavoriteByContainerId(containerId, preferredHousehold);
         if (favoriteMatch) {
           activeFavoriteId = favoriteMatch.id;
-          // Use activeFavorite.name for playlist name
+          // Use favorite name as fallback if container doesn't have name
+          if (!playlistName) {
+            playlistName = favoriteMatch.name;
+          }
+          // Use favorite image as fallback if container doesn't have image
+          if (!playlistImageUrl && favoriteMatch.imageUrl) {
+            playlistImageUrl = favoriteMatch.imageUrl;
+          }
           activeFavorite = {
             id: favoriteMatch.id,
-            name: favoriteMatch.name,
-            // Cover art comes from track.images[0].url, not from favorite
-            imageUrl: null
+            name: playlistName || favoriteMatch.name,
+            imageUrl: playlistImageUrl || favoriteMatch.imageUrl || null
           };
         }
       } catch (error) {
         // Non-fatal
         console.warn('[SonosData] Failed to find favorite match:', error.message);
       }
+    }
+    
+    // If we have playlist info but no favorite match, still create activeFavorite object
+    if (playlistName && !activeFavorite) {
+      activeFavorite = {
+        id: null,
+        name: playlistName,
+        imageUrl: playlistImageUrl || null
+      };
     }
 
     // Try multiple possible field names for playback state
@@ -473,6 +506,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       volume: volume.volume || volume.groupVolume || 0,
       activeFavoriteId: finalActiveFavoriteId,
       activeFavorite: finalActiveFavorite,
+      container: container || metadata.container || null, // Explicitly include container for playlist name
       ...playbackState,
       ...metadata
     });
