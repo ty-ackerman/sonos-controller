@@ -25,9 +25,14 @@ export async function loadVibeTimeRules() {
         row.end_hour >= 0 &&
         row.end_hour <= 23 &&
         Array.isArray(row.allowed_vibes) &&
-        row.allowed_vibes.length > 0 &&
-        (row.rule_type === 'base' || row.rule_type === 'override')
+        row.allowed_vibes.length > 0
       ) {
+        // Handle missing rule_type (backward compatibility - default to 'base')
+        let ruleType = row.rule_type;
+        if (!ruleType || (ruleType !== 'base' && ruleType !== 'override')) {
+          console.warn(`[VibeTimeRules] Rule ID ${row.id} missing or invalid rule_type, defaulting to 'base'`);
+          ruleType = 'base';
+        }
         // Validate that all vibes in the array are valid
         const validVibes = row.allowed_vibes.filter((vibe) =>
           typeof vibe === 'string' && VALID_VIBES.includes(vibe)
@@ -35,7 +40,7 @@ export async function loadVibeTimeRules() {
         if (validVibes.length > 0) {
           // Validate days array based on rule_type
           let validDays = null;
-          if (row.rule_type === 'override') {
+          if (ruleType === 'override') {
             // Override rules must have exactly one day
             if (row.days !== null && row.days !== undefined && Array.isArray(row.days)) {
               const filteredDays = row.days.filter(
@@ -66,7 +71,7 @@ export async function loadVibeTimeRules() {
             end_hour: row.end_hour,
             allowed_vibes: validVibes,
             days: validDays,
-            rule_type: row.rule_type
+            rule_type: ruleType
           });
         }
       }

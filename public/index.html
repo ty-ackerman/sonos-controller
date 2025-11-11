@@ -3039,9 +3039,21 @@ async function checkAuthAndInit() {
         }
 
         try {
-          const params = new URLSearchParams({ householdId: currentHouseholdId });
+          // Get current time in user's local timezone
+          const now = new Date();
+          const currentHour = now.getHours();
+          const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+          const timezoneOffset = -now.getTimezoneOffset() / 60; // Offset in hours (e.g., -5 for EST)
+
+          const params = new URLSearchParams({
+            householdId: currentHouseholdId,
+            hour: currentHour.toString(),
+            day: currentDay.toString(),
+            timezoneOffset: timezoneOffset.toString()
+          });
           const url = `/api/playlist-recommendations?${params.toString()}`;
           console.log('[Client] Fetching recommendations from:', url);
+          console.log(`[Client] Local time: ${currentHour}:${String(now.getMinutes()).padStart(2, '0')}, day: ${currentDay} (${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][currentDay]}), timezone offset: ${timezoneOffset}h`);
           
           const response = await fetch(url);
 

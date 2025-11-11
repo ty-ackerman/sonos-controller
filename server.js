@@ -622,12 +622,22 @@ function timeRangeContainsHour(startHour, endHour, hour) {
 }
 
 // Helper function to get recommended playlists based on current time
-async function getRecommendedPlaylists(householdId) {
+async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset) {
   try {
-    // Get current hour (0-23) and day of week (0 = Sunday, 6 = Saturday)
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    // Use user's local time if provided, otherwise fall back to server time
+    let currentHour, currentDay;
+    if (typeof userHour === 'number' && typeof userDay === 'number') {
+      // Use client-provided time (user's local timezone)
+      currentHour = userHour;
+      currentDay = userDay;
+      console.log(`[Recommendations] Using client-provided time: hour ${currentHour}, day ${currentDay}${timezoneOffset ? ` (timezone offset: ${timezoneOffset}h)` : ''}`);
+    } else {
+      // Fallback to server time (for backward compatibility)
+      const now = new Date();
+      currentHour = now.getHours();
+      currentDay = now.getDay();
+      console.log(`[Recommendations] Using server time (no client time provided): hour ${currentHour}, day ${currentDay}`);
+    }
 
     // Load all time rules
     const allRules = await loadVibeTimeRules();
@@ -639,22 +649,39 @@ async function getRecommendedPlaylists(householdId) {
     
     console.log(`[Recommendations] Base schedule rules: ${baseRules.length}, Override rules: ${overrideRules.length}`);
 
+    // Log all base rules for debugging
+    baseRules.forEach(rule => {
+      const matches = timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
+      console.log(`[Recommendations] Base rule ID ${rule.id}: ${rule.start_hour}-${rule.end_hour}, matches hour ${currentHour}: ${matches}`);
+    });
+
     // Find base rules that match current time
-    const matchingBaseRules = baseRules.filter(rule => 
-      timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour)
-    );
+    const matchingBaseRules = baseRules.filter(rule => {
+      const matches = timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
+      if (!matches) {
+        console.log(`[Recommendations] Base rule ID ${rule.id} does NOT match: hour ${currentHour} is not in range ${rule.start_hour}-${rule.end_hour}`);
+      }
+      return matches;
+    });
 
     // Find override rules for current day that match current time
     const matchingOverrideRules = overrideRules.filter(rule => {
       // Override must be for current day (override rules have exactly one day)
       if (!rule.days || !Array.isArray(rule.days) || rule.days.length !== 1) {
+        console.log(`[Recommendations] Override rule ID ${rule.id} invalid: days array is missing or wrong length`);
         return false;
       }
       if (rule.days[0] !== currentDay) {
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        console.log(`[Recommendations] Override rule ID ${rule.id} does NOT match day: rule is for ${dayNames[rule.days[0]]}, current day is ${dayNames[currentDay]}`);
         return false;
       }
       // Override must match current time
-      return timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
+      const matches = timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
+      if (!matches) {
+        console.log(`[Recommendations] Override rule ID ${rule.id} does NOT match time: hour ${currentHour} is not in range ${rule.start_hour}-${rule.end_hour}`);
+      }
+      return matches;
     });
 
     console.log(`[Recommendations] Base rules matching time: ${matchingBaseRules.length}`);
@@ -690,6 +717,16 @@ async function getRecommendedPlaylists(householdId) {
 
     // If no rules match, return empty recommendations
     if (allowedVibes.size === 0) {
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      console.log(`[Recommendations] ⚠️ No rules match current time: ${currentHour}:00 on ${dayNames[currentDay]}`);
+      console.log(`[Recommendations] Available base rules: ${baseRules.map(r => `${r.start_hour}-${r.end_hour}`).join(', ')}`);
+      if (overrideRules.length > 0) {
+        overrideRules.forEach(r => {
+          const ruleDay = r.days && r.days.length > 0 ? dayNames[r.days[0]] : 'unknown';
+          console.log(`[Recommendations] Available override rule: ${r.start_hour}-${r.end_hour} on ${ruleDay}`);
+        });
+      }
+      
       return {
         primary: null,
         alternatives: [],
@@ -704,7 +741,14 @@ async function getRecommendedPlaylists(householdId) {
           matchingOverrideRulesCount: matchingOverrideRules.length,
           activeRulesCount: activeRules.length,
           activeRuleIds: activeRules.map(r => r.id),
-          activeRuleTypes: activeRules.map(r => r.rule_type)
+          activeRuleTypes: activeRules.map(r => r.rule_type),
+          allBaseRules: baseRules.map(r => ({ id: r.id, time: `${r.start_hour}-${r.end_hour}`, vibes: r.allowed_vibes })),
+          allOverrideRules: overrideRules.map(r => ({ 
+            id: r.id, 
+            time: `${r.start_hour}-${r.end_hour}`, 
+            day: r.days && r.days.length > 0 ? dayNames[r.days[0]] : 'unknown',
+            vibes: r.allowed_vibes 
+          }))
         }
       };
     }
@@ -798,7 +842,20 @@ app.get('/api/playlist-recommendations', async (req, res) => {
         : undefined;
     const householdId = await resolveHouseholdId(preferredHousehold);
 
-    const recommendations = await getRecommendedPlaylists(householdId);
+    // Get user's local time from query params (if provided)
+    const userHour = req.query.hour ? parseInt(req.query.hour, 10) : undefined;
+    const userDay = req.query.day ? parseInt(req.query.day, 10) : undefined;
+    const timezoneOffset = req.query.timezoneOffset ? parseFloat(req.query.timezoneOffset) : undefined;
+
+    // Validate hour and day if provided
+    if (userHour !== undefined && (userHour < 0 || userHour > 23 || isNaN(userHour))) {
+      return res.status(400).json({ error: 'Invalid hour parameter (must be 0-23)' });
+    }
+    if (userDay !== undefined && (userDay < 0 || userDay > 6 || isNaN(userDay))) {
+      return res.status(400).json({ error: 'Invalid day parameter (must be 0-6)' });
+    }
+
+    const recommendations = await getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset);
     res.json(recommendations);
   } catch (error) {
     handleProxyError(res, error);
