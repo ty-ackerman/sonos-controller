@@ -2485,7 +2485,8 @@ settingsStatusLabel.textContent = '';
       let currentVibeFilter = null;
       let playbackRefreshTimer = null;
       let currentPlaybackState = null;
-      let currentImageUrl = null;
+      let currentImageUrl = null; // Store the source imageUrl (before proxying) for comparison
+      let currentProxiedImageUrl = null; // Store the proxied URL for DOM updates
       let previousTrackId = null; // Track previous track identifier for change detection
       let baseVolume = null; // Store base/reference volume level for loudness normalization
 
@@ -5326,14 +5327,16 @@ async function checkAuthAndInit() {
 
             // Handle image loading - always proxy through server
             // Calculate the final URL we'll use (proxy URL if HTTP/HTTPS)
-            // Add cache-busting parameter based on track ID to force refresh when track changes
+            // Add aggressive cache-busting to force fresh image loads
             let finalImageUrl = null;
             if (imageUrl) {
               if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                // Add cache-busting parameter based on track ID to ensure fresh image loads
-                const trackId = track?.id?.objectId || track?.id || item?.track?.id?.objectId || item?.track?.id || Date.now();
-                const cacheBuster = typeof trackId === 'string' ? trackId : String(trackId);
-                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}&cb=${encodeURIComponent(cacheBuster)}`;
+                // Use track ID + timestamp for aggressive cache-busting
+                // This ensures every track change gets a fresh image, even if URLs are similar
+                const trackId = track?.id?.objectId || track?.id || item?.track?.id?.objectId || item?.track?.id || '';
+                const timestamp = Date.now();
+                const cacheBuster = `${trackId}_${timestamp}`;
+                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}&cb=${encodeURIComponent(cacheBuster)}&t=${timestamp}`;
               } else {
                 finalImageUrl = imageUrl;
               }
@@ -5386,51 +5389,72 @@ async function checkAuthAndInit() {
             // Update playlist name/location
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
-            // Update image - force refresh to prevent caching delays
+            // Update image - compare source imageUrl (not proxied URL) to detect actual changes
             const existingImg = currentlyPlayingArt.querySelector('img');
-            if (finalImageUrl) {
-              // Always update if URL changed, and force browser to reload
-              if (finalImageUrl !== currentImageUrl) {
-                currentImageUrl = finalImageUrl;
-                
-                if (existingImg) {
-                  // Clear the old image first to force browser to reload
-                  existingImg.src = '';
-                  // Use requestAnimationFrame to ensure old image is cleared, then set new src
-                  requestAnimationFrame(() => {
-                    existingImg.src = finalImageUrl;
-                    existingImg.alt = title;
-                  });
-                } else {
-                  // Create new img element
-                  const img = document.createElement('img');
-                  img.alt = title;
-                  img.loading = 'eager'; // Use eager loading for immediate display
-                  img.style.width = '100%';
-                  img.style.height = '100%';
-                  img.style.objectFit = 'cover';
-                  
-                  img.onerror = () => {
-                    currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
-                    currentImageUrl = null;
-                  };
-                  
-                  currentlyPlayingArt.innerHTML = '';
-                  currentlyPlayingArt.appendChild(img);
-                  img.src = finalImageUrl;
-                }
-              } else if (existingImg) {
-                // URL hasn't changed, but update alt text in case title changed
-                existingImg.alt = title;
-              }
-            } else {
-              // No image - show placeholder
-              currentImageUrl = null;
+            const sourceImageUrl = imageUrl; // The original source URL before proxying
+            
+            // Check if track changed or source image URL changed
+            const trackId = track?.id?.objectId || track?.id || item?.track?.id?.objectId || item?.track?.id || '';
+            const trackChanged = trackId && trackId !== previousTrackId;
+            const imageUrlChanged = sourceImageUrl && sourceImageUrl !== currentImageUrl;
+            
+            if (finalImageUrl && (trackChanged || imageUrlChanged)) {
+              // Track or image changed - force update
+              currentImageUrl = sourceImageUrl; // Store source URL for comparison
+              currentProxiedImageUrl = finalImageUrl; // Store proxied URL
+              
               if (existingImg) {
-                currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
-              } else if (!currentlyPlayingArt.querySelector('.currently-playing-art-placeholder')) {
+                // Clear the old image first to force browser to reload
+                existingImg.src = '';
+                // Use requestAnimationFrame to ensure old image is cleared, then set new src
+                requestAnimationFrame(() => {
+                  existingImg.src = finalImageUrl;
+                  existingImg.alt = title;
+                });
+              } else {
+                // Create new img element
+                const img = document.createElement('img');
+                img.alt = title;
+                img.loading = 'eager'; // Use eager loading for immediate display
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.objectFit = 'cover';
+                
+                img.onerror = () => {
+                  currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+                  currentImageUrl = null;
+                  currentProxiedImageUrl = null;
+                };
+                
+                currentlyPlayingArt.innerHTML = '';
+                currentlyPlayingArt.appendChild(img);
+                img.src = finalImageUrl;
+              }
+            } else if (finalImageUrl && existingImg && existingImg.src !== finalImageUrl) {
+              // Proxied URL changed (due to cache-busting) but source is same - still update to force refresh
+              currentProxiedImageUrl = finalImageUrl;
+              existingImg.src = '';
+              requestAnimationFrame(() => {
+                existingImg.src = finalImageUrl;
+                existingImg.alt = title;
+              });
+            } else if (existingImg && !finalImageUrl) {
+              // Had image but now no image - show placeholder
+              currentImageUrl = null;
+              currentProxiedImageUrl = null;
+              currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+            } else if (!finalImageUrl && !existingImg) {
+              // No image and no existing img - show placeholder
+              currentImageUrl = null;
+              currentProxiedImageUrl = null;
+              if (!currentlyPlayingArt.querySelector('.currently-playing-art-placeholder')) {
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
               }
+            }
+            
+            // Update previousTrackId for next comparison
+            if (trackId) {
+              previousTrackId = trackId;
             }
 
             const playerCount = latestPlayers.filter((p) => p.groupId === groupId).length;

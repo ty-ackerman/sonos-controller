@@ -570,7 +570,11 @@ app.get('/api/image-proxy', async (req, res) => {
     const imageBuffer = await imageResponse.arrayBuffer();
 
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    // Disable caching for local network images to prevent stale images
+    // Use no-cache instead of no-store to allow revalidation but prevent stale cache
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(Buffer.from(imageBuffer));
   } catch (error) {
