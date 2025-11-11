@@ -241,7 +241,7 @@
       .loading-text .loading-x {
         font-size: 1.75rem;
         font-weight: 400;
-        color: var(--text-secondary);
+        color: white;
         font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
         line-height: 1;
         min-height: 1.75rem;
@@ -3005,6 +3005,9 @@ async function checkAuthAndInit() {
 
           // Hide loading overlay
           hideLoadingOverlay();
+          
+          // Trigger volume trick to refresh playlist info after load
+          await triggerVolumeRefresh();
         } catch (error) {
           hideLoadingOverlay();
           console.error('Failed to load households:', error);
@@ -4691,6 +4694,9 @@ async function checkAuthAndInit() {
             
             // Check status after a short delay to allow server to update
             setTimeout(checkStatus, 300);
+            
+            // Trigger volume trick to refresh playlist info after playlist change
+            await triggerVolumeRefresh();
           } else {
             // Playback failed, clear active favorite
             markActiveFavorite(null);
@@ -4771,6 +4777,37 @@ async function checkAuthAndInit() {
         });
       }
 
+
+      // Volume trick to force status refresh - adjusts volume up 1 and back to trigger status update
+      async function triggerVolumeRefresh() {
+        const groupId = getSelectedGroupId();
+        if (!groupId || !isSonosConnected) {
+          return;
+        }
+        
+        try {
+          // Get current volume
+          const statusResponse = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playback/status${currentHouseholdId ? '?householdId=' + encodeURIComponent(currentHouseholdId) : ''}`);
+          if (!statusResponse.ok) {
+            return;
+          }
+          const status = await statusResponse.json();
+          const currentVolume = status.volume || 0;
+          
+          // Only do the trick if volume is not at max (can't go up from 100)
+          if (currentVolume < 100) {
+            // Adjust volume up 1
+            await setMasterVolume(currentVolume + 1, false);
+            // Wait a tiny bit for the status to update
+            await new Promise(resolve => setTimeout(resolve, 100));
+            // Adjust volume back
+            await setMasterVolume(currentVolume, false);
+          }
+        } catch (error) {
+          // Silently fail - this is just a workaround
+          console.debug('Volume refresh trick failed:', error);
+        }
+      }
 
       async function setMasterVolume(level, showFeedbackMessage = true) {
         const groupId = getSelectedGroupId();
@@ -5294,6 +5331,7 @@ async function checkAuthAndInit() {
                   currentActiveFavoriteIdTimestamp = Date.now();
                   markActiveFavorite(statusActiveFavoriteId);
                   activeFavoriteId = statusActiveFavoriteId;
+                  didUpdateActiveFavoriteId = true;
                 }
               } else {
                 // Status matches current - use it for display
@@ -5311,6 +5349,9 @@ async function checkAuthAndInit() {
               activeFavoriteId = null;
             }
             // If status is undefined or null during active playback, keep using currentActiveFavoriteId (don't clear it - might be stale)
+
+            // Track if we updated activeFavoriteId to trigger volume refresh
+            let didUpdateActiveFavoriteId = false;
 
             let playlistName = null;
             let playlistImageUrl = null;
@@ -5468,6 +5509,12 @@ async function checkAuthAndInit() {
 
             // Update playlist name/location
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
+
+            // If we updated activeFavoriteId, trigger volume refresh to get correct playlist info
+            if (didUpdateActiveFavoriteId) {
+              // Trigger volume refresh in background (don't await - let it happen async)
+              triggerVolumeRefresh().catch(() => {});
+            }
 
             // Update image - only update if the final URL has actually changed
             if (finalImageUrl && finalImageUrl !== currentImageUrl) {
