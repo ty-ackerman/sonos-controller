@@ -1520,6 +1520,16 @@
         transform: none;
       }
 
+      .recommended-playlist-actions button.playing {
+        background: var(--success);
+        color: var(--bg-primary);
+      }
+
+      .recommended-playlist-actions button.playing:hover {
+        background: var(--success);
+        opacity: 0.9;
+      }
+
       .recommended-playlist.loading {
         opacity: 0.7;
         pointer-events: none;
@@ -1983,6 +1993,7 @@ settingsStatusLabel.textContent = '';
       let currentGroupName = 'No group selected';
       let currentActiveFavoriteId = null;
       let currentActiveFavoriteIdTimestamp = 0; // Track when favorite was set
+      const recommendationCardButtons = new Map(); // Store recommendation card buttons by favorite ID
       const favoritesRegistry = new Map();
       let latestPlayers = [];
       let latestGroups = [];
@@ -2796,6 +2807,14 @@ async function checkAuthAndInit() {
         const info = document.createElement('div');
         info.className = 'time-rule-info';
 
+        // Add name if it exists
+        if (rule.name) {
+          const name = document.createElement('div');
+          name.className = 'time-rule-name';
+          name.textContent = rule.name;
+          info.appendChild(name);
+        }
+
         const time = document.createElement('div');
         time.className = 'time-rule-time';
         const startHour = rule.start_hour;
@@ -3414,12 +3433,14 @@ async function checkAuthAndInit() {
             const startTime = formatHour(currentRule.start_hour);
             const endTime = formatHour(currentRule.end_hour);
             const vibes = currentRule.allowed_vibes.join(', ');
-            recommendationRuleInfo.innerHTML = `<strong>${startTime} - ${endTime}</strong> • Matching vibes: ${vibes}`;
+            const ruleName = currentRule.name ? `<strong>${currentRule.name}</strong> • ` : '';
+            recommendationRuleInfo.innerHTML = `${ruleName}<strong>${startTime} - ${endTime}</strong> • Matching vibes: ${vibes}`;
           } else {
             recommendationRuleInfo.textContent = 'No time rule active for current time.';
           }
 
-          // Clear containers
+          // Clear containers and button references
+          recommendationCardButtons.clear();
           recommendedPlaylistContainer.innerHTML = '';
           alternativesDropdown.innerHTML = '';
 
@@ -3546,7 +3567,19 @@ async function checkAuthAndInit() {
           actions.className = 'recommended-playlist-actions';
 
           const playBtn = document.createElement('button');
-          playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
+          
+          // Check if this playlist is currently active
+          const isCurrentlyActive = currentActiveFavoriteId === favorite.id;
+          if (isCurrentlyActive) {
+            playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Playing';
+            playBtn.classList.add('playing');
+          } else {
+            playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
+          }
+          
+          // Store button reference for updates
+          recommendationCardButtons.set(favorite.id, playBtn);
+          
           playBtn.addEventListener('click', async (e) => {
             e.stopPropagation();
             playBtn.disabled = true;
@@ -3565,7 +3598,8 @@ async function checkAuthAndInit() {
               console.error('Failed to play recommended playlist:', error);
             } finally {
               playBtn.disabled = false;
-              playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
+              // Button state will be updated by markActiveFavorite/updateRecommendationCardButtons
+              updateRecommendationCardButtons(currentActiveFavoriteId);
               card.classList.remove('loading');
             }
           });
@@ -3579,12 +3613,25 @@ async function checkAuthAndInit() {
             if (e.target.closest('button')) {
               return;
             }
-            const entry = favoritesRegistry.get(favorite.id);
-            if (entry) {
-              await playFavorite(entry);
-            } else {
-              const tempEntry = { favorite, button: null, statusEl: null, loading: false };
-              await playFavorite(tempEntry);
+            
+            playBtn.disabled = true;
+            playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Loading...';
+            card.classList.add('loading');
+            
+            try {
+              const entry = favoritesRegistry.get(favorite.id);
+              if (entry) {
+                await playFavorite(entry);
+              } else {
+                const tempEntry = { favorite, button: null, statusEl: null, loading: false };
+                await playFavorite(tempEntry);
+              }
+            } catch (error) {
+              console.error('Failed to play recommended playlist:', error);
+            } finally {
+              playBtn.disabled = false;
+              updateRecommendationCardButtons(currentActiveFavoriteId);
+              card.classList.remove('loading');
             }
           });
         } else {
@@ -4044,6 +4091,23 @@ async function checkAuthAndInit() {
             updateFavoriteStatus(entry, FAVORITE_SUCCESS_MESSAGE);
           } else if (entry.statusMessage === FAVORITE_SUCCESS_MESSAGE) {
             updateFavoriteStatus(entry, READY_MESSAGE);
+          }
+        });
+
+        // Update recommendation card buttons
+        updateRecommendationCardButtons(favoriteId);
+      }
+
+      function updateRecommendationCardButtons(activeFavoriteId) {
+        recommendationCardButtons.forEach((button, favoriteId) => {
+          const isActive = Boolean(activeFavoriteId) && favoriteId === activeFavoriteId;
+          
+          if (isActive) {
+            button.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Playing';
+            button.classList.add('playing');
+          } else {
+            button.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
+            button.classList.remove('playing');
           }
         });
       }
