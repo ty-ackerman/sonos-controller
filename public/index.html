@@ -5289,10 +5289,14 @@ async function checkAuthAndInit() {
 
             // Handle image loading - always proxy through server
             // Calculate the final URL we'll use (proxy URL if HTTP/HTTPS)
+            // Add cache-busting parameter based on track ID to force refresh when track changes
             let finalImageUrl = null;
             if (imageUrl) {
               if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+                // Add cache-busting parameter based on track ID to ensure fresh image loads
+                const trackId = track?.id?.objectId || track?.id || item?.track?.id?.objectId || item?.track?.id || Date.now();
+                const cacheBuster = typeof trackId === 'string' ? trackId : String(trackId);
+                finalImageUrl = `/api/image-proxy?url=${encodeURIComponent(imageUrl)}&cb=${encodeURIComponent(cacheBuster)}`;
               } else {
                 finalImageUrl = imageUrl;
               }
@@ -5345,36 +5349,49 @@ async function checkAuthAndInit() {
             // Update playlist name/location
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
-            // Update image - only update if the final URL has actually changed
-            if (finalImageUrl && finalImageUrl !== currentImageUrl) {
-              currentImageUrl = finalImageUrl;
-              
-              // Check if there's already an img element - if so, just update src
-              const existingImg = currentlyPlayingArt.querySelector('img');
-              if (existingImg) {
-                existingImg.src = finalImageUrl;
+            // Update image - force refresh to prevent caching delays
+            const existingImg = currentlyPlayingArt.querySelector('img');
+            if (finalImageUrl) {
+              // Always update if URL changed, and force browser to reload
+              if (finalImageUrl !== currentImageUrl) {
+                currentImageUrl = finalImageUrl;
+                
+                if (existingImg) {
+                  // Clear the old image first to force browser to reload
+                  existingImg.src = '';
+                  // Use requestAnimationFrame to ensure old image is cleared, then set new src
+                  requestAnimationFrame(() => {
+                    existingImg.src = finalImageUrl;
+                    existingImg.alt = title;
+                  });
+                } else {
+                  // Create new img element
+                  const img = document.createElement('img');
+                  img.alt = title;
+                  img.loading = 'eager'; // Use eager loading for immediate display
+                  img.style.width = '100%';
+                  img.style.height = '100%';
+                  img.style.objectFit = 'cover';
+                  
+                  img.onerror = () => {
+                    currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+                    currentImageUrl = null;
+                  };
+                  
+                  currentlyPlayingArt.innerHTML = '';
+                  currentlyPlayingArt.appendChild(img);
+                  img.src = finalImageUrl;
+                }
+              } else if (existingImg) {
+                // URL hasn't changed, but update alt text in case title changed
                 existingImg.alt = title;
-              } else {
-                // Otherwise create new img element
-                const img = document.createElement('img');
-                img.alt = title;
-                img.loading = 'lazy';
-                img.style.width = '100%';
-                img.style.height = '100%';
-                img.style.objectFit = 'cover';
-                
-                img.onerror = () => {
-                  currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
-                  currentImageUrl = null;
-                };
-                
-                currentlyPlayingArt.innerHTML = '';
-                currentlyPlayingArt.appendChild(img);
-                img.src = finalImageUrl;
               }
-            } else if (!finalImageUrl) {
-              // No image - only show placeholder if there's no image element
-              if (!currentlyPlayingArt.querySelector('img')) {
+            } else {
+              // No image - show placeholder
+              currentImageUrl = null;
+              if (existingImg) {
+                currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+              } else if (!currentlyPlayingArt.querySelector('.currently-playing-art-placeholder')) {
                 currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
               }
             }
