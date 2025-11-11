@@ -2889,10 +2889,12 @@ async function checkAuthAndInit() {
           playlistManagementStatus.textContent = '';
           playlistManagementGrid.innerHTML = '';
 
-          items.forEach((favorite) => {
-            const entry = createPlaylistManagementCard(favorite);
+          const cardPromises = items.map(async (favorite) => {
+            const entry = await createPlaylistManagementCard(favorite);
             playlistManagementGrid.appendChild(entry.button);
+            return entry;
           });
+          await Promise.all(cardPromises);
 
           renderTimeRules();
         } catch (error) {
@@ -2904,7 +2906,7 @@ async function checkAuthAndInit() {
         }
       }
 
-      function createPlaylistManagementCard(favorite) {
+      async function createPlaylistManagementCard(favorite) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'playlist-card';
