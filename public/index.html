@@ -225,23 +225,27 @@
       }
 
       .loading-text {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--text-primary);
-        letter-spacing: -0.02em;
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 8px;
+        gap: 12px;
       }
 
       .loading-text .alter-logo {
-        height: 2.5rem;
+        height: 3rem;
         width: auto;
         display: block;
       }
 
+      .loading-text .loading-x {
+        font-size: 1.25rem;
+        font-weight: 400;
+        color: var(--text-secondary);
+        font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      }
+
       .loading-text .sonos-logo {
-        height: 1.5rem;
+        height: 3rem;
         width: auto;
         display: block;
         filter: brightness(0);
@@ -2100,9 +2104,14 @@
       <div id="loading-overlay" class="loading-overlay">
         <div class="loading-content">
           <div class="loading-text">
-            <img src="/images/alter-logo-light.png" alt="Alter" class="alter-logo alter-logo-light">
-            <img src="/images/alter-logo-dark.png" alt="Alter" class="alter-logo alter-logo-dark">
-            <img src="/images/sonos.svg" alt="Sonos" class="sonos-logo">
+            <div>
+              <img src="/images/alter-logo-light.png" alt="Alter" class="alter-logo alter-logo-light">
+              <img src="/images/alter-logo-dark.png" alt="Alter" class="alter-logo alter-logo-dark">
+            </div>
+            <div class="loading-x">×</div>
+            <div>
+              <img src="/images/sonos.svg" alt="Sonos" class="sonos-logo">
+            </div>
           </div>
         </div>
       </div>
