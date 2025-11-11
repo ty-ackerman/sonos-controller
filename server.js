@@ -941,10 +941,52 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
       };
     }
 
-    // Randomly select primary recommendation
-    const primaryIndex = Math.floor(Math.random() * matchingPlaylists.length);
+    // Deterministically select primary recommendation based on active rule and date
+    // This ensures the same playlist is recommended for the entire time period
+    // and persists across different browsers/sessions
+    let seedValue = 0;
+    if (activeRules.length > 0) {
+      // Use the user's local date (if provided) or server date
+      // Combine with rule ID to get a consistent recommendation for the day
+      let dateString;
+      if (typeof userDay === 'number' && timezoneOffset !== undefined) {
+        // Calculate date based on user's timezone
+        // We have userDay (0-6) and timezoneOffset, but we need the actual date
+        // For simplicity, use server date but this will be consistent for the same rule+day combination
+        const now = new Date();
+        // Adjust for timezone offset to get user's local date
+        const userLocalTime = new Date(now.getTime() + (timezoneOffset * 60 * 60 * 1000));
+        dateString = `${userLocalTime.getFullYear()}-${String(userLocalTime.getMonth() + 1).padStart(2, '0')}-${String(userLocalTime.getDate()).padStart(2, '0')}`;
+      } else {
+        // Fallback to server date
+        const now = new Date();
+        dateString = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      }
+      
+      // Create a deterministic seed from rule ID and date
+      // Sort rule IDs to ensure consistency when multiple rules are active
+      const ruleIds = activeRules.map(r => r.id).sort().join(',');
+      const seedString = `${ruleIds}-${dateString}`;
+      
+      // Simple hash function to convert string to number
+      for (let i = 0; i < seedString.length; i++) {
+        const char = seedString.charCodeAt(i);
+        seedValue = ((seedValue << 5) - seedValue) + char;
+        seedValue = seedValue & seedValue; // Convert to 32-bit integer
+      }
+      
+      // Make it positive
+      seedValue = Math.abs(seedValue);
+      
+      console.log(`[Recommendations] Deterministic seed: "${seedString}" -> ${seedValue}`);
+    }
+    
+    // Use seeded selection (deterministic but appears random)
+    const primaryIndex = seedValue % matchingPlaylists.length;
     const primary = matchingPlaylists[primaryIndex];
     const alternatives = matchingPlaylists.filter((_, index) => index !== primaryIndex);
+    
+    console.log(`[Recommendations] Selected playlist index ${primaryIndex} of ${matchingPlaylists.length}: "${primary.name}"`);
 
     // Include debug info about which rules were considered
     const debugInfo = {
