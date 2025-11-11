@@ -5259,44 +5259,41 @@ async function checkAuthAndInit() {
             // 4. Only update if enough time has passed since last update (prevent rapid switching from race conditions)
             if (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) {
               if (statusActiveFavoriteId !== currentActiveFavoriteId) {
-                // Only update if enough time has passed (5 seconds) to prevent rapid switching from stale responses
-                // Also check if a play action happened recently - if so, trust the client's currentActiveFavoriteId
+                // Trust the server's status response if it has valid activeFavorite data
+                // The server knows what's actually playing, so we should trust it over client's optimistic value
+                const statusHasValidFavorite = status.activeFavorite && status.activeFavorite.id === statusActiveFavoriteId && status.activeFavorite.name;
                 const timeSinceLastUpdate = Date.now() - currentActiveFavoriteIdTimestamp;
                 const timeSinceLastPlay = Date.now() - lastPlayActionTime;
-                const shouldTrustClient = timeSinceLastPlay < 5000 && currentActiveFavoriteId; // Trust client if play action was within 5 seconds
+                
+                // Always trust status if it has valid favorite data (server is authoritative)
+                // Only trust client's optimistic value if status doesn't have valid data AND play action was very recent (< 2 seconds)
+                const shouldTrustClient = !statusHasValidFavorite && timeSinceLastPlay < 2000 && currentActiveFavoriteId;
                 
                 if (shouldTrustClient) {
-                  // Recent play action - trust the client's currentActiveFavoriteId, ignore status mismatch
-                  console.warn('[Client] Ignoring status activeFavoriteId mismatch (recent play action):', {
+                  // Very recent play action and status doesn't have valid data - trust client temporarily
+                  console.warn('[Client] Using client activeFavoriteId (status has no valid favorite data):', {
                     clientActiveFavoriteId: currentActiveFavoriteId,
                     statusActiveFavoriteId,
                     groupId,
                     timeSinceLastPlay,
-                    reason: 'trusting client due to recent play action'
+                    reason: 'status missing valid favorite data'
                   });
                   activeFavoriteId = currentActiveFavoriteId;
-                } else if (timeSinceLastUpdate > 5000 || currentActiveFavoriteIdTimestamp === 0) {
-                  // Status has a different non-null value - update to match (but only if enough time has passed)
-                  console.log('[Client] activeFavoriteId changed:', {
+                } else {
+                  // Trust the server's status response - it's authoritative
+                  console.log('[Client] activeFavoriteId changed (trusting server):', {
                     from: currentActiveFavoriteId,
                     to: statusActiveFavoriteId,
                     groupId,
-                    timeSinceLastUpdate
+                    timeSinceLastUpdate,
+                    timeSinceLastPlay,
+                    statusHasValidFavorite,
+                    reason: 'server is authoritative'
                   });
                   currentActiveFavoriteId = statusActiveFavoriteId;
                   currentActiveFavoriteIdTimestamp = Date.now();
                   markActiveFavorite(statusActiveFavoriteId);
                   activeFavoriteId = statusActiveFavoriteId;
-                } else {
-                  // Ignore rapid changes - likely stale responses from different groups or race conditions
-                  console.warn('[Client] Ignoring rapid activeFavoriteId change:', {
-                    from: currentActiveFavoriteId,
-                    to: statusActiveFavoriteId,
-                    groupId,
-                    timeSinceLastUpdate,
-                    reason: 'might be stale'
-                  });
-                  activeFavoriteId = currentActiveFavoriteId;
                 }
               } else {
                 // Status matches current - use it for display
