@@ -2475,8 +2475,6 @@ settingsStatusLabel.textContent = '';
       let currentHouseholdId = null;
       let currentGroupId = null;
       let currentGroupName = 'No group selected';
-      let currentActiveFavoriteId = null;
-      let currentActiveFavoriteIdTimestamp = 0; // Track when favorite was set
       let lastStatusUpdateTime = 0; // Track when status was last updated to ignore stale responses
       const recommendationCardButtons = new Map(); // Store recommendation card buttons by favorite ID
       const favoritesRegistry = new Map();
@@ -2488,7 +2486,6 @@ settingsStatusLabel.textContent = '';
       let playbackRefreshTimer = null;
       let currentPlaybackState = null;
       let currentImageUrl = null;
-      let lastPlayActionTime = 0; // Track when last play action occurred to prevent refresh interference
       let previousTrackId = null; // Track previous track identifier for change detection
       let baseVolume = null; // Store base/reference volume level for loudness normalization
 
@@ -2892,7 +2889,6 @@ async function checkAuthAndInit() {
           currentGroupId = null;
           currentGroupName = 'No group selected';
           updateActiveGroupDisplay();
-          currentActiveFavoriteId = null;
           settingsPlayersWrap.innerHTML = '';
           settingsStatusLabel.textContent = '';
           if (settingsHelpLabel) {
@@ -2974,7 +2970,6 @@ async function checkAuthAndInit() {
             householdTitle.textContent = '';
             currentGroupId = null;
             currentGroupName = 'No group selected';
-            currentActiveFavoriteId = null;
             updateActiveGroupDisplay();
             await loadFavorites(null);
             await loadPlayers(null);
@@ -3005,9 +3000,6 @@ async function checkAuthAndInit() {
 
           // Hide loading overlay
           hideLoadingOverlay();
-          
-          // Trigger volume trick to refresh playlist info after load
-          await triggerVolumeRefresh();
         } catch (error) {
           hideLoadingOverlay();
           console.error('Failed to load households:', error);
@@ -4245,14 +4237,8 @@ async function checkAuthAndInit() {
 
           const playBtn = document.createElement('button');
           
-          // Check if this playlist is currently active
-          const isCurrentlyActive = currentActiveFavoriteId === favorite.id;
-          if (isCurrentlyActive) {
-            playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Playing';
-            playBtn.classList.add('playing');
-          } else {
-            playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
-          }
+          // Button state will be updated by updateRecommendationCardButtons based on status
+          playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
           
           // Store button reference for updates
           recommendationCardButtons.set(favorite.id, playBtn);
@@ -4275,8 +4261,8 @@ async function checkAuthAndInit() {
               console.error('Failed to play recommended playlist:', error);
             } finally {
               playBtn.disabled = false;
-              // Button state will be updated by markActiveFavorite/updateRecommendationCardButtons
-              updateRecommendationCardButtons(currentActiveFavoriteId);
+              // Button state will be updated by updateRecommendationCardButtons
+              updateRecommendationCardButtons(null); // Will be updated from status
               card.classList.remove('loading');
             }
           });
@@ -4307,7 +4293,7 @@ async function checkAuthAndInit() {
               console.error('Failed to play recommended playlist:', error);
             } finally {
               playBtn.disabled = false;
-              updateRecommendationCardButtons(currentActiveFavoriteId);
+              updateRecommendationCardButtons(null); // Will be updated from status
               card.classList.remove('loading');
             }
           });
@@ -4479,7 +4465,6 @@ async function checkAuthAndInit() {
 
           const data = await response.json();
           const items = Array.isArray(data.items) ? data.items : [];
-          currentActiveFavoriteId = data.activeFavorite ?? null;
 
           if (!items.length) {
             favoritesStatus.textContent = 'No favourites found.';
@@ -4499,7 +4484,6 @@ async function checkAuthAndInit() {
           renderVibeFilters();
           applyVibeFilter();
           evaluateFavoritesAvailability();
-          markActiveFavorite(currentActiveFavoriteId);
           // Update recommendations when favorites are loaded
           if (!panelControl.classList.contains('hidden')) {
             updatePlaylistRecommendations();
@@ -4627,13 +4611,6 @@ async function checkAuthAndInit() {
 
           setActiveGroup(groupId, groupData.groupName || 'All Rooms');
 
-          // Set favorite as active immediately for optimistic UI update
-          markActiveFavorite(entry.favorite.id);
-          // Track play action time to prevent refresh interference
-          lastPlayActionTime = Date.now();
-          // Update now playing immediately with this favorite's metadata
-          updateCurrentlyPlaying();
-
           const commandPromise = sendCommand(
             `/api/groups/${encodeURIComponent(groupId)}/favorites/play`,
             {
@@ -4659,46 +4636,10 @@ async function checkAuthAndInit() {
               setActiveGroup(savedGroupId, groupData.groupName || 'All Rooms');
             }
             
-            // Retry logic: if status doesn't match expected favoriteId, retry after short delay
-            let retryCount = 0;
-            const maxRetries = 3;
-            const checkStatus = async () => {
-              try {
-                const params = new URLSearchParams();
-                if (currentHouseholdId) {
-                  params.set('householdId', currentHouseholdId);
-                }
-                const statusUrl = `/api/groups/${encodeURIComponent(savedGroupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
-                const response = await fetch(statusUrl);
-                if (response.ok) {
-                  const status = await response.json();
-                  if (status.activeFavoriteId === entry.favorite.id) {
-                    // Status matches, update UI
-                    updateCurrentlyPlaying();
-                  } else if (retryCount < maxRetries) {
-                    // Status doesn't match yet, retry
-                    retryCount++;
-                    setTimeout(checkStatus, 500);
-                  } else {
-                    // Max retries reached, update anyway
-                    updateCurrentlyPlaying();
-                  }
-                } else {
-                  updateCurrentlyPlaying();
-                }
-              } catch (error) {
-                console.error('Failed to check status:', error);
-                updateCurrentlyPlaying();
-              }
-            };
-            
-            // Check status after a short delay to allow server to update
-            setTimeout(checkStatus, 300);
-            
-            // Trigger volume trick to refresh playlist info after playlist change
-            await triggerVolumeRefresh();
+            // Update now playing - server will find the correct favorite on-demand
+            updateCurrentlyPlaying();
           } else {
-            // Playback failed, clear active favorite
+            // Playback failed, clear active favorite highlighting
             markActiveFavorite(null);
           }
         } catch (error) {
@@ -4741,15 +4682,11 @@ async function checkAuthAndInit() {
           entry.button.classList.toggle('disabled', !enabled);
         });
 
-        if (enabled) {
-          markActiveFavorite(currentActiveFavoriteId);
-        }
+        // Active favorite highlighting will be updated from status
       }
 
       function markActiveFavorite(favoriteId) {
-        currentActiveFavoriteId = favoriteId || null;
-        currentActiveFavoriteIdTimestamp = Date.now();
-
+        // Only update UI highlighting - no state tracking
         favoritesRegistry.forEach((entry) => {
           if (entry.loading) {
             return;
@@ -4777,37 +4714,6 @@ async function checkAuthAndInit() {
         });
       }
 
-
-      // Volume trick to force status refresh - adjusts volume up 1 and back to trigger status update
-      async function triggerVolumeRefresh() {
-        const groupId = getSelectedGroupId();
-        if (!groupId || !isSonosConnected) {
-          return;
-        }
-        
-        try {
-          // Get current volume
-          const statusResponse = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playback/status${currentHouseholdId ? '?householdId=' + encodeURIComponent(currentHouseholdId) : ''}`);
-          if (!statusResponse.ok) {
-            return;
-          }
-          const status = await statusResponse.json();
-          const currentVolume = status.volume || 0;
-          
-          // Only do the trick if volume is not at max (can't go up from 100)
-          if (currentVolume < 100) {
-            // Adjust volume up 1
-            await setMasterVolume(currentVolume + 1, false);
-            // Wait a tiny bit for the status to update
-            await new Promise(resolve => setTimeout(resolve, 100));
-            // Adjust volume back
-            await setMasterVolume(currentVolume, false);
-          }
-        } catch (error) {
-          // Silently fail - this is just a workaround
-          console.debug('Volume refresh trick failed:', error);
-        }
-      }
 
       async function setMasterVolume(level, showFeedbackMessage = true) {
         const groupId = getSelectedGroupId();
@@ -5282,146 +5188,48 @@ async function checkAuthAndInit() {
             const groupInfo = latestGroups.find((g) => g.id === groupId || g.groupId === groupId);
             const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
 
-            // Sync currentActiveFavoriteId with status to keep highlighted favorite in sync with now playing
-            // IMPORTANT: Only update if this status is for the current groupId to prevent cross-group confusion
-            const statusActiveFavoriteId = status.activeFavoriteId;
-            let activeFavoriteId = currentActiveFavoriteId;
+            // Use activeFavoriteId directly from server response (no syncing needed)
+            const activeFavoriteId = status.activeFavoriteId;
             
-            // Track if we updated activeFavoriteId to trigger volume refresh
-            let didUpdateActiveFavoriteId = false;
-            
-            // Only sync FROM status if:
-            // 1. Status has a non-null value (not null, not undefined)
-            // 2. Status value differs from current
-            // 3. Don't clear currentActiveFavoriteId if status returns null/undefined during active playback (might be stale)
-            // 4. Only update if enough time has passed since last update (prevent rapid switching from race conditions)
-            if (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) {
-              if (statusActiveFavoriteId !== currentActiveFavoriteId) {
-                // Trust the server's status response if it has valid activeFavorite data
-                // The server knows what's actually playing, so we should trust it over client's optimistic value
-                const statusHasValidFavorite = status.activeFavorite && status.activeFavorite.id === statusActiveFavoriteId && status.activeFavorite.name;
-                const timeSinceLastUpdate = Date.now() - currentActiveFavoriteIdTimestamp;
-                const timeSinceLastPlay = Date.now() - lastPlayActionTime;
-                
-                // Always trust status if it has valid favorite data (server is authoritative)
-                // Only trust client's optimistic value if status doesn't have valid data AND play action was very recent (< 2 seconds)
-                const shouldTrustClient = !statusHasValidFavorite && timeSinceLastPlay < 2000 && currentActiveFavoriteId;
-                
-                if (shouldTrustClient) {
-                  // Very recent play action and status doesn't have valid data - trust client temporarily
-                  console.warn('[Client] Using client activeFavoriteId (status has no valid favorite data):', {
-                    clientActiveFavoriteId: currentActiveFavoriteId,
-                    statusActiveFavoriteId,
-                    groupId,
-                    timeSinceLastPlay,
-                    reason: 'status missing valid favorite data'
-                  });
-                  activeFavoriteId = currentActiveFavoriteId;
-                } else {
-                  // Trust the server's status response - it's authoritative
-                  console.log('[Client] activeFavoriteId changed (trusting server):', {
-                    from: currentActiveFavoriteId,
-                    to: statusActiveFavoriteId,
-                    groupId,
-                    timeSinceLastUpdate,
-                    timeSinceLastPlay,
-                    statusHasValidFavorite,
-                    reason: 'server is authoritative'
-                  });
-                  currentActiveFavoriteId = statusActiveFavoriteId;
-                  currentActiveFavoriteIdTimestamp = Date.now();
-                  markActiveFavorite(statusActiveFavoriteId);
-                  activeFavoriteId = statusActiveFavoriteId;
-                  didUpdateActiveFavoriteId = true;
-                }
-              } else {
-                // Status matches current - use it for display
-                activeFavoriteId = statusActiveFavoriteId;
-              }
-            } else if (statusActiveFavoriteId === null && currentActiveFavoriteId && !isPlaying && playbackState === 'STOPPED') {
-              // Only clear if playback has actually stopped (not just paused or during transitions)
-              console.log('[Client] activeFavoriteId cleared:', {
-                from: currentActiveFavoriteId,
-                to: null,
-                groupId,
-                reason: 'playback stopped'
-              });
-              currentActiveFavoriteId = null;
-              activeFavoriteId = null;
-            }
-            // If status is undefined or null during active playback, keep using currentActiveFavoriteId (don't clear it - might be stale)
+            // Update UI highlighting based on server response
+            markActiveFavorite(activeFavoriteId);
+            updateRecommendationCardButtons(activeFavoriteId);
 
             let playlistName = null;
             let playlistImageUrl = null;
-            if (activeFavoriteId) {
-              // Prefer favorite data from status response (more reliable, works across households)
-              const statusFavorite = status.activeFavorite;
-              
-              if (statusFavorite && statusFavorite.id === activeFavoriteId && statusFavorite.name) {
-                playlistName = statusFavorite.name;
-                playlistImageUrl = statusFavorite.imageUrl || null;
+            if (activeFavoriteId && status.activeFavorite) {
+              // Use favorite data from status response (server found it on-demand)
+              playlistName = status.activeFavorite.name || null;
+              playlistImageUrl = status.activeFavorite.imageUrl || null;
+              console.log('[Client] Playlist name resolved:', {
+                source: 'status.activeFavorite',
+                activeFavoriteId,
+                playlistName
+              });
+            } else if (activeFavoriteId) {
+              // Fallback to favoritesRegistry if status doesn't have favorite data
+              const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
+              if (favoriteEntry && favoriteEntry.favorite) {
+                playlistName = favoriteEntry.favorite.name || null;
+                const favorite = favoriteEntry.favorite;
+                playlistImageUrl = favorite?.imageUrl
+                  ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
+                  : favorite?.images && favorite.images.length && favorite.images[0]?.url
+                    ? favorite.images[0].url
+                    : favorite?.container?.imageUrl
+                      ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
+                      : null;
                 console.log('[Client] Playlist name resolved:', {
-                  source: 'status.activeFavorite',
+                  source: 'favoritesRegistry',
                   activeFavoriteId,
-                  playlistName
+                  playlistName,
+                  statusIssue: 'status missing favorite data'
                 });
               } else {
-                // Fallback to favoritesRegistry (client-side cache)
-                const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
-                const reason = statusFavorite 
-                  ? (statusFavorite.id === activeFavoriteId ? 'missing name' : 'ID mismatch')
-                  : 'missing';
-                
-                // Always log the resolution attempt, even if favoritesRegistry is missing
-                if (favoriteEntry && favoriteEntry.favorite) {
-                  playlistName = favoriteEntry.favorite.name || null;
-                  // Get playlist cover art
-                  const favorite = favoriteEntry.favorite;
-                  playlistImageUrl = favorite?.imageUrl
-                    ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
-                    : favorite?.images && favorite.images.length && favorite.images[0]?.url
-                      ? favorite.images[0].url
-                      : favorite?.container?.imageUrl
-                        ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
-                        : null;
-                  console.log('[Client] Playlist name resolved:', {
-                    source: 'favoritesRegistry',
-                    activeFavoriteId,
-                    playlistName,
-                    statusIssue: reason
-                  });
-                } else {
-                  // favoritesRegistry missing or incomplete - log it
-                  console.log('[Client] Playlist name resolved:', {
-                    source: 'favoritesRegistry',
-                    activeFavoriteId,
-                    playlistName: null,
-                    statusIssue: reason,
-                    favoritesRegistry: favoriteEntry ? 'present but no favorite' : 'missing'
-                  });
-                  
-                  // Last resort: use status name if available
-                  if (statusFavorite && statusFavorite.id === activeFavoriteId && statusFavorite.name) {
-                    playlistName = statusFavorite.name;
-                    playlistImageUrl = statusFavorite.imageUrl || null;
-                    console.log('[Client] Playlist name resolved (fallback):', {
-                      source: 'status.activeFavorite',
-                      activeFavoriteId,
-                      playlistName,
-                      note: 'favoritesRegistry missing'
-                    });
-                  } else {
-                    console.warn('[Client] Playlist name NOT FOUND:', {
-                      activeFavoriteId,
-                      statusActiveFavorite: statusFavorite ? {
-                        id: statusFavorite.id,
-                        hasName: !!statusFavorite.name,
-                        idMatch: statusFavorite.id === activeFavoriteId
-                      } : null,
-                      favoritesRegistry: favoriteEntry ? 'present but no favorite' : 'missing'
-                    });
-                  }
-                }
+                console.warn('[Client] Playlist name NOT FOUND:', {
+                  activeFavoriteId,
+                  favoritesRegistry: favoriteEntry ? 'present but no favorite' : 'missing'
+                });
               }
             }
             
@@ -5507,12 +5315,6 @@ async function checkAuthAndInit() {
 
             // Update playlist name/location
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
-
-            // If we updated activeFavoriteId, trigger volume refresh to get correct playlist info
-            if (didUpdateActiveFavoriteId) {
-              // Trigger volume refresh in background (don't await - let it happen async)
-              triggerVolumeRefresh().catch(() => {});
-            }
 
             // Update image - only update if the final URL has actually changed
             if (finalImageUrl && finalImageUrl !== currentImageUrl) {
@@ -5803,19 +5605,11 @@ async function checkAuthAndInit() {
         clearInterval(playbackRefreshTimer);
         playbackRefreshTimer = setInterval(() => {
           if (isSonosConnected && getSelectedGroupId()) {
-            // Don't refresh if a play action just occurred (within last 2 seconds)
-            // This prevents refresh from overwriting correct metadata during play operations
-            const timeSinceLastPlayAction = Date.now() - lastPlayActionTime;
-            if (timeSinceLastPlayAction > 2000) {
-              updateCurrentlyPlaying();
-            }
+            updateCurrentlyPlaying();
           }
         }, 3000);
-        // Only update immediately if no recent play action
-        const timeSinceLastPlayAction = Date.now() - lastPlayActionTime;
-        if (timeSinceLastPlayAction > 2000) {
-          updateCurrentlyPlaying();
-        }
+        // Update immediately
+        updateCurrentlyPlaying();
       }
       
       function stopPlaybackRefresh() {
