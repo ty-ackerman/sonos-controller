@@ -1352,37 +1352,58 @@
       }
 
       .recommendation-title {
-        font-size: 0.9375rem;
+        font-size: 1rem;
         font-weight: 600;
         color: var(--text-primary);
+        margin-bottom: 4px;
       }
 
       .recommendation-rule-info {
         font-size: 0.8125rem;
         color: var(--text-secondary);
-        margin-bottom: 12px;
+        margin-bottom: 16px;
+        padding: 8px 12px;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
       }
 
       .recommended-playlist {
+        position: relative;
         display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 12px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        margin-bottom: 12px;
+        flex-direction: column;
+        gap: 16px;
+        padding: 16px;
+        background: var(--bg-primary);
+        border: 2px solid var(--accent);
+        border-radius: 12px;
+        margin-bottom: 16px;
+        box-shadow: var(--shadow-md);
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .recommended-playlist:hover {
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-2px);
+      }
+
+      .recommended-playlist-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 16px;
       }
 
       .recommended-playlist-art {
-        width: 48px;
-        height: 48px;
-        border-radius: 6px;
+        width: 80px;
+        height: 80px;
+        border-radius: 10px;
         overflow: hidden;
         flex-shrink: 0;
         background: var(--bg-tertiary);
         display: grid;
         place-items: center;
+        box-shadow: var(--shadow-sm);
       }
 
       .recommended-playlist-art img {
@@ -1391,52 +1412,117 @@
         object-fit: cover;
       }
 
+      .recommended-playlist-art .playlist-placeholder {
+        font-size: 2rem;
+        color: var(--text-tertiary);
+      }
+
       .recommended-playlist-info {
         flex: 1;
         min-width: 0;
-      }
-
-      .recommended-playlist-name {
-        font-size: 0.9375rem;
-        font-weight: 500;
-        color: var(--text-primary);
-        margin-bottom: 2px;
-      }
-
-      .recommended-playlist-vibe {
-        font-size: 0.8125rem;
-        color: var(--text-secondary);
-      }
-
-      .recommended-playlist-actions {
         display: flex;
         flex-direction: column;
         gap: 8px;
       }
 
-      .recommended-playlist-actions button {
-        padding: 8px 16px;
+      .recommended-playlist-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 8px;
         border-radius: 6px;
-        border: 1px solid var(--border-color);
         background: var(--accent);
         color: var(--bg-primary);
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        width: fit-content;
+      }
+
+      .recommended-playlist-name {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.3;
+        margin: 0;
+      }
+
+      .recommended-playlist-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .recommended-playlist-vibe-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 10px;
+        border-radius: 12px;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
         font-size: 0.8125rem;
         font-weight: 500;
+        border: 1px solid var(--border-color);
+      }
+
+      .recommended-playlist-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .recommended-playlist-actions button {
+        flex: 1;
+        padding: 12px 20px;
+        border-radius: 8px;
+        border: none;
+        background: var(--accent);
+        color: var(--bg-primary);
+        font-size: 0.9375rem;
+        font-weight: 600;
         cursor: pointer;
         transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
       }
 
       .recommended-playlist-actions button:hover {
         background: var(--accent-hover);
+        transform: scale(1.02);
+      }
+
+      .recommended-playlist-actions button:active {
+        transform: scale(0.98);
       }
 
       .recommended-playlist-actions button.secondary {
         background: var(--bg-tertiary);
         color: var(--text-primary);
+        border: 1px solid var(--border-color);
       }
 
       .recommended-playlist-actions button.secondary:hover {
-        background: var(--bg-primary);
+        background: var(--bg-secondary);
+      }
+
+      .recommended-playlist-actions button svg {
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
+      }
+
+      .recommended-playlist-actions button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .recommended-playlist.loading {
+        opacity: 0.7;
+        pointer-events: none;
       }
 
       .alternatives-dropdown {
@@ -3325,7 +3411,8 @@ async function checkAuthAndInit() {
           if (currentRule) {
             const startTime = formatHour(currentRule.start_hour);
             const endTime = formatHour(currentRule.end_hour);
-            recommendationRuleInfo.textContent = `Current rule: ${startTime} - ${endTime} (${currentRule.allowed_vibes.join(', ')})`;
+            const vibes = currentRule.allowed_vibes.join(', ');
+            recommendationRuleInfo.innerHTML = `<strong>${startTime} - ${endTime}</strong> • Matching vibes: ${vibes}`;
           } else {
             recommendationRuleInfo.textContent = 'No time rule active for current time.';
           }
@@ -3383,75 +3470,175 @@ async function checkAuthAndInit() {
         const card = document.createElement('div');
         card.className = isPrimary ? 'recommended-playlist' : 'alternative-playlist';
 
-        const art = document.createElement('div');
-        art.className = isPrimary ? 'recommended-playlist-art' : 'alternative-playlist-art';
-
-        const imageUrl =
-          favorite && favorite.imageUrl
-            ? favorite.imageUrl
-            : favorite && favorite.images && favorite.images.length && favorite.images[0].url
-              ? favorite.images[0].url
-              : favorite && favorite.container && favorite.container.imageUrl
-                ? favorite.container.imageUrl
-                : null;
-
-        if (imageUrl) {
-          const img = document.createElement('img');
-          img.src = imageUrl;
-          img.alt = `${favorite.name || 'Playlist'} cover art`;
-          img.loading = 'lazy';
-          img.addEventListener('error', () => {
-            const placeholder = document.createElement('span');
-            placeholder.textContent = '★';
-            art.innerHTML = '';
-            art.appendChild(placeholder);
-          });
-          art.appendChild(img);
-        } else {
-          const placeholder = document.createElement('span');
-          placeholder.textContent = '★';
-          art.appendChild(placeholder);
-        }
-
-        const info = document.createElement('div');
-        info.className = isPrimary ? 'recommended-playlist-info' : 'alternative-playlist-info';
-
-        const name = document.createElement('div');
-        name.className = isPrimary ? 'recommended-playlist-name' : 'alternative-playlist-name';
-        name.textContent = favorite.name || 'Unnamed Playlist';
-
-        const vibe = document.createElement('div');
-        vibe.className = isPrimary ? 'recommended-playlist-vibe' : 'alternative-playlist-vibe';
-        const vibeValue = playlistVibes[favorite.id] || 'No vibe assigned';
-        vibe.textContent = `Vibe: ${vibeValue}`;
-
-        info.appendChild(name);
-        info.appendChild(vibe);
-
-        card.appendChild(art);
-        card.appendChild(info);
-
         if (isPrimary) {
+          // Primary recommendation card with enhanced design
+          const header = document.createElement('div');
+          header.className = 'recommended-playlist-header';
+
+          const art = document.createElement('div');
+          art.className = 'recommended-playlist-art';
+
+          const imageUrl =
+            favorite && favorite.imageUrl
+              ? favorite.imageUrl
+              : favorite && favorite.images && favorite.images.length && favorite.images[0].url
+                ? favorite.images[0].url
+                : favorite && favorite.container && favorite.container.imageUrl
+                  ? favorite.container.imageUrl
+                  : null;
+
+          if (imageUrl) {
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = `${favorite.name || 'Playlist'} cover art`;
+            img.loading = 'lazy';
+            img.addEventListener('error', () => {
+              const placeholder = document.createElement('span');
+              placeholder.className = 'playlist-placeholder';
+              placeholder.textContent = '★';
+              art.innerHTML = '';
+              art.appendChild(placeholder);
+            });
+            art.appendChild(img);
+          } else {
+            const placeholder = document.createElement('span');
+            placeholder.className = 'playlist-placeholder';
+            placeholder.textContent = '★';
+            art.appendChild(placeholder);
+          }
+
+          const info = document.createElement('div');
+          info.className = 'recommended-playlist-info';
+
+          // Recommended badge
+          const badge = document.createElement('div');
+          badge.className = 'recommended-playlist-badge';
+          badge.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg> Recommended';
+          info.appendChild(badge);
+
+          // Playlist name
+          const name = document.createElement('h3');
+          name.className = 'recommended-playlist-name';
+          name.textContent = favorite.name || 'Unnamed Playlist';
+
+          // Meta information with vibe badge
+          const meta = document.createElement('div');
+          meta.className = 'recommended-playlist-meta';
+          const vibeValue = playlistVibes[favorite.id];
+          if (vibeValue) {
+            const vibeBadge = document.createElement('span');
+            vibeBadge.className = 'recommended-playlist-vibe-badge';
+            vibeBadge.textContent = vibeValue;
+            meta.appendChild(vibeBadge);
+          }
+
+          info.appendChild(name);
+          info.appendChild(meta);
+
+          header.appendChild(art);
+          header.appendChild(info);
+          card.appendChild(header);
+
+          // Action button
           const actions = document.createElement('div');
           actions.className = 'recommended-playlist-actions';
 
           const playBtn = document.createElement('button');
-          playBtn.textContent = 'Play Recommended';
-          playBtn.addEventListener('click', async () => {
-            const entry = favoritesRegistry.get(favorite.id);
-            if (entry) {
-              await playFavorite(entry);
-            } else {
-              // Create a temporary entry
-              const tempEntry = { favorite, button: null, statusEl: null, loading: false };
-              await playFavorite(tempEntry);
+          playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
+          playBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            playBtn.disabled = true;
+            playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Loading...';
+            card.classList.add('loading');
+            
+            try {
+              const entry = favoritesRegistry.get(favorite.id);
+              if (entry) {
+                await playFavorite(entry);
+              } else {
+                const tempEntry = { favorite, button: null, statusEl: null, loading: false };
+                await playFavorite(tempEntry);
+              }
+            } catch (error) {
+              console.error('Failed to play recommended playlist:', error);
+            } finally {
+              playBtn.disabled = false;
+              playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
+              card.classList.remove('loading');
             }
           });
 
           actions.appendChild(playBtn);
           card.appendChild(actions);
+
+          // Make entire card clickable
+          card.addEventListener('click', async (e) => {
+            // Don't trigger if clicking the button (already handled)
+            if (e.target.closest('button')) {
+              return;
+            }
+            const entry = favoritesRegistry.get(favorite.id);
+            if (entry) {
+              await playFavorite(entry);
+            } else {
+              const tempEntry = { favorite, button: null, statusEl: null, loading: false };
+              await playFavorite(tempEntry);
+            }
+          });
         } else {
-          card.style.cursor = 'pointer';
+          // Alternative playlist card (simpler design)
+          const art = document.createElement('div');
+          art.className = 'alternative-playlist-art';
+
+          const imageUrl =
+            favorite && favorite.imageUrl
+              ? favorite.imageUrl
+              : favorite && favorite.images && favorite.images.length && favorite.images[0].url
+                ? favorite.images[0].url
+                : favorite && favorite.container && favorite.container.imageUrl
+                  ? favorite.container.imageUrl
+                  : null;
+
+          if (imageUrl) {
+            const img = document.createElement('img');
+            img.src = imageUrl;
+            img.alt = `${favorite.name || 'Playlist'} cover art`;
+            img.loading = 'lazy';
+            img.addEventListener('error', () => {
+              const placeholder = document.createElement('span');
+              placeholder.className = 'playlist-placeholder';
+              placeholder.textContent = '★';
+              art.innerHTML = '';
+              art.appendChild(placeholder);
+            });
+            art.appendChild(img);
+          } else {
+            const placeholder = document.createElement('span');
+            placeholder.className = 'playlist-placeholder';
+            placeholder.textContent = '★';
+            art.appendChild(placeholder);
+          }
+
+          const info = document.createElement('div');
+          info.className = 'alternative-playlist-info';
+
+          const name = document.createElement('div');
+          name.className = 'alternative-playlist-name';
+          name.textContent = favorite.name || 'Unnamed Playlist';
+
+          info.appendChild(name);
+
+          const vibeValue = playlistVibes[favorite.id];
+          if (vibeValue) {
+            const vibe = document.createElement('div');
+            vibe.className = 'alternative-playlist-vibe';
+            vibe.textContent = `Vibe: ${vibeValue}`;
+            info.appendChild(vibe);
+          }
+
+          card.appendChild(art);
+          card.appendChild(info);
+
           card.addEventListener('click', async () => {
             const entry = favoritesRegistry.get(favorite.id);
             if (entry) {
