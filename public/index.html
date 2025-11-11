@@ -144,11 +144,17 @@
         gap: 8px;
       }
 
-      h1 .sonos-brand-header {
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-weight: 400;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+      h1 .sonos-logo-header {
+        height: 1.25rem;
+        width: auto;
+        display: block;
+        filter: brightness(0);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        h1 .sonos-logo-header {
+          filter: brightness(0) invert(1);
+        }
       }
 
       h1 .controller-text {
@@ -229,9 +235,22 @@
       }
 
       .loading-text .alter-logo {
+        height: 2.5rem;
+        width: auto;
+        display: block;
+      }
+
+      .loading-text .sonos-logo {
         height: 1.5rem;
         width: auto;
         display: block;
+        filter: brightness(0);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .loading-text .sonos-logo {
+          filter: brightness(0) invert(1);
+        }
       }
 
       .loading-text .alter-logo-light {
@@ -252,12 +271,6 @@
         }
       }
 
-      .loading-text .sonos-brand {
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-weight: 400;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
 
       /* Toast Notification */
       .toast {
@@ -2077,7 +2090,7 @@
             <span></span>
             <span></span>
           </button>
-          <h1><span class="sonos-brand-header">SONOS</span> <span class="controller-text">Controller</span></h1>
+          <h1><img src="/images/sonos.svg" alt="Sonos" class="sonos-logo-header"> <span class="controller-text">Controller</span></h1>
         </div>
       </div>
       <p id="status" class="status disconnected">Checking connection…</p>
@@ -2089,7 +2102,7 @@
           <div class="loading-text">
             <img src="/images/alter-logo-light.png" alt="Alter" class="alter-logo alter-logo-light">
             <img src="/images/alter-logo-dark.png" alt="Alter" class="alter-logo alter-logo-dark">
-            <span class="sonos-brand">SONOS</span>
+            <img src="/images/sonos.svg" alt="Sonos" class="sonos-logo">
           </div>
         </div>
       </div>
