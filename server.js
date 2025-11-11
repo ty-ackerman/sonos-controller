@@ -380,54 +380,89 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     const activeInfo = activeFavoritesByGroup.get(groupId);
     const activeFavoriteId = activeInfo ? activeInfo.favoriteId : null;
     
-    // Fetch favorite data if we have an activeFavoriteId and householdId
+    // ALWAYS fetch favorite data directly from Sonos API when we have an activeFavoriteId
+    // This ensures we get the correct data even if cache is stale or wrong
     let activeFavorite = null;
-    if (activeFavoriteId && preferredHousehold) {
+    if (activeFavoriteId) {
       try {
-        // Check if we already have the favorite data cached
-        if (activeInfo && activeInfo.favoriteName && activeInfo.favoriteImageUrl) {
+        const normalizeImageUrl = (img) => {
+          if (!img) return null;
+          if (typeof img === 'string') return img;
+          if (typeof img === 'object') {
+            return img.url || img.value || null;
+          }
+          return null;
+        };
+        
+        // Try preferred household first
+        let householdId = preferredHousehold ? await resolveHouseholdId(preferredHousehold).catch(() => null) : null;
+        let favorite = null;
+        
+        if (householdId) {
+          try {
+            const favoritesResponse = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`).catch(() => null);
+            if (favoritesResponse) {
+              const favoritesData = await favoritesResponse.json().catch(() => ({}));
+              const favorites = Array.isArray(favoritesData.items) ? favoritesData.items : [];
+              favorite = favorites.find((f) => f.id === activeFavoriteId);
+            }
+          } catch (error) {
+            console.warn(`[PlaybackStatus] Failed to fetch favorites from preferred household ${householdId}:`, error.message);
+          }
+        }
+        
+        // If not found in preferred household, try all households
+        if (!favorite) {
+          try {
+            const households = await listHouseholds();
+            for (const hId of households) {
+              if (hId === householdId) continue; // Skip already checked household
+              try {
+                const favoritesResponse = await sonosRequest(`/households/${encodeURIComponent(hId)}/favorites`).catch(() => null);
+                if (favoritesResponse) {
+                  const favoritesData = await favoritesResponse.json().catch(() => ({}));
+                  const favorites = Array.isArray(favoritesData.items) ? favoritesData.items : [];
+                  favorite = favorites.find((f) => f.id === activeFavoriteId);
+                  if (favorite) {
+                    householdId = hId; // Update householdId to the one where we found it
+                    console.log(`[PlaybackStatus] Found favorite ${activeFavoriteId} in household ${hId} (not in preferred ${preferredHousehold})`);
+                    break;
+                  }
+                }
+              } catch (error) {
+                // Continue to next household
+                continue;
+              }
+            }
+          } catch (error) {
+            console.warn('[PlaybackStatus] Failed to search all households:', error.message);
+          }
+        }
+        
+        if (favorite) {
+          const imageUrl = normalizeImageUrl(favorite.imageUrl) ||
+            (favorite.images && favorite.images.length ? normalizeImageUrl(favorite.images[0]?.url) : null) ||
+            normalizeImageUrl(favorite.container?.imageUrl);
+          
           activeFavorite = {
             id: activeFavoriteId,
-            name: activeInfo.favoriteName,
-            imageUrl: activeInfo.favoriteImageUrl
+            name: favorite.name || null,
+            imageUrl: imageUrl
           };
+          
+          // Update cache with fresh data
+          activeFavoritesByGroup.set(groupId, {
+            favoriteId: activeFavoriteId,
+            updatedAt: Date.now(),
+            favoriteName: activeFavorite.name,
+            favoriteImageUrl: activeFavorite.imageUrl
+          });
+          
+          console.log(`[PlaybackStatus] Successfully fetched favorite data for ${activeFavoriteId}: "${activeFavorite.name}"`);
         } else {
-          // Fetch favorites to get the favorite data
-          const householdId = await resolveHouseholdId(preferredHousehold);
-          const favoritesResponse = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`).catch(() => null);
-          if (favoritesResponse) {
-            const favoritesData = await favoritesResponse.json().catch(() => ({}));
-            const favorites = Array.isArray(favoritesData.items) ? favoritesData.items : [];
-            const favorite = favorites.find((f) => f.id === activeFavoriteId);
-            if (favorite) {
-              const normalizeImageUrl = (img) => {
-                if (!img) return null;
-                if (typeof img === 'string') return img;
-                if (typeof img === 'object') {
-                  return img.url || img.value || null;
-                }
-                return null;
-              };
-              
-              const imageUrl = normalizeImageUrl(favorite.imageUrl) ||
-                (favorite.images && favorite.images.length ? normalizeImageUrl(favorite.images[0]?.url) : null) ||
-                normalizeImageUrl(favorite.container?.imageUrl);
-              
-              activeFavorite = {
-                id: activeFavoriteId,
-                name: favorite.name || null,
-                imageUrl: imageUrl
-              };
-              
-              // Cache the favorite data in activeFavoritesByGroup
-              activeFavoritesByGroup.set(groupId, {
-                favoriteId: activeFavoriteId,
-                updatedAt: Date.now(),
-                favoriteName: activeFavorite.name,
-                favoriteImageUrl: activeFavorite.imageUrl
-              });
-            }
-          }
+          console.warn(`[PlaybackStatus] Favorite ${activeFavoriteId} not found in any household - clearing from cache`);
+          // Clear stale favorite from cache if it doesn't exist
+          activeFavoritesByGroup.delete(groupId);
         }
       } catch (error) {
         // If fetching favorite fails, continue without it (non-fatal)
@@ -464,10 +499,21 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       console.log('[PlaybackStatus] Inferring PLAYING from currentItem presence');
       finalPlaybackState = 'PLAYING';
     }
+    
+    // Clear active favorite if playback has actually stopped (not just paused)
+    let finalActiveFavoriteId = activeFavoriteId;
+    if (finalPlaybackState === 'STOPPED' && !currentItem && activeFavoriteId) {
+      console.log(`[PlaybackStatus] Playback stopped - clearing active favorite ${activeFavoriteId} for group ${groupId}`);
+      activeFavoritesByGroup.delete(groupId);
+      activeFavorite = null;
+      finalActiveFavoriteId = null;
+    }
 
     console.log('[PlaybackStatus] Final playback state:', {
       finalPlaybackState,
       hasCurrentItem: !!currentItem,
+      activeFavoriteId: finalActiveFavoriteId,
+      activeFavoriteName: activeFavorite?.name || null,
       allPlaybackStateFields: {
         'playbackState.playbackState': playbackState.playbackState,
         'playbackState.state': playbackState.state,
@@ -483,7 +529,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       item: currentItem ? { ...currentItem, track } : null,
       track: track,
       volume: volume.volume || volume.groupVolume || 0,
-      activeFavoriteId: activeFavoriteId,
+      activeFavoriteId: finalActiveFavoriteId,
       activeFavorite: activeFavorite,
       ...playbackState,
       ...metadata
