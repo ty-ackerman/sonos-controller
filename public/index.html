@@ -2043,7 +2043,7 @@
       <div id="feedback" class="feedback"></div>
 
       <!-- Loading Screen Overlay -->
-      <div id="loading-overlay" class="loading-overlay hidden">
+      <div id="loading-overlay" class="loading-overlay">
         <div class="loading-content">
           <div class="loading-text">Alter x <span class="sonos-brand">Sonos</span></div>
         </div>
@@ -2054,7 +2054,7 @@
         <div class="toast-content"></div>
       </div>
 
-      <div id="auth-bar" style="margin-bottom: 12px">
+      <div id="auth-bar" class="hidden" style="margin-bottom: 12px">
         <button id="signin-btn" onclick="login()">Sign in with Sonos</button>
       </div>
 
@@ -2320,6 +2320,7 @@
       const statusLabel = document.getElementById('status');
       const feedbackLabel = document.getElementById('feedback');
       const signinButton = document.getElementById('signin-btn');
+      const authBar = document.getElementById('auth-bar');
       const loadingOverlay = document.getElementById('loading-overlay');
       const toast = document.getElementById('toast');
       const toastContent = document.querySelector('.toast-content');
@@ -2692,6 +2693,7 @@ favoritesToggle.addEventListener('click', () => {
 
 function setAuthUI(loggedIn) {
   signinButton.classList.toggle('hidden', loggedIn);
+  authBar.classList.toggle('hidden', loggedIn);
   panelsContainer.classList.toggle('hidden', !loggedIn);
   if (!loggedIn) {
     showView('control');
@@ -5479,8 +5481,7 @@ async function checkAuthAndInit() {
       }
 
       window.addEventListener('load', () => {
-        // Show loading screen immediately
-        showLoadingOverlay();
+        // Loading screen is already visible by default
         applyAuthFeedback();
         checkAuthAndInit();
       });
