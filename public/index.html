@@ -5315,6 +5315,11 @@ async function checkAuthAndInit() {
               } else {
                 // Fallback to favoritesRegistry (client-side cache)
                 const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
+                const reason = statusFavorite 
+                  ? (statusFavorite.id === activeFavoriteId ? 'missing name' : 'ID mismatch')
+                  : 'missing';
+                
+                // Always log the resolution attempt, even if favoritesRegistry is missing
                 if (favoriteEntry && favoriteEntry.favorite) {
                   playlistName = favoriteEntry.favorite.name || null;
                   // Get playlist cover art
@@ -5326,9 +5331,6 @@ async function checkAuthAndInit() {
                       : favorite?.container?.imageUrl
                         ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
                         : null;
-                  const reason = statusFavorite 
-                    ? (statusFavorite.id === activeFavoriteId ? 'missing name' : 'ID mismatch')
-                    : 'missing';
                   console.log('[Client] Playlist name resolved:', {
                     source: 'favoritesRegistry',
                     activeFavoriteId,
@@ -5336,6 +5338,15 @@ async function checkAuthAndInit() {
                     statusIssue: reason
                   });
                 } else {
+                  // favoritesRegistry missing or incomplete - log it
+                  console.log('[Client] Playlist name resolved:', {
+                    source: 'favoritesRegistry',
+                    activeFavoriteId,
+                    playlistName: null,
+                    statusIssue: reason,
+                    favoritesRegistry: favoriteEntry ? 'present but no favorite' : 'missing'
+                  });
+                  
                   // Last resort: use status name if available
                   if (statusFavorite && statusFavorite.id === activeFavoriteId && statusFavorite.name) {
                     playlistName = statusFavorite.name;
