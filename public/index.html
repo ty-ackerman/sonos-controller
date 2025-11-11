@@ -3204,6 +3204,7 @@ async function checkAuthAndInit() {
       }
 
       timeRuleSaveBtn.addEventListener('click', async () => {
+        const name = timeRuleName.value.trim() || null;
         const startHour = parseInt(timeRuleStartHour.value, 10);
         const endHour = parseInt(timeRuleEndHour.value, 10);
         const allowedVibes = [];
@@ -3249,6 +3250,7 @@ async function checkAuthAndInit() {
 
         try {
           const rule = {
+            name: name,
             start_hour: startHour,
             end_hour: endHour,
             allowed_vibes: allowedVibes,
