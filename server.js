@@ -725,15 +725,25 @@ app.delete('/api/vibe-time-rules/:id', async (req, res) => {
 });
 
 // Helper function to check if a time range contains an hour
-// Note: endHour is INCLUSIVE - a rule from 19-0 means 7 PM through 12:59 AM
+// Note: When endHour is 0 (12:00 AM), it means "ends before midnight" (exclusive of hour 0)
+// So a rule from 19-0 means 7:00 PM through 11:59 PM (hours 19-23), NOT including hour 0
 function timeRangeContainsHour(startHour, endHour, hour) {
-  if (startHour <= endHour) {
+  // Special case: if endHour is 0, treat it as "ends before midnight" (exclusive)
+  // Convert 0 to 23 for the purpose of range checking
+  let effectiveEndHour = endHour;
+  if (endHour === 0 && startHour > 0) {
+    // Rule ends at midnight - treat as ending at 23:59 (hour 23)
+    effectiveEndHour = 23;
+  }
+  
+  if (startHour <= effectiveEndHour) {
     // Normal range (e.g., 7-12 means 7:00 AM through 12:59 PM)
-    return hour >= startHour && hour <= endHour;
+    // Or 19-23 means 7:00 PM through 11:59 PM (when endHour was 0)
+    return hour >= startHour && hour <= effectiveEndHour;
   } else {
-    // Wraps around midnight (e.g., 19-0 means 7:00 PM through 12:59 AM)
-    // This includes both hours >= startHour (evening) AND hours <= endHour (early morning)
-    return hour >= startHour || hour <= endHour;
+    // Wraps around midnight (e.g., 22-6 means 10:00 PM through 6:59 AM)
+    // This includes both hours >= startHour (evening) AND hours <= effectiveEndHour (early morning)
+    return hour >= startHour || hour <= effectiveEndHour;
   }
 }
 
@@ -768,7 +778,11 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
     // Log all base rules for debugging
     baseRules.forEach(rule => {
       const matches = timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
-      console.log(`[Recommendations] Base rule ID ${rule.id}: ${rule.start_hour}-${rule.end_hour}, matches hour ${currentHour}: ${matches}`);
+      const ruleName = rule.name ? ` "${rule.name}"` : '';
+      const startTime = `${rule.start_hour}:00`;
+      const endTime = rule.end_hour === 0 ? '11:59 PM (before midnight)' : `${rule.end_hour}:00`;
+      const effectiveEnd = rule.end_hour === 0 && rule.start_hour > 0 ? 23 : rule.end_hour;
+      console.log(`[Recommendations] Base rule ID ${rule.id}${ruleName}: ${startTime}-${endTime} (${rule.start_hour}-${rule.end_hour}, effective end: ${effectiveEnd}), current hour ${currentHour}, matches: ${matches}`);
     });
 
     // Find base rules that match current time
@@ -877,8 +891,19 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
     // Get all favorites
     const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`);
     const payload = await response.json();
-    const favorites = Array.isArray(payload.items) ? payload.items : [];
+    let favorites = Array.isArray(payload.items) ? payload.items : [];
     console.log(`[Recommendations] Total favorites: ${favorites.length}`);
+
+    // Filter out hidden favorites
+    await ensureInitialized();
+    if (!hiddenFavorites) {
+      hiddenFavorites = await loadHiddenFavorites();
+      if (!(hiddenFavorites instanceof Set)) {
+        hiddenFavorites = new Set();
+      }
+    }
+    favorites = favorites.filter((favorite) => !hiddenFavorites.has(favorite.id));
+    console.log(`[Recommendations] Favorites after filtering hidden: ${favorites.length}`);
 
     // Load playlist vibes
     const vibes = await loadPlaylistVibes();
