@@ -881,10 +881,15 @@
         display: flex;
         flex-direction: column;
         box-shadow: var(--shadow-lg);
+        touch-action: pan-y;
       }
 
       .menu-panel.open {
         transform: translateX(0);
+      }
+
+      .menu-panel.dragging {
+        transition: none;
       }
 
       .menu-header {
@@ -1885,16 +1890,201 @@ async function signout() {
 }
 
 function openMenu() {
+  menuPanel.classList.remove('dragging');
   menuPanel.classList.add('open');
   menuBackdrop.classList.add('visible');
   document.body.classList.add('menu-open');
 }
 
 function closeMenu() {
+  menuPanel.classList.remove('dragging');
   menuPanel.classList.remove('open');
   menuBackdrop.classList.remove('visible');
   document.body.classList.remove('menu-open');
 }
+
+// Swipe gesture handling
+let touchStartX = null;
+let touchStartY = null;
+let touchStartTime = null;
+let isDragging = false;
+let menuPanelWidth = 280;
+const SWIPE_THRESHOLD = 50; // Minimum distance in pixels to trigger swipe
+const SWIPE_VELOCITY_THRESHOLD = 0.3; // Minimum velocity (px/ms) to trigger swipe
+const EDGE_THRESHOLD = 20; // Distance from left edge to detect edge swipe
+
+function getMenuPanelWidth() {
+  return menuPanel.offsetWidth || 280;
+}
+
+function updateMenuPanelTransform(deltaX) {
+  const width = getMenuPanelWidth();
+  const isMenuOpen = menuPanel.classList.contains('open');
+  
+  if (isMenuOpen) {
+    // Menu is open - dragging left (deltaX is negative) to close
+    // Start at 0, move towards -width
+    const newX = Math.max(-width, Math.min(0, deltaX));
+    menuPanel.style.transform = `translateX(${newX}px)`;
+    
+    // Update backdrop opacity based on menu position (0 = fully visible, -width = hidden)
+    const opacity = Math.max(0, Math.min(1, (width + newX) / width));
+    menuBackdrop.style.opacity = opacity.toString();
+  } else {
+    // Menu is closed - dragging right (deltaX is positive) to open
+    // Start at -width, move towards 0
+    const newX = Math.max(-width, Math.min(0, -width + deltaX));
+    menuPanel.style.transform = `translateX(${newX}px)`;
+    
+    // Update backdrop opacity based on menu position
+    const opacity = Math.max(0, Math.min(1, (width + newX) / width));
+    menuBackdrop.style.opacity = opacity.toString();
+    if (opacity > 0) {
+      menuBackdrop.classList.add('visible');
+    } else {
+      menuBackdrop.classList.remove('visible');
+    }
+  }
+}
+
+function handleTouchStart(e) {
+  const touch = e.touches[0];
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+  touchStartTime = Date.now();
+  isDragging = false;
+  
+  const isMenuOpen = menuPanel.classList.contains('open');
+  const isFromLeftEdge = touchStartX <= EDGE_THRESHOLD;
+  
+  // Don't interfere with specific interactive elements when menu is closed
+  if (!isMenuOpen) {
+    // When menu is closed, only allow swipe from left edge
+    // Don't interfere with scrolling, inputs, buttons, links, or now-playing panel
+    if (!isFromLeftEdge || 
+        e.target.closest('input, textarea, select, button:not(.hamburger-menu-btn), a, .currently-playing, .favorites-grid, .playlist-card')) {
+      return;
+    }
+  } else {
+    // When menu is open, allow swipe to close from anywhere
+    // But don't interfere with menu items, inputs, or scrolling within menu
+    if (e.target.closest('.menu-item, input, textarea, select, button:not(.menu-close-btn), a')) {
+      return;
+    }
+  }
+  
+  // Only start drag if:
+  // 1. Menu is open (can swipe left to close from anywhere on main content)
+  // 2. Menu is closed and touch started from left edge (can swipe right to open)
+  if (isMenuOpen || isFromLeftEdge) {
+    menuPanelWidth = getMenuPanelWidth();
+    menuPanel.classList.add('dragging');
+    isDragging = true;
+  }
+}
+
+function handleTouchMove(e) {
+  if (!isDragging || touchStartX === null) {
+    return;
+  }
+  
+  const touch = e.touches[0];
+  const deltaX = touch.clientX - touchStartX;
+  const deltaY = touch.clientY - touchStartY;
+  
+  // Check if this is primarily a horizontal swipe
+  if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+    e.preventDefault(); // Prevent scrolling during horizontal swipe
+    
+    const isMenuOpen = menuPanel.classList.contains('open');
+    const width = getMenuPanelWidth();
+    
+    if (isMenuOpen) {
+      // Menu is open - only allow left swipe to close
+      if (deltaX < 0) {
+        updateMenuPanelTransform(deltaX);
+      }
+    } else {
+      // Menu is closed - only allow right swipe to open
+      if (deltaX > 0 && deltaX <= width) {
+        updateMenuPanelTransform(deltaX);
+      }
+    }
+  }
+}
+
+function handleTouchEnd(e) {
+  if (!isDragging || touchStartX === null) {
+    return;
+  }
+  
+  const touch = e.changedTouches[0];
+  const deltaX = touch.clientX - touchStartX;
+  const deltaY = touch.clientY - touchStartY;
+  const deltaTime = Date.now() - touchStartTime;
+  const velocity = Math.abs(deltaX) / deltaTime;
+  
+  const isMenuOpen = menuPanel.classList.contains('open');
+  const width = getMenuPanelWidth();
+  
+  // Determine if swipe should complete
+  let shouldComplete = false;
+  
+  if (isMenuOpen) {
+    // Menu is open - check if should close
+    const closeThreshold = width * 0.3; // Close if dragged more than 30% of width
+    shouldComplete = deltaX < -SWIPE_THRESHOLD || 
+                     (deltaX < 0 && Math.abs(deltaX) > closeThreshold) ||
+                     (deltaX < 0 && velocity > SWIPE_VELOCITY_THRESHOLD);
+  } else {
+    // Menu is closed - check if should open
+    const openThreshold = width * 0.5; // Open if dragged more than 50% of width
+    shouldComplete = deltaX > SWIPE_THRESHOLD && 
+                     (deltaX > openThreshold || velocity > SWIPE_VELOCITY_THRESHOLD);
+  }
+  
+  // Reset dragging state
+  menuPanel.classList.remove('dragging');
+  menuPanel.style.transform = '';
+  menuBackdrop.style.opacity = '';
+  isDragging = false;
+  touchStartX = null;
+  touchStartY = null;
+  touchStartTime = null;
+  
+  // Complete or cancel the swipe
+  if (shouldComplete) {
+    // Clear inline styles to let CSS transitions handle the animation
+    menuPanel.style.transform = '';
+    menuBackdrop.style.opacity = '';
+    
+    if (isMenuOpen) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
+  } else {
+    // Snap back to original state - use CSS transition
+    menuPanel.style.transform = '';
+    menuBackdrop.style.opacity = '';
+    
+    // Small delay to ensure transform is cleared before restoring classes
+    requestAnimationFrame(() => {
+      if (isMenuOpen) {
+        menuPanel.classList.add('open');
+        menuBackdrop.classList.add('visible');
+      } else {
+        menuPanel.classList.remove('open');
+        menuBackdrop.classList.remove('visible');
+      }
+    });
+  }
+}
+
+// Add touch event listeners
+document.addEventListener('touchstart', handleTouchStart, { passive: true });
+document.addEventListener('touchmove', handleTouchMove, { passive: false });
+document.addEventListener('touchend', handleTouchEnd, { passive: true });
 
 function showView(name) {
   const isControl = name === 'control';
