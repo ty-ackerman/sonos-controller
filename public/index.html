@@ -2471,6 +2471,7 @@ settingsStatusLabel.textContent = '';
       let currentGroupName = 'No group selected';
       let currentActiveFavoriteId = null;
       let currentActiveFavoriteIdTimestamp = 0; // Track when favorite was set
+      let lastStatusUpdateTime = 0; // Track when status was last updated to ignore stale responses
       const recommendationCardButtons = new Map(); // Store recommendation card buttons by favorite ID
       const favoritesRegistry = new Map();
       let latestPlayers = [];
@@ -4812,13 +4813,16 @@ async function checkAuthAndInit() {
       }
 
       function updateIndividualVolumesFromMaster(masterLevel) {
-        // Update all individual sliders to match master volume
+        // Update all individual sliders to match master volume (only if not being dragged)
         const roomRows = currentlyPlayingRoomsList.querySelectorAll('.currently-playing-room-volume');
         roomRows.forEach((row) => {
           const slider = row.querySelector('.currently-playing-room-slider');
           const value = row.querySelector('.currently-playing-room-value');
           if (slider && value) {
-            slider.value = masterLevel;
+            // Only update if user is not currently dragging this slider
+            if (slider.dataset.isDragging !== 'true') {
+              slider.value = masterLevel;
+            }
             value.textContent = `${masterLevel}`;
           }
         });
@@ -5075,6 +5079,16 @@ async function checkAuthAndInit() {
           }
 
           const status = await response.json();
+          const statusUpdateTime = Date.now();
+          
+          // Ignore responses that arrive out of order (if we got a newer one recently)
+          // Only ignore if we got an update in the last 500ms and this one seems stale
+          if (lastStatusUpdateTime > 0 && statusUpdateTime < lastStatusUpdateTime - 500) {
+            console.warn(`[Client] Ignoring out-of-order status response (${lastStatusUpdateTime - statusUpdateTime}ms behind)`);
+            return;
+          }
+          lastStatusUpdateTime = statusUpdateTime;
+          
           currentPlaybackState = status;
 
           const apiPlaybackState = status.playbackState || status.state || status.playback?.state || 'STOPPED';
@@ -5171,6 +5185,7 @@ async function checkAuthAndInit() {
             const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
 
             // Sync currentActiveFavoriteId with status to keep highlighted favorite in sync with now playing
+            // IMPORTANT: Only update if this status is for the current groupId to prevent cross-group confusion
             const statusActiveFavoriteId = status.activeFavoriteId;
             let activeFavoriteId = currentActiveFavoriteId;
             
@@ -5178,21 +5193,29 @@ async function checkAuthAndInit() {
             // 1. Status has a non-null value (not null, not undefined)
             // 2. Status value differs from current
             // 3. Don't clear currentActiveFavoriteId if status returns null/undefined during active playback (might be stale)
+            // 4. Only update if enough time has passed since last update (prevent rapid switching from race conditions)
             if (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) {
               if (statusActiveFavoriteId !== currentActiveFavoriteId) {
-                // Status has a different non-null value - update to match
-                console.log(`[Client] activeFavoriteId changed: ${currentActiveFavoriteId} -> ${statusActiveFavoriteId}`);
-                currentActiveFavoriteId = statusActiveFavoriteId;
-                currentActiveFavoriteIdTimestamp = Date.now();
-                markActiveFavorite(statusActiveFavoriteId);
-                activeFavoriteId = statusActiveFavoriteId;
+                // Only update if enough time has passed (2 seconds) to prevent rapid switching from stale responses
+                const timeSinceLastUpdate = Date.now() - currentActiveFavoriteIdTimestamp;
+                if (timeSinceLastUpdate > 2000 || currentActiveFavoriteIdTimestamp === 0) {
+                  // Status has a different non-null value - update to match
+                  console.log(`[Client] activeFavoriteId changed: ${currentActiveFavoriteId} -> ${statusActiveFavoriteId} for groupId=${groupId} (timeSinceLastUpdate=${timeSinceLastUpdate}ms)`);
+                  currentActiveFavoriteId = statusActiveFavoriteId;
+                  currentActiveFavoriteIdTimestamp = Date.now();
+                  markActiveFavorite(statusActiveFavoriteId);
+                  activeFavoriteId = statusActiveFavoriteId;
+                } else {
+                  // Ignore rapid changes - likely stale responses from different groups or race conditions
+                  console.warn(`[Client] Ignoring rapid activeFavoriteId change: ${currentActiveFavoriteId} -> ${statusActiveFavoriteId} for groupId=${groupId} (only ${timeSinceLastUpdate}ms ago, might be stale)`);
+                }
               } else {
                 // Status matches current - use it for display
                 activeFavoriteId = statusActiveFavoriteId;
               }
             } else if (statusActiveFavoriteId === null && currentActiveFavoriteId && !isPlaying && playbackState === 'STOPPED') {
               // Only clear if playback has actually stopped (not just paused or during transitions)
-              console.log(`[Client] activeFavoriteId cleared by status: ${currentActiveFavoriteId} -> null (playback stopped)`);
+              console.log(`[Client] activeFavoriteId cleared by status: ${currentActiveFavoriteId} -> null (playback stopped for groupId=${groupId})`);
               currentActiveFavoriteId = null;
               activeFavoriteId = null;
             }
@@ -5417,81 +5440,117 @@ async function checkAuthAndInit() {
         // We'll show all players since they're all in the same auto-created group
         const groupPlayers = latestPlayers;
         
+        // Check if any sliders are currently being dragged
+        const existingRows = currentlyPlayingRoomsList.querySelectorAll('.currently-playing-room-volume');
+        const anyDragging = Array.from(existingRows).some(row => {
+          const slider = row.querySelector('.currently-playing-room-slider');
+          return slider && slider.dataset.isDragging === 'true';
+        });
+        
+        // If any slider is being dragged, don't recreate the DOM - just update values
+        if (anyDragging) {
+          groupPlayers.forEach((player) => {
+            const existingRow = currentlyPlayingRoomsList.querySelector(`[data-player-id="${player.id}"]`);
+            if (existingRow) {
+              const slider = existingRow.querySelector('.currently-playing-room-slider');
+              const value = existingRow.querySelector('.currently-playing-room-value');
+              // Only update if not being dragged
+              if (slider && slider.dataset.isDragging !== 'true') {
+                slider.value = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+              }
+              if (value) {
+                value.textContent = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+              }
+            } else {
+              // Player doesn't exist yet, create it
+              const roomRow = createRoomVolumeRow(player);
+              currentlyPlayingRoomsList.appendChild(roomRow);
+            }
+          });
+          return;
+        }
+        
+        // No sliders being dragged - safe to recreate
         currentlyPlayingRoomsList.innerHTML = '';
 
         groupPlayers.forEach((player) => {
-          const roomRow = document.createElement('div');
-          roomRow.className = 'currently-playing-room-volume';
-          roomRow.dataset.playerId = player.id;
-
-          const name = document.createElement('span');
-          name.className = 'currently-playing-room-name';
-          name.textContent = player.name || player.id || 'Room';
-
-          const slider = document.createElement('input');
-          slider.type = 'range';
-          slider.className = 'currently-playing-room-slider';
-          slider.min = '0';
-          slider.max = '100';
-          slider.value = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
-          slider.dataset.isDragging = 'false';
-
-          const value = document.createElement('span');
-          value.className = 'currently-playing-room-value';
-          value.textContent = `${slider.value}`;
-
-          slider.addEventListener('input', (e) => {
-            e.stopPropagation();
-            value.textContent = e.target.value;
-          });
-
-          slider.addEventListener('mousedown', () => {
-            slider.dataset.isDragging = 'true';
-          });
-
-          slider.addEventListener('touchstart', () => {
-            slider.dataset.isDragging = 'true';
-          });
-
-          slider.addEventListener('change', async (e) => {
-            e.stopPropagation();
-            slider.dataset.isDragging = 'false';
-            const playerId = roomRow.dataset.playerId;
-            if (playerId) {
-              await setPlayerVolume(playerId, Number(e.target.value));
-            }
-          });
-
-          slider.addEventListener('mouseup', () => {
-            slider.dataset.isDragging = 'false';
-          });
-
-          slider.addEventListener('touchend', () => {
-            slider.dataset.isDragging = 'false';
-          });
-
-          // Prevent panel from closing when interacting with slider
-          slider.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-          });
-          slider.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-          });
-          slider.addEventListener('touchstart', (e) => {
-            e.stopPropagation();
-          });
-          slider.addEventListener('touchmove', (e) => {
-            e.stopPropagation();
-          });
-          slider.addEventListener('touchend', (e) => {
-            e.stopPropagation();
-          });
-
-          roomRow.appendChild(name);
-          roomRow.appendChild(slider);
-          roomRow.appendChild(value);
+          const roomRow = createRoomVolumeRow(player);
           currentlyPlayingRoomsList.appendChild(roomRow);
         });
+      }
+
+      function createRoomVolumeRow(player) {
+        const roomRow = document.createElement('div');
+        roomRow.className = 'currently-playing-room-volume';
+        roomRow.dataset.playerId = player.id;
+
+        const name = document.createElement('span');
+        name.className = 'currently-playing-room-name';
+        name.textContent = player.name || player.id || 'Room';
+
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.className = 'currently-playing-room-slider';
+        slider.min = '0';
+        slider.max = '100';
+        slider.value = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+        slider.dataset.isDragging = 'false';
+
+        const value = document.createElement('span');
+        value.className = 'currently-playing-room-value';
+        value.textContent = `${slider.value}`;
+
+        slider.addEventListener('input', (e) => {
+          e.stopPropagation();
+          value.textContent = e.target.value;
+        });
+
+        slider.addEventListener('mousedown', () => {
+          slider.dataset.isDragging = 'true';
+        });
+
+        slider.addEventListener('touchstart', () => {
+          slider.dataset.isDragging = 'true';
+        });
+
+        slider.addEventListener('change', async (e) => {
+          e.stopPropagation();
+          slider.dataset.isDragging = 'false';
+          const playerId = roomRow.dataset.playerId;
+          if (playerId) {
+            await setPlayerVolume(playerId, Number(e.target.value));
+          }
+        });
+
+        slider.addEventListener('mouseup', () => {
+          slider.dataset.isDragging = 'false';
+        });
+
+        slider.addEventListener('touchend', () => {
+          slider.dataset.isDragging = 'false';
+        });
+
+        // Prevent panel from closing when interacting with slider
+        slider.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+        });
+        slider.addEventListener('mousedown', (e) => {
+          e.stopPropagation();
+        });
+        slider.addEventListener('touchstart', (e) => {
+          e.stopPropagation();
+        });
+        slider.addEventListener('touchmove', (e) => {
+          e.stopPropagation();
+        });
+        slider.addEventListener('touchend', (e) => {
+          e.stopPropagation();
+        });
+
+        roomRow.appendChild(name);
+        roomRow.appendChild(slider);
+        roomRow.appendChild(value);
+        return roomRow;
         
       }
 
