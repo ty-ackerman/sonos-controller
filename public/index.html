@@ -491,7 +491,11 @@
       }
 
       #panel-playlist-management .playlist-meta {
-        gap: 10px;
+        gap: 8px;
+      }
+
+      #panel-playlist-management .playlist-card {
+        gap: 12px;
       }
 
       #panel-playlist-management .playlist-name-row {
@@ -504,7 +508,7 @@
       #panel-playlist-management .playlist-vibe-select {
         display: inline-flex;
         align-items: center;
-        padding: 4px 10px;
+        padding: 4px 24px 4px 10px;
         border-radius: 10px;
         background: var(--bg-tertiary);
         color: var(--text-primary);
@@ -514,11 +518,10 @@
         cursor: pointer;
         transition: all 0.2s ease;
         appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 6px center;
         background-size: 10px;
-        padding-right: 24px;
         min-width: 80px;
       }
 
@@ -531,25 +534,28 @@
         background-color: #ffffff;
         color: #000000;
         border-color: #ffffff;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23333' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
       }
 
       #panel-playlist-management .playlist-vibe-select.down-mid {
         background-color: #808080;
         color: #ffffff;
         border-color: #808080;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
       }
 
       #panel-playlist-management .playlist-vibe-select.mid {
         background-color: #000000;
         color: #ffffff;
         border-color: #000000;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
       }
 
       #panel-playlist-management .playlist-card-actions {
         display: flex;
         justify-content: flex-end;
-        padding-top: 8px;
-        margin-top: 4px;
+        padding-top: 0;
+        margin-top: 0;
         gap: 8px;
       }
 
@@ -2977,21 +2983,16 @@ async function checkAuthAndInit() {
         const meta = document.createElement('div');
         meta.className = 'playlist-meta';
 
+        const nameRow = document.createElement('div');
+        nameRow.className = 'playlist-name-row';
+
         const title = document.createElement('span');
         title.className = 'playlist-name';
         title.textContent = favorite.name || 'Unnamed Playlist';
-
-        meta.appendChild(title);
-        cardContent.appendChild(artWrapper);
-        cardContent.appendChild(meta);
-
-        const vibeSelector = document.createElement('div');
-        vibeSelector.className = 'playlist-vibe-selector';
-
-        const vibeLabel = document.createElement('label');
-        vibeLabel.textContent = 'Vibe: ';
+        nameRow.appendChild(title);
 
         const vibeSelect = document.createElement('select');
+        vibeSelect.className = 'playlist-vibe-select';
         vibeSelect.appendChild(new Option('', ''));
         ['Down', 'Down/Mid', 'Mid'].forEach((vibe) => {
           const option = document.createElement('option');
@@ -2999,24 +3000,69 @@ async function checkAuthAndInit() {
           option.textContent = vibe;
           vibeSelect.appendChild(option);
         });
-        vibeSelect.value = playlistVibes[favorite.id] || '';
+        
+        const currentVibe = playlistVibes[favorite.id] || '';
+        vibeSelect.value = currentVibe;
+        
+        // Apply styling class based on current vibe
+        if (currentVibe === 'Down') {
+          vibeSelect.classList.add('down');
+        } else if (currentVibe === 'Down/Mid') {
+          vibeSelect.classList.add('down-mid');
+        } else if (currentVibe === 'Mid') {
+          vibeSelect.classList.add('mid');
+        }
+        
         vibeSelect.addEventListener('change', async (event) => {
           event.stopPropagation();
           const oldValue = vibeSelect.value;
-          // Optimistically update the UI
+          const oldClass = vibeSelect.className.match(/\b(down|down-mid|mid)\b/)?.[0];
+          
+          // Remove old class
+          if (oldClass) {
+            vibeSelect.classList.remove(oldClass);
+          }
+          
+          // Apply new class and update value
           vibeSelect.value = event.target.value;
+          if (event.target.value === 'Down') {
+            vibeSelect.classList.add('down');
+          } else if (event.target.value === 'Down/Mid') {
+            vibeSelect.classList.add('down-mid');
+          } else if (event.target.value === 'Mid') {
+            vibeSelect.classList.add('mid');
+          }
+          
           try {
             await setPlaylistVibe(favorite.id, event.target.value);
             // Refresh the vibe selector to ensure it matches saved state
             await loadPlaylistVibes();
-            vibeSelect.value = playlistVibes[favorite.id] || '';
+            const savedVibe = playlistVibes[favorite.id] || '';
+            vibeSelect.value = savedVibe;
+            
+            // Update class based on saved vibe
+            vibeSelect.className = 'playlist-vibe-select';
+            if (savedVibe === 'Down') {
+              vibeSelect.classList.add('down');
+            } else if (savedVibe === 'Down/Mid') {
+              vibeSelect.classList.add('down-mid');
+            } else if (savedVibe === 'Mid') {
+              vibeSelect.classList.add('mid');
+            }
           } catch (error) {
             // Revert on error
             vibeSelect.value = oldValue;
+            vibeSelect.className = 'playlist-vibe-select';
+            if (oldClass) {
+              vibeSelect.classList.add(oldClass);
+            }
           }
         });
-        vibeSelector.appendChild(vibeLabel);
-        vibeSelector.appendChild(vibeSelect);
+        
+        nameRow.appendChild(vibeSelect);
+        meta.appendChild(nameRow);
+        cardContent.appendChild(artWrapper);
+        cardContent.appendChild(meta);
 
         const cardActions = document.createElement('div');
         cardActions.className = 'playlist-card-actions';
@@ -3034,9 +3080,10 @@ async function checkAuthAndInit() {
         }
 
         const toggleBtn = document.createElement('button');
-        toggleBtn.textContent = isHidden ? 'Show in Controls' : 'Hide from Controls';
+        toggleBtn.textContent = isHidden ? 'Show' : 'Hide';
         toggleBtn.className = isHidden ? 'show' : 'hide';
         toggleBtn.type = 'button';
+        toggleBtn.setAttribute('aria-label', isHidden ? 'Show in Controls' : 'Hide from Controls');
         toggleBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
           const newHiddenState = !isHidden;
@@ -3067,8 +3114,9 @@ async function checkAuthAndInit() {
 
             // Update the button state
             isHidden = newHiddenState;
-            toggleBtn.textContent = isHidden ? 'Show in Controls' : 'Hide from Controls';
+            toggleBtn.textContent = isHidden ? 'Show' : 'Hide';
             toggleBtn.className = isHidden ? 'show' : 'hide';
+            toggleBtn.setAttribute('aria-label', isHidden ? 'Show in Controls' : 'Hide from Controls');
 
             // Refresh the favorites view if it's open (to reflect the change)
             if (!panelControl.classList.contains('hidden')) {
@@ -3083,7 +3131,6 @@ async function checkAuthAndInit() {
         cardActions.appendChild(toggleBtn);
 
         button.appendChild(cardContent);
-        button.appendChild(vibeSelector);
         button.appendChild(cardActions);
 
         return { favorite, button, vibeSelect };
