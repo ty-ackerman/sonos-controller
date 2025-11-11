@@ -248,10 +248,19 @@ app.post('/api/groups/:groupId/volume', async (req, res) => {
   }
 
   try {
-    await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`, {
+    const response = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`, {
       method: 'POST',
       body: JSON.stringify({ volume: level })
     });
+    const responseData = await response.json().catch(() => ({}));
+    
+    console.log('[SonosData] Volume set response:', {
+      groupId,
+      requestedVolume: level,
+      responseVolume: responseData.volume || responseData.groupVolume || level,
+      responseData: responseData
+    });
+    
     res.json({ status: 'ok', volume: level });
   } catch (error) {
     handleProxyError(res, error);
@@ -323,6 +332,17 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
 
     const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`).catch(() => null);
     const volume = volumeResponse ? await volumeResponse.json().catch(() => ({})) : {};
+    
+    // Log raw Sonos data for debugging
+    console.log('[SonosData] Status response:', {
+      groupId,
+      volume: volume.volume || volume.groupVolume || 0,
+      playbackState: playbackState.playbackState || playbackState.state,
+      hasCurrentItem: !!currentItem,
+      activeFavoriteId: activeInfo?.favoriteId || null,
+      metadataKeys: Object.keys(metadata),
+      playbackStateKeys: Object.keys(playbackState)
+    });
 
 
     const currentItem = metadata.currentItem || metadata.item || null;
@@ -390,9 +410,19 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
               const favoritesData = await favoritesResponse.json().catch(() => ({}));
               const favorites = Array.isArray(favoritesData.items) ? favoritesData.items : [];
               favorite = favorites.find((f) => f.id === activeFavoriteId);
+              
+              // Log Sonos favorites data
+              console.log('[SonosData] Favorites response:', {
+                householdId,
+                totalFavorites: favorites.length,
+                lookingFor: activeFavoriteId,
+                found: !!favorite,
+                foundName: favorite?.name || null,
+                allFavoriteIds: favorites.map(f => ({ id: f.id, name: f.name })).slice(0, 10) // First 10 for debugging
+              });
             }
           } catch (error) {
-            console.warn(`[PlaybackStatus] Failed to fetch favorites from preferred household ${householdId}:`, error.message);
+            // Silent - will try other households
           }
         }
         
@@ -410,7 +440,12 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
                   favorite = favorites.find((f) => f.id === activeFavoriteId);
                   if (favorite) {
                     householdId = hId; // Update householdId to the one where we found it
-                    console.log(`[PlaybackStatus] Found favorite ${activeFavoriteId} in household ${hId} (not in preferred ${preferredHousehold || 'none'})`);
+                    console.log('[SonosData] Found favorite in different household:', {
+                      favoriteId: activeFavoriteId,
+                      name: favorite.name,
+                      foundInHousehold: hId,
+                      preferredHousehold: preferredHousehold || 'none'
+                    });
                     break;
                   }
                 }
@@ -420,7 +455,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
               }
             }
           } catch (error) {
-            console.warn('[PlaybackStatus] Failed to search all households:', error.message);
+            // Silent - non-fatal
           }
         }
         
@@ -445,13 +480,19 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
           
           // Log will happen after this block
         } else {
-          console.warn(`[PlaybackStatus] Favorite ${activeFavoriteId} NOT FOUND in any household - clearing from cache`);
+          console.warn('[SonosData] Favorite NOT FOUND:', {
+            favoriteId: activeFavoriteId,
+            groupId,
+            searchedHouseholds: householdId ? [householdId] : []
+          });
           // Clear stale favorite from cache if it doesn't exist
           activeFavoritesByGroup.delete(groupId);
         }
       } catch (error) {
-        // If fetching favorite fails, continue without it (non-fatal)
-        console.warn('[PlaybackStatus] Failed to fetch favorite data:', error.message);
+        console.warn('[SonosData] Failed to fetch favorite data:', {
+          favoriteId: activeFavoriteId,
+          error: error.message
+        });
       }
     }
 
@@ -487,20 +528,28 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     // Clear active favorite if playback has actually stopped (not just paused)
     let finalActiveFavoriteId = activeFavoriteId;
     if (finalPlaybackState === 'STOPPED' && !currentItem && activeFavoriteId) {
-      console.log(`[PlaybackStatus] Clearing activeFavoriteId ${activeFavoriteId} for group ${groupId} - playback stopped`);
+      console.log('[SonosData] Clearing activeFavoriteId - playback stopped:', {
+        groupId,
+        activeFavoriteId
+      });
       activeFavoritesByGroup.delete(groupId);
       activeFavorite = null;
       finalActiveFavoriteId = null;
     }
     
-    // Strategic logging for playlist name debugging
-    if (finalActiveFavoriteId) {
-      if (activeFavorite) {
-        console.log(`[PlaybackStatus] groupId=${groupId} activeFavoriteId=${finalActiveFavoriteId} name="${activeFavorite.name}" imageUrl=${activeFavorite.imageUrl ? 'present' : 'missing'}`);
-      } else {
-        console.warn(`[PlaybackStatus] groupId=${groupId} activeFavoriteId=${finalActiveFavoriteId} but activeFavorite data is MISSING`);
-      }
-    }
+    // Log final status data being sent to client
+    console.log('[SonosData] Final status response:', {
+      groupId,
+      volume: volume.volume || volume.groupVolume || 0,
+      activeFavoriteId: finalActiveFavoriteId,
+      activeFavorite: activeFavorite ? {
+        id: activeFavorite.id,
+        name: activeFavorite.name,
+        hasImageUrl: !!activeFavorite.imageUrl
+      } : null,
+      playbackState: finalPlaybackState,
+      hasCurrentItem: !!currentItem
+    });
 
     res.json({
       playbackState: finalPlaybackState,
@@ -1161,17 +1210,32 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
             
             favoriteData.favoriteName = favorite.name || null;
             favoriteData.favoriteImageUrl = imageUrl;
-            console.log(`[PlayFavorite] SET activeFavoriteId=${favoriteId} name="${favorite.name}" for groupId=${groupId} householdId=${householdForVolumes}`);
+            console.log('[SonosData] PlayFavorite - favorite found:', {
+              favoriteId,
+              name: favorite.name,
+              groupId,
+              householdId: householdForVolumes
+            });
           } else {
-            console.warn(`[PlayFavorite] Favorite ${favoriteId} NOT FOUND in household ${householdForVolumes} - setting without name`);
+            console.warn('[SonosData] PlayFavorite - favorite NOT FOUND:', {
+              favoriteId,
+              groupId,
+              householdId: householdForVolumes
+            });
           }
         }
       } catch (error) {
-        // If fetching favorite fails, continue without it (non-fatal)
-        console.warn(`[PlayFavorite] Failed to fetch favorite data for ${favoriteId}:`, error.message);
+        console.warn('[SonosData] PlayFavorite - failed to fetch:', {
+          favoriteId,
+          error: error.message
+        });
       }
     } else {
-      console.log(`[PlayFavorite] SET activeFavoriteId=${favoriteId} for groupId=${groupId} (no householdId, name will be fetched on status)`);
+      console.log('[SonosData] PlayFavorite - set without name:', {
+        favoriteId,
+        groupId,
+        reason: 'no householdId'
+      });
     }
     activeFavoritesByGroup.set(groupId, favoriteData);
 
@@ -1374,10 +1438,24 @@ app.post('/api/players/:playerId/volume', async (req, res) => {
   }
 
   try {
-    await sonosRequest(`/players/${encodeURIComponent(playerId)}/playerVolume`, {
+    const response = await sonosRequest(`/players/${encodeURIComponent(playerId)}/playerVolume`, {
       method: 'POST',
       body: JSON.stringify({ volume: volumeLevel })
     });
+    let responseData = {};
+    try {
+      responseData = await response.json();
+    } catch (e) {
+      // Response might not be JSON
+    }
+    
+    console.log('[SonosData] Player volume POST response:', {
+      playerId,
+      requestedVolume: volumeLevel,
+      responseStatus: response.status,
+      responseData: responseData
+    });
+    
     res.json({ status: 'ok', volume: volumeLevel });
   } catch (error) {
     handleProxyError(res, error);

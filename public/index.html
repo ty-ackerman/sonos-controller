@@ -4056,9 +4056,6 @@ async function checkAuthAndInit() {
             timezoneOffset: timezoneOffset.toString()
           });
           const url = `/api/playlist-recommendations?${params.toString()}`;
-          console.log('[Client] Fetching recommendations from:', url);
-          console.log(`[Client] Local time: ${currentHour}:${String(now.getMinutes()).padStart(2, '0')}, day: ${currentDay} (${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][currentDay]}), timezone offset: ${timezoneOffset}h`);
-          
           const response = await fetch(url);
 
           if (!response.ok) {
@@ -4066,36 +4063,14 @@ async function checkAuthAndInit() {
           }
 
           const data = await response.json();
-          console.log('[Client] Recommendations response:', data);
           const { primary, alternatives, currentRule, debug } = data;
           
-          console.log('[Client] Primary:', primary?.name || 'none');
-          console.log('[Client] Alternatives:', alternatives?.length || 0);
-          console.log('[Client] Current rule:', currentRule ? 
-            `ID ${currentRule.id}, ${currentRule.start_hour}-${currentRule.end_hour}, days: ${currentRule.days ? currentRule.days.join(',') : 'all'}, vibes: ${currentRule.allowed_vibes?.join(',') || 'none'}` : 
-            'none');
-          
-          if (debug) {
-            console.log('[Client] Debug info:', {
-              currentHour: debug.currentHour,
-              currentDay: debug.currentDay,
-              totalRules: debug.totalRules,
-              timeMatchingRules: debug.timeMatchingRulesCount,
-              specificRules: debug.specificRulesCount,
-              generalRules: debug.generalRulesCount,
-              specificRuleIds: debug.specificRuleIds,
-              generalRuleIds: debug.generalRuleIds,
-              usedRuleIds: debug.usedRuleIds,
-              ruleTypes: debug.ruleTypes
+          // Only log if there's an issue
+          if (debug && (debug.activeRulesCount === 0 || debug.matchingPlaylistsCount === 0)) {
+            console.warn('[Client] Recommendations issue:', {
+              activeRulesCount: debug.activeRulesCount,
+              matchingPlaylistsCount: debug.matchingPlaylistsCount
             });
-            
-            if (debug.specificRulesCount > 0 && debug.generalRulesCount > 0) {
-              console.warn('[Client] ⚠️ Specific rules should override general rules, but both are present. Check server logs for details.');
-            } else if (debug.specificRulesCount > 0) {
-              console.log('[Client] ✓ Using specific rules only');
-            } else if (debug.generalRulesCount > 0) {
-              console.log('[Client] ✓ Using general rules (no specific rules match current time/day)');
-            }
           }
 
           // Clear rule info display (now integrated into card)
@@ -5066,11 +5041,24 @@ async function checkAuthAndInit() {
                 if (expectedValue !== null && expectedValue !== '') {
                   if (Math.abs(updatedLevel - expectedValue) <= 1) {
                     // Server volume matches expected - clear expected value and update
+                    console.log('[Client] Player volume confirmed by server:', {
+                      playerId,
+                      expected: expectedValue,
+                      received: updatedLevel,
+                      match: true
+                    });
                     slider.dataset.expectedValue = '';
                     slider.value = updatedLevel;
                     if (value) value.textContent = updatedLevel;
+                  } else {
+                    // Server hasn't caught up yet - ignore
+                    console.log('[Client] Player volume update ignored (waiting for server):', {
+                      playerId,
+                      expected: expectedValue,
+                      received: updatedLevel,
+                      difference: Math.abs(updatedLevel - expectedValue)
+                    });
                   }
-                  // Otherwise ignore the update (server hasn't caught up yet)
                 } else {
                   // No expected value - safe to update normally
                   slider.value = updatedLevel;
@@ -5137,10 +5125,26 @@ async function checkAuthAndInit() {
           const status = await response.json();
           const statusUpdateTime = Date.now();
           
+          // Log what we received from server
+          console.log('[Client] Status received:', {
+            groupId,
+            volume: status.volume || 0,
+            activeFavoriteId: status.activeFavoriteId,
+            activeFavorite: status.activeFavorite ? {
+              id: status.activeFavorite.id,
+              name: status.activeFavorite.name
+            } : null,
+            playbackState: status.playbackState
+          });
+          
           // Ignore responses that arrive out of order (if we got a newer one recently)
           // Only ignore if we got an update in the last 500ms and this one seems stale
           if (lastStatusUpdateTime > 0 && statusUpdateTime < lastStatusUpdateTime - 500) {
-            console.warn(`[Client] Ignoring out-of-order status response (${lastStatusUpdateTime - statusUpdateTime}ms behind)`);
+            console.warn('[Client] Ignoring out-of-order status response:', {
+              behind: lastStatusUpdateTime - statusUpdateTime,
+              volume: status.volume,
+              activeFavoriteId: status.activeFavoriteId
+            });
             return;
           }
           lastStatusUpdateTime = statusUpdateTime;
@@ -5256,14 +5260,25 @@ async function checkAuthAndInit() {
                 const timeSinceLastUpdate = Date.now() - currentActiveFavoriteIdTimestamp;
                 if (timeSinceLastUpdate > 2000 || currentActiveFavoriteIdTimestamp === 0) {
                   // Status has a different non-null value - update to match
-                  console.log(`[Client] activeFavoriteId changed: ${currentActiveFavoriteId} -> ${statusActiveFavoriteId} for groupId=${groupId} (timeSinceLastUpdate=${timeSinceLastUpdate}ms)`);
+                  console.log('[Client] activeFavoriteId changed:', {
+                    from: currentActiveFavoriteId,
+                    to: statusActiveFavoriteId,
+                    groupId,
+                    timeSinceLastUpdate
+                  });
                   currentActiveFavoriteId = statusActiveFavoriteId;
                   currentActiveFavoriteIdTimestamp = Date.now();
                   markActiveFavorite(statusActiveFavoriteId);
                   activeFavoriteId = statusActiveFavoriteId;
                 } else {
                   // Ignore rapid changes - likely stale responses from different groups or race conditions
-                  console.warn(`[Client] Ignoring rapid activeFavoriteId change: ${currentActiveFavoriteId} -> ${statusActiveFavoriteId} for groupId=${groupId} (only ${timeSinceLastUpdate}ms ago, might be stale)`);
+                  console.warn('[Client] Ignoring rapid activeFavoriteId change:', {
+                    from: currentActiveFavoriteId,
+                    to: statusActiveFavoriteId,
+                    groupId,
+                    timeSinceLastUpdate,
+                    reason: 'might be stale'
+                  });
                 }
               } else {
                 // Status matches current - use it for display
@@ -5271,7 +5286,12 @@ async function checkAuthAndInit() {
               }
             } else if (statusActiveFavoriteId === null && currentActiveFavoriteId && !isPlaying && playbackState === 'STOPPED') {
               // Only clear if playback has actually stopped (not just paused or during transitions)
-              console.log(`[Client] activeFavoriteId cleared by status: ${currentActiveFavoriteId} -> null (playback stopped for groupId=${groupId})`);
+              console.log('[Client] activeFavoriteId cleared:', {
+                from: currentActiveFavoriteId,
+                to: null,
+                groupId,
+                reason: 'playback stopped'
+              });
               currentActiveFavoriteId = null;
               activeFavoriteId = null;
             }
@@ -5286,7 +5306,11 @@ async function checkAuthAndInit() {
               if (statusFavorite && statusFavorite.id === activeFavoriteId && statusFavorite.name) {
                 playlistName = statusFavorite.name;
                 playlistImageUrl = statusFavorite.imageUrl || null;
-                console.log(`[Client] Using playlist name from status.activeFavorite: "${playlistName}" for activeFavoriteId=${activeFavoriteId}`);
+                console.log('[Client] Playlist name resolved:', {
+                  source: 'status.activeFavorite',
+                  activeFavoriteId,
+                  playlistName
+                });
               } else {
                 // Fallback to favoritesRegistry (client-side cache)
                 const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
@@ -5302,17 +5326,35 @@ async function checkAuthAndInit() {
                         ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
                         : null;
                   const reason = statusFavorite 
-                    ? (statusFavorite.id === activeFavoriteId ? `missing name` : 'ID mismatch')
+                    ? (statusFavorite.id === activeFavoriteId ? 'missing name' : 'ID mismatch')
                     : 'missing';
-                  console.log(`[Client] Using playlist name from favoritesRegistry: "${playlistName}" for activeFavoriteId=${activeFavoriteId} (status.activeFavorite ${reason})`);
+                  console.log('[Client] Playlist name resolved:', {
+                    source: 'favoritesRegistry',
+                    activeFavoriteId,
+                    playlistName,
+                    statusIssue: reason
+                  });
                 } else {
                   // Last resort: use status name if available
                   if (statusFavorite && statusFavorite.id === activeFavoriteId && statusFavorite.name) {
                     playlistName = statusFavorite.name;
                     playlistImageUrl = statusFavorite.imageUrl || null;
-                    console.log(`[Client] Using playlist name from status.activeFavorite (fallback): "${playlistName}" for activeFavoriteId=${activeFavoriteId}`);
+                    console.log('[Client] Playlist name resolved (fallback):', {
+                      source: 'status.activeFavorite',
+                      activeFavoriteId,
+                      playlistName,
+                      note: 'favoritesRegistry missing'
+                    });
                   } else {
-                    console.warn(`[Client] activeFavoriteId=${activeFavoriteId} but NO playlist name found (status.activeFavorite=${statusFavorite ? (statusFavorite.id === activeFavoriteId ? 'present but no name' : 'ID mismatch') : 'missing'}, favoritesRegistry=${favoriteEntry ? 'present but no favorite' : 'missing'})`);
+                    console.warn('[Client] Playlist name NOT FOUND:', {
+                      activeFavoriteId,
+                      statusActiveFavorite: statusFavorite ? {
+                        id: statusFavorite.id,
+                        hasName: !!statusFavorite.name,
+                        idMatch: statusFavorite.id === activeFavoriteId
+                      } : null,
+                      favoritesRegistry: favoriteEntry ? 'present but no favorite' : 'missing'
+                    });
                   }
                 }
               }
@@ -5461,11 +5503,22 @@ async function checkAuthAndInit() {
               if (masterVolumeExpectedValue !== null) {
                 if (Math.abs(groupVolume - masterVolumeExpectedValue) <= 1) {
                   // Server volume matches expected - clear expected value and update
+                  console.log('[Client] Master volume confirmed by server:', {
+                    expected: masterVolumeExpectedValue,
+                    received: groupVolume,
+                    match: true
+                  });
                   masterVolumeExpectedValue = null;
                   masterVolumeSlider.value = groupVolume;
                   masterVolumeValue.textContent = `${groupVolume}%`;
+                } else {
+                  // Server hasn't caught up yet - ignore
+                  console.log('[Client] Master volume update ignored (waiting for server):', {
+                    expected: masterVolumeExpectedValue,
+                    received: groupVolume,
+                    difference: Math.abs(groupVolume - masterVolumeExpectedValue)
+                  });
                 }
-                // Otherwise ignore the update (server hasn't caught up yet)
               } else {
                 // No expected value - safe to update normally
                 masterVolumeSlider.value = groupVolume;
