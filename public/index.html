@@ -5245,83 +5245,11 @@ async function checkAuthAndInit() {
               album = typeof track.albumName === 'string' ? track.albumName : track.albumName?.name || track.albumName?.value || '';
             }
             
-            // Get track/album cover art with extensive fallbacks - prioritize track/album art
+            // Get cover art - prioritize matching playlist name to favorite artwork
             let imageUrl = null;
             
-            // Primary: track.images[0].url (most reliable)
-            if (track?.images && Array.isArray(track.images) && track.images.length > 0) {
-              imageUrl = track.images[0]?.url || null;
-            }
-            
-            // Fallback 1: track.imageUrl
-            if (!imageUrl && track?.imageUrl) {
-              imageUrl = typeof track.imageUrl === 'string' ? track.imageUrl : track.imageUrl?.url || null;
-            }
-            
-            // Fallback 2: item.track.images[0].url (from currentItem)
-            if (!imageUrl && item?.track?.images && Array.isArray(item.track.images) && item.track.images.length > 0) {
-              imageUrl = item.track.images[0]?.url || null;
-            }
-            
-            // Fallback 3: item.track.imageUrl
-            if (!imageUrl && item?.track?.imageUrl) {
-              imageUrl = typeof item.track.imageUrl === 'string' ? item.track.imageUrl : item.track.imageUrl?.url || null;
-            }
-            
-            // Fallback 4: currentItem.track.images[0].url
-            if (!imageUrl && status.currentItem?.track?.images && Array.isArray(status.currentItem.track.images) && status.currentItem.track.images.length > 0) {
-              imageUrl = status.currentItem.track.images[0]?.url || null;
-            }
-            
-            // Fallback 5: currentItem.track.imageUrl
-            if (!imageUrl && status.currentItem?.track?.imageUrl) {
-              imageUrl = typeof status.currentItem.track.imageUrl === 'string' 
-                ? status.currentItem.track.imageUrl 
-                : status.currentItem.track.imageUrl?.url || null;
-            }
-            
-            // Fallback 6: track.albumArtUri or track.albumArtURL
-            if (!imageUrl && track?.albumArtUri) {
-              imageUrl = typeof track.albumArtUri === 'string' ? track.albumArtUri : track.albumArtUri?.url || null;
-            }
-            if (!imageUrl && track?.albumArtURL) {
-              imageUrl = typeof track.albumArtURL === 'string' ? track.albumArtURL : track.albumArtURL?.url || null;
-            }
-            
-            // Fallback 7: container.images[0].url (playlist cover as last resort)
-            if (!imageUrl && status.container?.images && Array.isArray(status.container.images) && status.container.images.length > 0) {
-              imageUrl = status.container.images[0]?.url || null;
-            }
-            
-            // Fallback 8: container.imageUrl
-            if (!imageUrl && status.container?.imageUrl) {
-              imageUrl = typeof status.container.imageUrl === 'string' 
-                ? status.container.imageUrl 
-                : status.container.imageUrl?.url || null;
-            }
-            
-            // Fallback 9: activeFavorite.imageUrl
-            if (!imageUrl && status.activeFavorite?.imageUrl) {
-              imageUrl = status.activeFavorite.imageUrl;
-            }
-            
-            // Fallback 10: favoritesRegistry image (by activeFavoriteId)
-            if (!imageUrl && activeFavoriteId) {
-              const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
-              if (favoriteEntry?.favorite) {
-                const favorite = favoriteEntry.favorite;
-                imageUrl = favorite?.imageUrl
-                  ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
-                  : favorite?.images && favorite.images.length && favorite.images[0]?.url
-                    ? favorite.images[0].url
-                    : favorite?.container?.imageUrl
-                      ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
-                      : null;
-              }
-            }
-            
-            // Fallback 11: Match playlist name to favorite playlist and use its artwork
-            if (!imageUrl && playlistName) {
+            // Primary: Match playlist name to favorite playlist and use its artwork
+            if (playlistName) {
               // Search through all favorites to find one with matching name
               for (const [favoriteId, favoriteEntry] of favoritesRegistry.entries()) {
                 if (favoriteEntry?.favorite?.name) {
@@ -5349,6 +5277,70 @@ async function checkAuthAndInit() {
                   }
                 }
               }
+            }
+            
+            // Fallback: activeFavorite.imageUrl (if we have activeFavoriteId but no name match)
+            if (!imageUrl && status.activeFavorite?.imageUrl) {
+              imageUrl = status.activeFavorite.imageUrl;
+            }
+            
+            // Fallback: favoritesRegistry image (by activeFavoriteId)
+            if (!imageUrl && activeFavoriteId) {
+              const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
+              if (favoriteEntry?.favorite) {
+                const favorite = favoriteEntry.favorite;
+                imageUrl = favorite?.imageUrl
+                  ? (typeof favorite.imageUrl === 'string' ? favorite.imageUrl : favorite.imageUrl?.url || favorite.imageUrl?.value || null)
+                  : favorite?.images && favorite.images.length && favorite.images[0]?.url
+                    ? favorite.images[0].url
+                    : favorite?.container?.imageUrl
+                      ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
+                      : null;
+              }
+            }
+            
+            // Fallback: track.images[0].url (track artwork)
+            if (!imageUrl && track?.images && Array.isArray(track.images) && track.images.length > 0) {
+              imageUrl = track.images[0]?.url || null;
+            }
+            
+            // Fallback: track.imageUrl
+            if (!imageUrl && track?.imageUrl) {
+              imageUrl = typeof track.imageUrl === 'string' ? track.imageUrl : track.imageUrl?.url || null;
+            }
+            
+            // Fallback: item.track.images[0].url
+            if (!imageUrl && item?.track?.images && Array.isArray(item.track.images) && item.track.images.length > 0) {
+              imageUrl = item.track.images[0]?.url || null;
+            }
+            
+            // Fallback: item.track.imageUrl
+            if (!imageUrl && item?.track?.imageUrl) {
+              imageUrl = typeof item.track.imageUrl === 'string' ? item.track.imageUrl : item.track.imageUrl?.url || null;
+            }
+            
+            // Fallback: currentItem.track.images[0].url
+            if (!imageUrl && status.currentItem?.track?.images && Array.isArray(status.currentItem.track.images) && status.currentItem.track.images.length > 0) {
+              imageUrl = status.currentItem.track.images[0]?.url || null;
+            }
+            
+            // Fallback: currentItem.track.imageUrl
+            if (!imageUrl && status.currentItem?.track?.imageUrl) {
+              imageUrl = typeof status.currentItem.track.imageUrl === 'string' 
+                ? status.currentItem.track.imageUrl 
+                : status.currentItem.track.imageUrl?.url || null;
+            }
+            
+            // Fallback: container.images[0].url
+            if (!imageUrl && status.container?.images && Array.isArray(status.container.images) && status.container.images.length > 0) {
+              imageUrl = status.container.images[0]?.url || null;
+            }
+            
+            // Fallback: container.imageUrl
+            if (!imageUrl && status.container?.imageUrl) {
+              imageUrl = typeof status.container.imageUrl === 'string' 
+                ? status.container.imageUrl 
+                : status.container.imageUrl?.url || null;
             }
             
             // Only reject if it's clearly not a valid URL (allow local IPs and http/https)
