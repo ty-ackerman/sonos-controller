@@ -5259,10 +5259,24 @@ async function checkAuthAndInit() {
             // 4. Only update if enough time has passed since last update (prevent rapid switching from race conditions)
             if (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) {
               if (statusActiveFavoriteId !== currentActiveFavoriteId) {
-                // Only update if enough time has passed (2 seconds) to prevent rapid switching from stale responses
+                // Only update if enough time has passed (5 seconds) to prevent rapid switching from stale responses
+                // Also check if a play action happened recently - if so, trust the client's currentActiveFavoriteId
                 const timeSinceLastUpdate = Date.now() - currentActiveFavoriteIdTimestamp;
-                if (timeSinceLastUpdate > 2000 || currentActiveFavoriteIdTimestamp === 0) {
-                  // Status has a different non-null value - update to match
+                const timeSinceLastPlay = Date.now() - lastPlayActionTime;
+                const shouldTrustClient = timeSinceLastPlay < 5000 && currentActiveFavoriteId; // Trust client if play action was within 5 seconds
+                
+                if (shouldTrustClient) {
+                  // Recent play action - trust the client's currentActiveFavoriteId, ignore status mismatch
+                  console.warn('[Client] Ignoring status activeFavoriteId mismatch (recent play action):', {
+                    clientActiveFavoriteId: currentActiveFavoriteId,
+                    statusActiveFavoriteId,
+                    groupId,
+                    timeSinceLastPlay,
+                    reason: 'trusting client due to recent play action'
+                  });
+                  activeFavoriteId = currentActiveFavoriteId;
+                } else if (timeSinceLastUpdate > 5000 || currentActiveFavoriteIdTimestamp === 0) {
+                  // Status has a different non-null value - update to match (but only if enough time has passed)
                   console.log('[Client] activeFavoriteId changed:', {
                     from: currentActiveFavoriteId,
                     to: statusActiveFavoriteId,
@@ -5282,6 +5296,7 @@ async function checkAuthAndInit() {
                     timeSinceLastUpdate,
                     reason: 'might be stale'
                   });
+                  activeFavoriteId = currentActiveFavoriteId;
                 }
               } else {
                 // Status matches current - use it for display
