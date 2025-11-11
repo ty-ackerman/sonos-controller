@@ -247,6 +247,7 @@
         display: block;
         text-align: center;
         width: 100%;
+        padding-bottom: 10px;
       }
 
       .loading-text .sonos-logo {
@@ -2433,6 +2434,8 @@
       // Master volume controls
       const masterVolumeSlider = document.getElementById('master-volume-slider');
       let isMasterVolumeDragging = false;
+      let masterVolumeExpectedValue = null; // Track expected volume after release
+      let masterVolumeUpdateTimeout = null;
       const masterVolumeValue = document.getElementById('master-volume-value');
       
       // Track panel state to prevent flickering
@@ -2805,29 +2808,55 @@ async function checkAuthAndInit() {
 
       // Master volume handler
       masterVolumeSlider.addEventListener('input', (e) => {
-        masterVolumeValue.textContent = `${Number(e.target.value)}%`;
+        const newValue = Number(e.target.value);
+        masterVolumeValue.textContent = `${newValue}%`;
+        
+        // Send update immediately while dragging (debounced to avoid too many requests)
+        if (isMasterVolumeDragging) {
+          clearTimeout(masterVolumeUpdateTimeout);
+          masterVolumeUpdateTimeout = setTimeout(() => {
+            setMasterVolume(newValue, false); // false = don't show feedback for intermediate updates
+          }, 50); // Debounce to 50ms
+        }
       });
 
       masterVolumeSlider.addEventListener('mousedown', () => {
         isMasterVolumeDragging = true;
+        masterVolumeExpectedValue = null; // Clear expected value when starting to drag
       });
 
       masterVolumeSlider.addEventListener('touchstart', () => {
         isMasterVolumeDragging = true;
+        masterVolumeExpectedValue = null; // Clear expected value when starting to drag
       });
 
       masterVolumeSlider.addEventListener('change', async (e) => {
         e.stopPropagation();
+        const finalValue = Number(e.target.value);
+        masterVolumeExpectedValue = finalValue; // Set expected value on release
         isMasterVolumeDragging = false;
-        await setMasterVolume(Number(e.target.value));
+        clearTimeout(masterVolumeUpdateTimeout);
+        await setMasterVolume(finalValue, true); // true = show feedback for final update
       });
 
-      masterVolumeSlider.addEventListener('mouseup', () => {
-        isMasterVolumeDragging = false;
+      masterVolumeSlider.addEventListener('mouseup', async (e) => {
+        if (isMasterVolumeDragging) {
+          const finalValue = Number(e.target.value);
+          masterVolumeExpectedValue = finalValue; // Set expected value on release
+          isMasterVolumeDragging = false;
+          clearTimeout(masterVolumeUpdateTimeout);
+          await setMasterVolume(finalValue, true); // true = show feedback for final update
+        }
       });
 
-      masterVolumeSlider.addEventListener('touchend', () => {
-        isMasterVolumeDragging = false;
+      masterVolumeSlider.addEventListener('touchend', async (e) => {
+        if (isMasterVolumeDragging) {
+          const finalValue = Number(e.target.value);
+          masterVolumeExpectedValue = finalValue; // Set expected value on release
+          isMasterVolumeDragging = false;
+          clearTimeout(masterVolumeUpdateTimeout);
+          await setMasterVolume(finalValue, true); // true = show feedback for final update
+        }
       });
       const authMessages = {
         error: 'Authorization failed. Please try logging in again.',
@@ -4768,7 +4797,7 @@ async function checkAuthAndInit() {
       }
 
 
-      async function setMasterVolume(level) {
+      async function setMasterVolume(level, showFeedbackMessage = true) {
         const groupId = getSelectedGroupId();
         if (!groupId) {
           // Auto-grouping is handled on load, but if we still don't have a group, try to create one
@@ -4782,7 +4811,7 @@ async function checkAuthAndInit() {
                 if (groupData.groupId) {
                   setActiveGroup(groupData.groupId, groupData.groupName || 'All Rooms');
                   // Retry setting volume
-                  setMasterVolume(level);
+                  setMasterVolume(level, showFeedbackMessage);
                   return;
                 }
               }
@@ -4790,7 +4819,9 @@ async function checkAuthAndInit() {
               console.error('Failed to auto-create group:', error);
             }
           }
-          showFeedback('Unable to change volume. Please try again.', true);
+          if (showFeedbackMessage) {
+            showFeedback('Unable to change volume. Please try again.', true);
+          }
           return;
         }
 
@@ -4802,15 +4833,20 @@ async function checkAuthAndInit() {
           {
             volume: level
           },
-          `Volume set to ${level}%.`
+          showFeedbackMessage ? `Volume set to ${level}%.` : null
         );
 
         if (!success) {
-          showFeedback('Unable to update volume. Please try again.', true);
+          if (showFeedbackMessage) {
+            showFeedback('Unable to update volume. Please try again.', true);
+          }
         } else {
           // Update individual player volumes proportionally
           updateIndividualVolumesFromMaster(level);
-          setTimeout(() => updateCurrentlyPlaying(), 500);
+          // Only refresh status if not dragging (to avoid conflicts)
+          if (!isMasterVolumeDragging) {
+            setTimeout(() => updateCurrentlyPlaying(), 500);
+          }
         }
       }
 
@@ -4991,7 +5027,7 @@ async function checkAuthAndInit() {
       }
 
 
-      async function setPlayerVolume(playerId, level) {
+      async function setPlayerVolume(playerId, level, showFeedbackMessage = true) {
         if (!playerId) {
           return;
         }
@@ -5009,31 +5045,49 @@ async function checkAuthAndInit() {
             throw new Error(await postResponse.text());
           }
 
-          const getResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume`);
-          if (getResponse.ok) {
-            const payload = await getResponse.json();
-            const updatedLevel = Number(
-              payload.volume ?? payload?.volume?.volume ?? payload.level ?? numericLevel
-            );
-            
-            const roomRow = document.querySelector(`[data-player-id="${playerId}"]`);
-            if (roomRow) {
-              const slider = roomRow.querySelector('.currently-playing-room-slider');
-              const value = roomRow.querySelector('.currently-playing-room-value');
-              // Only update slider if user is not currently dragging it
-              if (slider && slider.dataset.isDragging !== 'true') {
-                slider.value = updatedLevel;
+          // Only fetch and update if not dragging (to avoid conflicts during drag)
+          const roomRow = document.querySelector(`[data-player-id="${playerId}"]`);
+          const slider = roomRow?.querySelector('.currently-playing-room-slider');
+          const isDragging = slider && slider.dataset.isDragging === 'true';
+          
+          if (!isDragging) {
+            const getResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume`);
+            if (getResponse.ok) {
+              const payload = await getResponse.json();
+              const updatedLevel = Number(
+                payload.volume ?? payload?.volume?.volume ?? payload.level ?? numericLevel
+              );
+              
+              if (roomRow && slider) {
+                const value = roomRow.querySelector('.currently-playing-room-value');
+                const expectedValue = slider.dataset.expectedValue ? Number(slider.dataset.expectedValue) : null;
+                
+                // If we have an expected value, only update if server matches it (prevents snap-back)
+                if (expectedValue !== null && expectedValue !== '') {
+                  if (Math.abs(updatedLevel - expectedValue) <= 1) {
+                    // Server volume matches expected - clear expected value and update
+                    slider.dataset.expectedValue = '';
+                    slider.value = updatedLevel;
+                    if (value) value.textContent = updatedLevel;
+                  }
+                  // Otherwise ignore the update (server hasn't caught up yet)
+                } else {
+                  // No expected value - safe to update normally
+                  slider.value = updatedLevel;
+                  if (value) value.textContent = updatedLevel;
+                }
               }
-              if (value) value.textContent = updatedLevel;
             }
           }
 
-          if (currentHouseholdId) {
+          if (currentHouseholdId && !isDragging) {
             setTimeout(() => loadPlayers(currentHouseholdId), 500);
           }
         } catch (error) {
           console.error('Failed to update player volume:', error);
-          showFeedback('Unable to update room volume. Please try again.', true);
+          if (showFeedbackMessage) {
+            showFeedback('Unable to update room volume. Please try again.', true);
+          }
         }
       }
 
@@ -5400,11 +5454,23 @@ async function checkAuthAndInit() {
             // When isPlaying is true, show pause icon (add .playing class)
             // When isPlaying is false, show play icon (remove .playing class)
 
-            // Update master volume from group volume (only if user is not dragging)
+            // Update master volume from group volume (only if user is not dragging and volume matches expected)
             if (!isMasterVolumeDragging) {
               const groupVolume = status.volume || 0;
-              masterVolumeSlider.value = groupVolume;
-              masterVolumeValue.textContent = `${groupVolume}%`;
+              // If we have an expected value, only update if server matches it (prevents snap-back)
+              if (masterVolumeExpectedValue !== null) {
+                if (Math.abs(groupVolume - masterVolumeExpectedValue) <= 1) {
+                  // Server volume matches expected - clear expected value and update
+                  masterVolumeExpectedValue = null;
+                  masterVolumeSlider.value = groupVolume;
+                  masterVolumeValue.textContent = `${groupVolume}%`;
+                }
+                // Otherwise ignore the update (server hasn't caught up yet)
+              } else {
+                // No expected value - safe to update normally
+                masterVolumeSlider.value = groupVolume;
+                masterVolumeValue.textContent = `${groupVolume}%`;
+              }
             }
 
             updateCurrentlyPlayingRooms(groupId);
@@ -5456,12 +5522,27 @@ async function checkAuthAndInit() {
             if (existingRow) {
               const slider = existingRow.querySelector('.currently-playing-room-slider');
               const value = existingRow.querySelector('.currently-playing-room-value');
+              const playerVolume = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+              
               // Only update if not being dragged
               if (slider && slider.dataset.isDragging !== 'true') {
-                slider.value = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+                const expectedValue = slider.dataset.expectedValue ? Number(slider.dataset.expectedValue) : null;
+                
+                // If we have an expected value, only update if server matches it (prevents snap-back)
+                if (expectedValue !== null && expectedValue !== '') {
+                  if (Math.abs(playerVolume - expectedValue) <= 1) {
+                    // Server volume matches expected - clear expected value and update
+                    slider.dataset.expectedValue = '';
+                    slider.value = playerVolume;
+                  }
+                  // Otherwise ignore the update (server hasn't caught up yet)
+                } else {
+                  // No expected value - safe to update normally
+                  slider.value = playerVolume;
+                }
               }
               if (value) {
-                value.textContent = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+                value.textContent = playerVolume;
               }
             } else {
               // Player doesn't exist yet, create it
@@ -5497,39 +5578,77 @@ async function checkAuthAndInit() {
         slider.max = '100';
         slider.value = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
         slider.dataset.isDragging = 'false';
+        slider.dataset.expectedValue = ''; // Track expected volume after release
 
         const value = document.createElement('span');
         value.className = 'currently-playing-room-value';
         value.textContent = `${slider.value}`;
 
+        let playerVolumeUpdateTimeout = null;
+
         slider.addEventListener('input', (e) => {
           e.stopPropagation();
-          value.textContent = e.target.value;
+          const newValue = Number(e.target.value);
+          value.textContent = newValue;
+          
+          // Send update immediately while dragging (debounced to avoid too many requests)
+          if (slider.dataset.isDragging === 'true') {
+            clearTimeout(playerVolumeUpdateTimeout);
+            const playerId = roomRow.dataset.playerId;
+            if (playerId) {
+              playerVolumeUpdateTimeout = setTimeout(() => {
+                setPlayerVolume(playerId, newValue, false); // false = don't show feedback for intermediate updates
+              }, 50); // Debounce to 50ms
+            }
+          }
         });
 
         slider.addEventListener('mousedown', () => {
           slider.dataset.isDragging = 'true';
+          slider.dataset.expectedValue = ''; // Clear expected value when starting to drag
         });
 
         slider.addEventListener('touchstart', () => {
           slider.dataset.isDragging = 'true';
+          slider.dataset.expectedValue = ''; // Clear expected value when starting to drag
         });
 
         slider.addEventListener('change', async (e) => {
           e.stopPropagation();
+          const finalValue = Number(e.target.value);
+          slider.dataset.expectedValue = finalValue.toString(); // Set expected value on release
           slider.dataset.isDragging = 'false';
+          clearTimeout(playerVolumeUpdateTimeout);
           const playerId = roomRow.dataset.playerId;
           if (playerId) {
-            await setPlayerVolume(playerId, Number(e.target.value));
+            await setPlayerVolume(playerId, finalValue, true); // true = show feedback for final update
           }
         });
 
-        slider.addEventListener('mouseup', () => {
-          slider.dataset.isDragging = 'false';
+        slider.addEventListener('mouseup', async () => {
+          if (slider.dataset.isDragging === 'true') {
+            const finalValue = Number(slider.value);
+            slider.dataset.expectedValue = finalValue.toString(); // Set expected value on release
+            slider.dataset.isDragging = 'false';
+            clearTimeout(playerVolumeUpdateTimeout);
+            const playerId = roomRow.dataset.playerId;
+            if (playerId) {
+              await setPlayerVolume(playerId, finalValue, true); // true = show feedback for final update
+            }
+          }
         });
 
-        slider.addEventListener('touchend', () => {
-          slider.dataset.isDragging = 'false';
+        slider.addEventListener('touchend', async () => {
+          if (slider.dataset.isDragging === 'true') {
+            const finalValue = Number(slider.value);
+            slider.dataset.expectedValue = finalValue.toString(); // Set expected value on release
+            slider.dataset.isDragging = 'false';
+            clearTimeout(playerVolumeUpdateTimeout);
+            const playerId = roomRow.dataset.playerId;
+            if (playerId) {
+              await setPlayerVolume(playerId, finalValue, true); // true = show feedback for final update
+            }
+          }
         });
 
         // Prevent panel from closing when interacting with slider
