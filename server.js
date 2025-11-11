@@ -324,17 +324,6 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`).catch(() => null);
     const volume = volumeResponse ? await volumeResponse.json().catch(() => ({})) : {};
 
-    // DEBUG: Log what we're getting from Sonos API - FULL raw response
-    console.log('[PlaybackStatus] Raw responses:', {
-      statusResponseStatus: statusResponse.status,
-      playbackStateKeys: Object.keys(playbackState),
-      playbackStateValue: JSON.stringify(playbackState, null, 2),
-      metadataKeys: Object.keys(metadata),
-      hasCurrentItem: !!(metadata.currentItem || metadata.item),
-      fullPlaybackStateResponse: statusResponse.status === 'fulfilled' && statusResponse.value 
-        ? await statusResponse.value.text().catch(() => 'Failed to get text')
-        : 'No response'
-    });
 
     const currentItem = metadata.currentItem || metadata.item || null;
     let track = null;
@@ -361,10 +350,6 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
           }
         }
         
-        // Debug: log replayGain availability for troubleshooting
-        if (track.name || track.title) {
-          console.log('[ReplayGain] Track:', track.name || track.title, 'replayGain:', replayGain, 'available fields:', Object.keys(track).filter(k => k.toLowerCase().includes('gain') || k.toLowerCase().includes('loud')));
-        }
 
         track = {
           name: normalizeField(track.name) || normalizeField(track.title),
@@ -425,7 +410,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
                   favorite = favorites.find((f) => f.id === activeFavoriteId);
                   if (favorite) {
                     householdId = hId; // Update householdId to the one where we found it
-                    console.log(`[PlaybackStatus] Found favorite ${activeFavoriteId} in household ${hId} (not in preferred ${preferredHousehold})`);
+                    console.log(`[PlaybackStatus] Found favorite ${activeFavoriteId} in household ${hId} (not in preferred ${preferredHousehold || 'none'})`);
                     break;
                   }
                 }
@@ -458,9 +443,9 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
             favoriteImageUrl: activeFavorite.imageUrl
           });
           
-          console.log(`[PlaybackStatus] Successfully fetched favorite data for ${activeFavoriteId}: "${activeFavorite.name}"`);
+          // Log will happen after this block
         } else {
-          console.warn(`[PlaybackStatus] Favorite ${activeFavoriteId} not found in any household - clearing from cache`);
+          console.warn(`[PlaybackStatus] Favorite ${activeFavoriteId} NOT FOUND in any household - clearing from cache`);
           // Clear stale favorite from cache if it doesn't exist
           activeFavoritesByGroup.delete(groupId);
         }
@@ -496,32 +481,26 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     // Fallback: If we have a currentItem but playbackState says STOPPED, 
     // assume it's playing (the API sometimes returns incorrect state)
     if (finalPlaybackState === 'STOPPED' && currentItem) {
-      console.log('[PlaybackStatus] Inferring PLAYING from currentItem presence');
       finalPlaybackState = 'PLAYING';
     }
     
     // Clear active favorite if playback has actually stopped (not just paused)
     let finalActiveFavoriteId = activeFavoriteId;
     if (finalPlaybackState === 'STOPPED' && !currentItem && activeFavoriteId) {
-      console.log(`[PlaybackStatus] Playback stopped - clearing active favorite ${activeFavoriteId} for group ${groupId}`);
+      console.log(`[PlaybackStatus] Clearing activeFavoriteId ${activeFavoriteId} for group ${groupId} - playback stopped`);
       activeFavoritesByGroup.delete(groupId);
       activeFavorite = null;
       finalActiveFavoriteId = null;
     }
-
-    console.log('[PlaybackStatus] Final playback state:', {
-      finalPlaybackState,
-      hasCurrentItem: !!currentItem,
-      activeFavoriteId: finalActiveFavoriteId,
-      activeFavoriteName: activeFavorite?.name || null,
-      allPlaybackStateFields: {
-        'playbackState.playbackState': playbackState.playbackState,
-        'playbackState.state': playbackState.state,
-        'playbackState.playback?.state': playbackState.playback?.state,
-        'metadata.playbackState': metadata.playbackState,
-        'metadata.state': metadata.state
+    
+    // Strategic logging for playlist name debugging
+    if (finalActiveFavoriteId) {
+      if (activeFavorite) {
+        console.log(`[PlaybackStatus] groupId=${groupId} activeFavoriteId=${finalActiveFavoriteId} name="${activeFavorite.name}" imageUrl=${activeFavorite.imageUrl ? 'present' : 'missing'}`);
+      } else {
+        console.warn(`[PlaybackStatus] groupId=${groupId} activeFavoriteId=${finalActiveFavoriteId} but activeFavorite data is MISSING`);
       }
-    });
+    }
 
     res.json({
       playbackState: finalPlaybackState,
@@ -556,7 +535,6 @@ app.get('/api/players/:playerId/volume', async (req, res) => {
 app.get('/api/image-proxy', async (req, res) => {
   const { url } = req.query;
 
-  console.log('[ImageProxy] Request received:', { url, query: req.query });
 
   if (!url || typeof url !== 'string') {
     console.error('[ImageProxy] Missing or invalid URL parameter');
@@ -565,14 +543,12 @@ app.get('/api/image-proxy', async (req, res) => {
 
   try {
     const imageUrl = decodeURIComponent(url);
-    console.log('[ImageProxy] Decoded URL:', imageUrl);
     
     if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
       console.error('[ImageProxy] Invalid URL format (not http/https):', imageUrl);
       return res.status(400).json({ error: 'Invalid URL' });
     }
 
-    console.log('[ImageProxy] Fetching image from:', imageUrl);
     const imageResponse = await fetch(imageUrl, {
       headers: {
         'User-Agent': 'Sonos-Controller/1.0',
@@ -580,7 +556,6 @@ app.get('/api/image-proxy', async (req, res) => {
       }
     });
 
-    console.log('[ImageProxy] Response status:', imageResponse.status, imageResponse.statusText);
 
     if (!imageResponse.ok) {
       console.error(`[ImageProxy] Failed to fetch image: ${imageResponse.status} ${imageResponse.statusText} for ${imageUrl}`);
@@ -588,7 +563,6 @@ app.get('/api/image-proxy', async (req, res) => {
     }
 
     const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
-    console.log('[ImageProxy] Content-Type:', contentType);
     
     // Validate it's actually an image
     if (!contentType.startsWith('image/')) {
@@ -597,13 +571,11 @@ app.get('/api/image-proxy', async (req, res) => {
     }
 
     const imageBuffer = await imageResponse.arrayBuffer();
-    console.log('[ImageProxy] Image buffer size:', imageBuffer.byteLength, 'bytes');
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(Buffer.from(imageBuffer));
-    console.log('[ImageProxy] Image sent successfully');
   } catch (error) {
     console.error('[ImageProxy] Error:', error.message, error.stack);
     res.status(500).json({ error: 'Failed to proxy image', details: error.message });
@@ -879,54 +851,23 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
     const baseRules = allRules.filter(r => r.rule_type === 'base');
     const overrideRules = allRules.filter(r => r.rule_type === 'override');
     
-    console.log(`[Recommendations] Base schedule rules: ${baseRules.length}, Override rules: ${overrideRules.length}`);
-
-    // Log all base rules for debugging
-    baseRules.forEach(rule => {
-      const matches = timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
-      const ruleName = rule.name ? ` "${rule.name}"` : '';
-      const startTime = `${rule.start_hour}:00`;
-      const endTime = rule.end_hour === 0 ? '11:59 PM (before midnight)' : `${rule.end_hour}:00`;
-      const effectiveEnd = rule.end_hour === 0 && rule.start_hour > 0 ? 23 : rule.end_hour;
-      console.log(`[Recommendations] Base rule ID ${rule.id}${ruleName}: ${startTime}-${endTime} (${rule.start_hour}-${rule.end_hour}, effective end: ${effectiveEnd}), current hour ${currentHour}, matches: ${matches}`);
-    });
-
     // Find base rules that match current time
     const matchingBaseRules = baseRules.filter(rule => {
-      const matches = timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
-      if (!matches) {
-        console.log(`[Recommendations] Base rule ID ${rule.id} does NOT match: hour ${currentHour} is not in range ${rule.start_hour}-${rule.end_hour}`);
-      }
-      return matches;
+      return timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
     });
 
     // Find override rules for current day that match current time
     const matchingOverrideRules = overrideRules.filter(rule => {
       // Override must be for current day (override rules have exactly one day)
       if (!rule.days || !Array.isArray(rule.days) || rule.days.length !== 1) {
-        console.log(`[Recommendations] Override rule ID ${rule.id} invalid: days array is missing or wrong length`);
         return false;
       }
       if (rule.days[0] !== currentDay) {
-        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        console.log(`[Recommendations] Override rule ID ${rule.id} does NOT match day: rule is for ${dayNames[rule.days[0]]}, current day is ${dayNames[currentDay]}`);
         return false;
       }
       // Override must match current time
-      const matches = timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
-      const ruleName = rule.name ? ` "${rule.name}"` : '';
-      const startTime = `${rule.start_hour}:00`;
-      const endTime = `${rule.end_hour}:00`;
-      if (!matches) {
-        console.log(`[Recommendations] Override rule ID ${rule.id}${ruleName} does NOT match time: hour ${currentHour} is not in range ${startTime}-${endTime} (${rule.start_hour}-${rule.end_hour})`);
-      } else {
-        console.log(`[Recommendations] Override rule ID ${rule.id}${ruleName}: ${startTime}-${endTime} (${rule.start_hour}-${rule.end_hour}), current hour ${currentHour}, matches: ${matches}`);
-      }
-      return matches;
+      return timeRangeContainsHour(rule.start_hour, rule.end_hour, currentHour);
     });
-
-    console.log(`[Recommendations] Base rules matching time: ${matchingBaseRules.length}`);
-    console.log(`[Recommendations] Override rules matching day+time: ${matchingOverrideRules.length}`);
 
     // Merge logic: Overrides replace base rules for overlapping time
     // Since we're checking a single hour, if any override matches, use overrides
@@ -935,17 +876,9 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
     if (matchingOverrideRules.length > 0) {
       // Override takes precedence - use override rules
       activeRules = matchingOverrideRules;
-      console.log(`[Recommendations] Using override rules (${matchingOverrideRules.length}) - overriding base schedule`);
-      matchingOverrideRules.forEach(rule => {
-        console.log(`[Recommendations]   Override rule ID ${rule.id}: ${rule.start_hour}-${rule.end_hour}, day ${rule.days[0]}, vibes: [${rule.allowed_vibes.join(', ')}]`);
-      });
     } else {
       // No override matches - use base rules
       activeRules = matchingBaseRules;
-      console.log(`[Recommendations] Using base schedule rules (${matchingBaseRules.length}) - no override for current time`);
-      matchingBaseRules.forEach(rule => {
-        console.log(`[Recommendations]   Base rule ID ${rule.id}: ${rule.start_hour}-${rule.end_hour}, vibes: [${rule.allowed_vibes.join(', ')}]`);
-      });
     }
 
     // Collect all allowed vibes from active rules
@@ -954,19 +887,10 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
       rule.allowed_vibes.forEach((vibe) => allowedVibes.add(vibe));
     });
 
-    console.log(`[Recommendations] Final allowed vibes: ${Array.from(allowedVibes).join(', ')}`);
-
     // If no rules match, return empty recommendations
     if (allowedVibes.size === 0) {
       const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      console.log(`[Recommendations] ⚠️ No rules match current time: ${currentHour}:00 on ${dayNames[currentDay]}`);
-      console.log(`[Recommendations] Available base rules: ${baseRules.map(r => `${r.start_hour}-${r.end_hour}`).join(', ')}`);
-      if (overrideRules.length > 0) {
-        overrideRules.forEach(r => {
-          const ruleDay = r.days && r.days.length > 0 ? dayNames[r.days[0]] : 'unknown';
-          console.log(`[Recommendations] Available override rule: ${r.start_hour}-${r.end_hour} on ${ruleDay}`);
-        });
-      }
+      console.warn(`[Recommendations] No rules match current time: ${currentHour}:00 on ${dayNames[currentDay]}`);
       
       return {
         primary: null,
@@ -998,7 +922,6 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
     const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`);
     const payload = await response.json();
     let favorites = Array.isArray(payload.items) ? payload.items : [];
-    console.log(`[Recommendations] Total favorites: ${favorites.length}`);
 
     // Filter out hidden favorites
     await ensureInitialized();
@@ -1009,23 +932,19 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
       }
     }
     favorites = favorites.filter((favorite) => !hiddenFavorites.has(favorite.id));
-    console.log(`[Recommendations] Favorites after filtering hidden: ${favorites.length}`);
 
     // Load playlist vibes
     const vibes = await loadPlaylistVibes();
-    console.log(`[Recommendations] Playlists with vibes: ${Object.keys(vibes).length}`);
 
     // Filter favorites by allowed vibes
     const matchingPlaylists = favorites.filter((favorite) => {
       const vibe = vibes[favorite.id];
       const matches = vibe && allowedVibes.has(vibe);
       if (matches) {
-        console.log(`[Recommendations] Match found: ${favorite.name} (${vibe})`);
       }
       return matches;
     });
 
-    console.log(`[Recommendations] Matching playlists: ${matchingPlaylists.length}`);
 
     if (matchingPlaylists.length === 0) {
       return {
@@ -1084,7 +1003,6 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
       // Make it positive
       seedValue = Math.abs(seedValue);
       
-      console.log(`[Recommendations] Deterministic seed: "${seedString}" -> ${seedValue}`);
     }
     
     // Use seeded selection (deterministic but appears random)
@@ -1092,7 +1010,6 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
     const primary = matchingPlaylists[primaryIndex];
     const alternatives = matchingPlaylists.filter((_, index) => index !== primaryIndex);
     
-    console.log(`[Recommendations] Selected playlist index ${primaryIndex} of ${matchingPlaylists.length}: "${primary.name}"`);
 
     // Include debug info about which rules were considered
     const debugInfo = {
@@ -1114,7 +1031,6 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
         vibes: r.allowed_vibes.join(',')
       }))
     };
-    console.log(`[Recommendations] Debug info:`, JSON.stringify(debugInfo, null, 2));
 
     return {
       primary,
@@ -1245,12 +1161,17 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
             
             favoriteData.favoriteName = favorite.name || null;
             favoriteData.favoriteImageUrl = imageUrl;
+            console.log(`[PlayFavorite] SET activeFavoriteId=${favoriteId} name="${favorite.name}" for groupId=${groupId} householdId=${householdForVolumes}`);
+          } else {
+            console.warn(`[PlayFavorite] Favorite ${favoriteId} NOT FOUND in household ${householdForVolumes} - setting without name`);
           }
         }
       } catch (error) {
         // If fetching favorite fails, continue without it (non-fatal)
-        console.warn('[PlayFavorite] Failed to fetch favorite data:', error.message);
+        console.warn(`[PlayFavorite] Failed to fetch favorite data for ${favoriteId}:`, error.message);
       }
+    } else {
+      console.log(`[PlayFavorite] SET activeFavoriteId=${favoriteId} for groupId=${groupId} (no householdId, name will be fetched on status)`);
     }
     activeFavoritesByGroup.set(groupId, favoriteData);
 

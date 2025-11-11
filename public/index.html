@@ -3985,9 +3985,7 @@ async function checkAuthAndInit() {
       }
 
       async function updatePlaylistRecommendations() {
-        console.log('[Client] updatePlaylistRecommendations called');
         if (!isSonosConnected || !currentHouseholdId) {
-          console.log('[Client] Not connected or no household ID');
           recommendedPlaylistContainer.innerHTML = '';
           alternativesDropdown.innerHTML = '';
           recommendationRuleInfo.textContent = '';
@@ -5152,11 +5150,7 @@ async function checkAuthAndInit() {
             const groupName = groupInfo?.name || currentGroupName || 'Unknown Group';
 
             // Sync currentActiveFavoriteId with status to keep highlighted favorite in sync with now playing
-            // Use currentActiveFavoriteId as source of truth for display, only sync FROM status if status is newer/more reliable
             const statusActiveFavoriteId = status.activeFavoriteId;
-            
-            // For display purposes, prefer currentActiveFavoriteId (optimistic update)
-            // Only use status if it has a non-null value AND differs from current
             let activeFavoriteId = currentActiveFavoriteId;
             
             // Only sync FROM status if:
@@ -5166,6 +5160,7 @@ async function checkAuthAndInit() {
             if (statusActiveFavoriteId !== undefined && statusActiveFavoriteId !== null) {
               if (statusActiveFavoriteId !== currentActiveFavoriteId) {
                 // Status has a different non-null value - update to match
+                console.log(`[Client] activeFavoriteId changed: ${currentActiveFavoriteId} -> ${statusActiveFavoriteId}`);
                 currentActiveFavoriteId = statusActiveFavoriteId;
                 currentActiveFavoriteIdTimestamp = Date.now();
                 markActiveFavorite(statusActiveFavoriteId);
@@ -5174,8 +5169,13 @@ async function checkAuthAndInit() {
                 // Status matches current - use it for display
                 activeFavoriteId = statusActiveFavoriteId;
               }
+            } else if (statusActiveFavoriteId === null && currentActiveFavoriteId) {
+              // Status explicitly says null - clear it
+              console.log(`[Client] activeFavoriteId cleared by status: ${currentActiveFavoriteId} -> null`);
+              currentActiveFavoriteId = null;
+              activeFavoriteId = null;
             }
-            // If status is null/undefined, keep using currentActiveFavoriteId (don't clear it - might be stale)
+            // If status is undefined, keep using currentActiveFavoriteId (don't clear it - might be stale)
 
             let playlistName = null;
             let playlistImageUrl = null;
@@ -5184,6 +5184,7 @@ async function checkAuthAndInit() {
               if (status.activeFavorite && status.activeFavorite.id === activeFavoriteId) {
                 playlistName = status.activeFavorite.name || null;
                 playlistImageUrl = status.activeFavorite.imageUrl || null;
+                console.log(`[Client] Using playlist name from status.activeFavorite: "${playlistName}" for activeFavoriteId=${activeFavoriteId}`);
               } else {
                 // Fallback to favoritesRegistry (client-side cache)
                 const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
@@ -5198,6 +5199,9 @@ async function checkAuthAndInit() {
                       : favorite?.container?.imageUrl
                         ? (typeof favorite.container.imageUrl === 'string' ? favorite.container.imageUrl : favorite.container.imageUrl?.url || favorite.container.imageUrl?.value || null)
                         : null;
+                  console.log(`[Client] Using playlist name from favoritesRegistry: "${playlistName}" for activeFavoriteId=${activeFavoriteId} (status.activeFavorite was ${status.activeFavorite ? 'present but ID mismatch' : 'missing'})`);
+                } else {
+                  console.warn(`[Client] activeFavoriteId=${activeFavoriteId} but NO playlist name found (status.activeFavorite=${status.activeFavorite ? 'present but ID mismatch' : 'missing'}, favoritesRegistry=${favoriteEntry ? 'present but no favorite' : 'missing'})`);
                 }
               }
             }
@@ -5269,12 +5273,6 @@ async function checkAuthAndInit() {
               currentlyPlayingLoudness.style.display = 'none';
               // Debug: log when replayGain is not available
               if (track) {
-                console.log('[Loudness] Track metadata:', {
-                  hasReplayGain: track.replayGain !== undefined && track.replayGain !== null,
-                  replayGainValue: track.replayGain,
-                  trackName: track.name || track.title,
-                  trackKeys: Object.keys(track)
-                });
               }
             }
 
