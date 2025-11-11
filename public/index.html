@@ -3003,9 +3003,8 @@ async function checkAuthAndInit() {
             await renderSettings();
           }
 
-          // Hide loading overlay and show toast
+          // Hide loading overlay
           hideLoadingOverlay();
-          showToast(`Logged into ${currentHouseholdName}`);
         } catch (error) {
           hideLoadingOverlay();
           console.error('Failed to load households:', error);
@@ -5052,13 +5051,16 @@ async function checkAuthAndInit() {
                     slider.value = updatedLevel;
                     if (value) value.textContent = updatedLevel;
                   } else {
-                    // Server hasn't caught up yet - ignore
+                    // Server hasn't caught up yet - keep slider at expected value to prevent snap-back
                     console.log('[Client] Player volume update ignored (waiting for server):', {
                       playerId,
                       expected: expectedValue,
                       received: updatedLevel,
                       difference: Math.abs(updatedLevel - expectedValue)
                     });
+                    // Force slider to stay at expected value
+                    slider.value = expectedValue;
+                    if (value) value.textContent = expectedValue;
                   }
                 } else {
                   // No expected value - safe to update normally
@@ -5524,12 +5526,15 @@ async function checkAuthAndInit() {
                   masterVolumeSlider.value = groupVolume;
                   masterVolumeValue.textContent = `${groupVolume}%`;
                 } else {
-                  // Server hasn't caught up yet - ignore
+                  // Server hasn't caught up yet - keep slider at expected value to prevent snap-back
                   console.log('[Client] Master volume update ignored (waiting for server):', {
                     expected: masterVolumeExpectedValue,
                     received: groupVolume,
                     difference: Math.abs(groupVolume - masterVolumeExpectedValue)
                   });
+                  // Force slider to stay at expected value
+                  masterVolumeSlider.value = masterVolumeExpectedValue;
+                  masterVolumeValue.textContent = `${masterVolumeExpectedValue}%`;
                 }
               } else {
                 // No expected value - safe to update normally
@@ -5599,15 +5604,17 @@ async function checkAuthAndInit() {
                     // Server volume matches expected - clear expected value and update
                     slider.dataset.expectedValue = '';
                     slider.value = playerVolume;
+                    if (value) value.textContent = playerVolume;
+                  } else {
+                    // Server hasn't caught up yet - keep slider at expected value to prevent snap-back
+                    slider.value = expectedValue;
+                    if (value) value.textContent = expectedValue;
                   }
-                  // Otherwise ignore the update (server hasn't caught up yet)
                 } else {
                   // No expected value - safe to update normally
                   slider.value = playerVolume;
+                  if (value) value.textContent = playerVolume;
                 }
-              }
-              if (value) {
-                value.textContent = playerVolume;
               }
             } else {
               // Player doesn't exist yet, create it
