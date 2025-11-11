@@ -4855,10 +4855,8 @@ async function checkAuthAndInit() {
         } else {
           // Update individual player volumes proportionally
           updateIndividualVolumesFromMaster(level);
-          // Only refresh status if not dragging (to avoid conflicts)
-          if (!isMasterVolumeDragging) {
-            setTimeout(() => updateCurrentlyPlaying(), 500);
-          }
+          // Don't call updateCurrentlyPlaying after volume changes - it causes the panel to close/reopen
+          // The volume refresh trick will handle status updates when needed
         }
       }
 
@@ -5289,6 +5287,9 @@ async function checkAuthAndInit() {
             const statusActiveFavoriteId = status.activeFavoriteId;
             let activeFavoriteId = currentActiveFavoriteId;
             
+            // Track if we updated activeFavoriteId to trigger volume refresh
+            let didUpdateActiveFavoriteId = false;
+            
             // Only sync FROM status if:
             // 1. Status has a non-null value (not null, not undefined)
             // 2. Status value differs from current
@@ -5349,9 +5350,6 @@ async function checkAuthAndInit() {
               activeFavoriteId = null;
             }
             // If status is undefined or null during active playback, keep using currentActiveFavoriteId (don't clear it - might be stale)
-
-            // Track if we updated activeFavoriteId to trigger volume refresh
-            let didUpdateActiveFavoriteId = false;
 
             let playlistName = null;
             let playlistImageUrl = null;
