@@ -332,6 +332,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     const volume = volumeResponse ? await volumeResponse.json().catch(() => ({})) : {};
     
     const currentItem = metadata.currentItem || metadata.item || null;
+    const container = currentItem?.container || metadata.container || null;
     
     // Log raw Sonos data for debugging
     console.log('[SonosData] Status response:', {
@@ -339,24 +340,28 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       volume: volume.volume || volume.groupVolume || 0,
       playbackState: playbackState.playbackState || playbackState.state,
       hasCurrentItem: !!currentItem,
+      hasContainer: !!container,
       metadataKeys: Object.keys(metadata),
       playbackStateKeys: Object.keys(playbackState)
     });
+    
+    const normalizeField = (field) => {
+      if (!field) return null;
+      if (typeof field === 'string') return field;
+      if (typeof field === 'object') {
+        return field.name || field.value || field.text || null;
+      }
+      return String(field);
+    };
+    
     let track = null;
+    let playlistName = null;
+    let playlistImageUrl = null;
     
     if (currentItem) {
       track = currentItem.track || currentItem.container?.metadata || currentItem;
       
       if (track && typeof track === 'object') {
-        const normalizeField = (field) => {
-          if (!field) return null;
-          if (typeof field === 'string') return field;
-          if (typeof field === 'object') {
-            return field.name || field.value || field.text || null;
-          }
-          return String(field);
-        };
-
         // Extract replayGain if available (floating-point number, typically -13 to +13 dB)
         let replayGain = null;
         if (track.replayGain !== undefined && track.replayGain !== null) {
@@ -365,7 +370,6 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
             replayGain = gainValue;
           }
         }
-        
 
         track = {
           name: normalizeField(track.name) || normalizeField(track.title),
@@ -377,10 +381,54 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
         };
       }
     }
-
-    // Find active favorite by querying queue and matching to favorites (on-demand, no cache)
-    const activeFavorite = await findActiveFavoriteByQueue(groupId, preferredHousehold);
-    const activeFavoriteId = activeFavorite ? activeFavorite.id : null;
+    
+    // Extract playlist/container name and image directly from metadata (same source as track)
+    if (container) {
+      playlistName = normalizeField(container.name) || 
+                     normalizeField(container.title) ||
+                     normalizeField(container.service?.name);
+      
+      playlistImageUrl = normalizeField(container.imageUrl) ||
+                         normalizeField(container.albumArtUri) ||
+                         normalizeField(container.albumArtURL) ||
+                         (container.images && container.images.length ? normalizeField(container.images[0]?.url) : null);
+      
+      console.log('[SonosData] Container metadata:', {
+        containerId: container.id || container.serviceId,
+        playlistName,
+        hasImageUrl: !!playlistImageUrl,
+        containerKeys: Object.keys(container)
+      });
+    }
+    
+    // Try to find matching favorite ID for UI highlighting (optional - doesn't affect display)
+    let activeFavoriteId = null;
+    let activeFavorite = null;
+    if (container?.id || container?.serviceId) {
+      const containerId = container.id || container.serviceId;
+      try {
+        const favoriteMatch = await findFavoriteByContainerId(containerId, preferredHousehold);
+        if (favoriteMatch) {
+          activeFavoriteId = favoriteMatch.id;
+          // Use favorite data if container doesn't have name/image
+          if (!playlistName) playlistName = favoriteMatch.name;
+          if (!playlistImageUrl) playlistImageUrl = favoriteMatch.imageUrl;
+          activeFavorite = favoriteMatch;
+        }
+      } catch (error) {
+        // Non-fatal - we still have container name/image from metadata
+        console.warn('[SonosData] Failed to find favorite match:', error.message);
+      }
+    }
+    
+    // If we have playlist info from container, use it even if no favorite match
+    if (playlistName || playlistImageUrl) {
+      activeFavorite = {
+        id: activeFavoriteId,
+        name: playlistName,
+        imageUrl: playlistImageUrl
+      };
+    }
 
     // Try multiple possible field names for playback state
     // Sonos API uses: PLAYBACK_STATE_PLAYING, PLAYBACK_STATE_PAUSED, PLAYBACK_STATE_IDLE, PLAYBACK_STATE_STOPPED
@@ -412,7 +460,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     }
     
     // If playback stopped and no current item, clear active favorite
-    const finalActiveFavoriteId = (finalPlaybackState === 'STOPPED' && !currentItem) ? null : activeFavoriteId;
+    const finalActiveFavoriteId = (finalPlaybackState === 'STOPPED' && !currentItem) ? null : (activeFavorite?.id || null);
     const finalActiveFavorite = (finalPlaybackState === 'STOPPED' && !currentItem) ? null : activeFavorite;
     
     // Log final status data being sent to client
@@ -1374,9 +1422,9 @@ async function listHouseholds() {
   return households.map((household) => household?.id).filter(Boolean);
 }
 
-// Find active favorite by matching currentItem container to favorites
-async function findActiveFavoriteByQueue(groupId, preferredHousehold) {
-  if (!groupId) {
+// Find favorite by container ID (for UI highlighting only - display uses container metadata directly)
+async function findFavoriteByContainerId(containerId, preferredHousehold) {
+  if (!containerId) {
     return null;
   }
 
@@ -1390,55 +1438,6 @@ async function findActiveFavoriteByQueue(groupId, preferredHousehold) {
       return null;
     };
 
-    // Query the queue to get container information
-    const encodedGroupId = encodeURIComponent(groupId);
-    let queueContainerIds = new Set();
-    
-    try {
-      // Get first page of queue items (usually enough to identify the playlist)
-      const queueResponse = await sonosRequest(
-        `/groups/${encodedGroupId}/playback/queue/items?quantity=50&offset=0`
-      ).catch(() => null);
-
-      if (queueResponse && queueResponse.status !== 204) {
-        const queueData = await queueResponse.json().catch(() => ({}));
-        const queueItems = Array.isArray(queueData.items) ? queueData.items : [];
-        
-        console.log('[SonosData] Queue items:', {
-          groupId,
-          itemCount: queueItems.length,
-          firstItem: queueItems[0] ? {
-            id: queueItems[0].id,
-            container: queueItems[0].container,
-            containerId: queueItems[0].containerId,
-            serviceId: queueItems[0].serviceId
-          } : null
-        });
-        
-        // Extract container IDs from queue items
-        for (const item of queueItems) {
-          const containerId = item.container?.id || 
-                             item.containerId || 
-                             item.container?.serviceId ||
-                             item.serviceId ||
-                             null;
-          if (containerId) {
-            queueContainerIds.add(containerId);
-          }
-        }
-        
-        console.log('[SonosData] Queue container IDs:', Array.from(queueContainerIds));
-      }
-    } catch (error) {
-      console.warn('[SonosData] Failed to query queue:', error.message);
-      return null;
-    }
-
-    if (queueContainerIds.size === 0) {
-      // No container IDs found in queue - can't match to a favorite
-      return null;
-    }
-
     // Try preferred household first
     let householdId = preferredHousehold ? await resolveHouseholdId(preferredHousehold).catch(() => null) : null;
     let favorite = null;
@@ -1450,10 +1449,10 @@ async function findActiveFavoriteByQueue(groupId, preferredHousehold) {
           const favoritesData = await favoritesResponse.json().catch(() => ({}));
           const favorites = Array.isArray(favoritesData.items) ? favoritesData.items : [];
           
-          // Match by container ID - check if any favorite's container matches queue container IDs
+          // Match by container ID
           favorite = favorites.find((f) => {
             const favoriteContainerId = f.container?.id || f.serviceId || f.id;
-            return favoriteContainerId && queueContainerIds.has(favoriteContainerId);
+            return favoriteContainerId === containerId;
           });
 
           if (favorite) {
@@ -1487,7 +1486,7 @@ async function findActiveFavoriteByQueue(groupId, preferredHousehold) {
             // Match by container ID
             favorite = favorites.find((f) => {
               const favoriteContainerId = f.container?.id || f.serviceId || f.id;
-              return favoriteContainerId && queueContainerIds.has(favoriteContainerId);
+              return favoriteContainerId === containerId;
             });
 
             if (favorite) {
@@ -1513,8 +1512,8 @@ async function findActiveFavoriteByQueue(groupId, preferredHousehold) {
 
     return null;
   } catch (error) {
-    console.warn('[SonosData] Failed to find active favorite by queue:', {
-      groupId,
+    console.warn('[SonosData] Failed to find favorite by container ID:', {
+      containerId,
       error: error.message
     });
     return null;
