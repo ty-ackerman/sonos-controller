@@ -144,6 +144,7 @@
       }
 
       p.status {
+        display: none;
         margin: 0;
         text-align: center;
         font-weight: 500;
@@ -167,6 +168,68 @@
 
       .feedback.error {
         color: var(--error);
+      }
+
+      /* Loading Overlay */
+      .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--bg-primary);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 1;
+        transition: opacity 0.4s ease;
+      }
+
+      .loading-overlay.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .loading-content {
+        text-align: center;
+      }
+
+      .loading-text {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        letter-spacing: -0.02em;
+      }
+
+      /* Toast Notification */
+      .toast {
+        position: fixed;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%) translateY(-100%);
+        z-index: 10000;
+        width: min(480px, 100vw);
+        padding: 12px 20px;
+        background: var(--bg-primary);
+        border-bottom: 1px solid var(--border-color);
+        box-shadow: var(--shadow-md);
+        transition: transform 0.3s ease;
+      }
+
+      .toast.show {
+        transform: translateX(-50%) translateY(0);
+      }
+
+      .toast.hidden {
+        transform: translateX(-50%) translateY(-100%);
+      }
+
+      .toast-content {
+        text-align: center;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-primary);
       }
 
       section {
@@ -474,6 +537,46 @@
         font-size: 0.8125rem;
         color: var(--text-secondary);
         opacity: 0.7;
+      }
+
+      .playlist-play-button {
+        margin-top: 12px;
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: none;
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: left;
+        width: 100%;
+        align-self: stretch;
+      }
+
+      .playlist-play-button:hover {
+        color: var(--text-primary);
+      }
+
+      .playlist-card.active .playlist-play-button {
+        background: var(--success);
+        color: var(--bg-primary);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .playlist-card.active .playlist-play-button:hover {
+        opacity: 0.9;
+      }
+
+      .playlist-card.active .playlist-play-button svg {
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
       }
 
       /* Hide vibe selector and actions only on favorites (controls page) */
@@ -1923,6 +2026,18 @@
       <p id="status" class="status disconnected">Checking connection…</p>
       <div id="feedback" class="feedback"></div>
 
+      <!-- Loading Screen Overlay -->
+      <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-content">
+          <div class="loading-text">Alter x Sonos</div>
+        </div>
+      </div>
+
+      <!-- Toast Notification -->
+      <div id="toast" class="toast hidden">
+        <div class="toast-content"></div>
+      </div>
+
       <div id="auth-bar" style="margin-bottom: 12px">
         <button id="signin-btn" onclick="login()">Sign in with Sonos</button>
       </div>
@@ -2189,6 +2304,9 @@
       const statusLabel = document.getElementById('status');
       const feedbackLabel = document.getElementById('feedback');
       const signinButton = document.getElementById('signin-btn');
+      const loadingOverlay = document.getElementById('loading-overlay');
+      const toast = document.getElementById('toast');
+      const toastContent = document.querySelector('.toast-content');
       const panelsContainer = document.getElementById('app-panels');
       const panelControl = document.getElementById('panel-control');
       const panelSettings = document.getElementById('panel-settings');
@@ -2652,6 +2770,28 @@ async function checkAuthAndInit() {
         feedbackLabel.classList.toggle('error', Boolean(isError));
       }
 
+      function showLoadingOverlay() {
+        loadingOverlay.classList.remove('hidden');
+      }
+
+      function hideLoadingOverlay() {
+        loadingOverlay.classList.add('hidden');
+      }
+
+      function showToast(message) {
+        toastContent.textContent = message;
+        toast.classList.remove('hidden');
+        toast.classList.add('show');
+        
+        // Auto-dismiss after 3.5 seconds
+        setTimeout(() => {
+          toast.classList.remove('show');
+          setTimeout(() => {
+            toast.classList.add('hidden');
+          }, 300); // Wait for animation to complete
+        }, 3500);
+      }
+
       function getSelectedGroupId() {
         return currentGroupId;
       }
@@ -2663,9 +2803,13 @@ async function checkAuthAndInit() {
 
       async function loadHouseholds() {
         try {
+          // Show loading overlay
+          showLoadingOverlay();
+          
           const response = await fetch('/api/households');
 
           if (response.status === 401) {
+            hideLoadingOverlay();
             setAuthUI(false);
             showFeedback('Login required to load Sonos households.', true);
             favoritesStatus.textContent = 'Login required to load favorites.';
@@ -2680,6 +2824,7 @@ async function checkAuthAndInit() {
           const households = Array.isArray(data.households) ? data.households : [];
 
           if (!households.length) {
+            hideLoadingOverlay();
             setAuthUI(true);
             showFeedback('No households returned for this account.', true);
             currentHouseholdId = null;
@@ -2702,7 +2847,6 @@ async function checkAuthAndInit() {
           householdTitle.textContent = currentHouseholdName;
 
           setAuthUI(true);
-          showFeedback('Household loaded.');
 
           if (currentHouseholdId) {
             await loadPlayers(currentHouseholdId);
@@ -2716,13 +2860,18 @@ async function checkAuthAndInit() {
           if (!panelSettings.classList.contains('hidden')) {
             await renderSettings();
           }
+
+          // Hide loading overlay and show toast
+          hideLoadingOverlay();
+          showToast(`Logged into ${currentHouseholdName}`);
         } catch (error) {
+          hideLoadingOverlay();
           console.error('Failed to load households:', error);
           showFeedback('Could not load households. Please try again.', true);
           setAuthUI(false);
           favoritesStatus.textContent = 'Unable to load favorites.';
+        }
       }
-    }
 
       async function fetchGroupsPlayers(householdId) {
         if (!householdId) {
@@ -4281,28 +4430,38 @@ async function checkAuthAndInit() {
           nameRow.appendChild(vibeBadge);
         }
 
-        const status = document.createElement('span');
-        status.className = 'playlist-status';
-        status.textContent = SELECT_GROUP_MESSAGE;
-
         meta.appendChild(nameRow);
-        meta.appendChild(status);
 
         const cardContent = document.createElement('div');
         cardContent.className = 'playlist-card-content';
         cardContent.appendChild(artWrapper);
         cardContent.appendChild(meta);
 
+        // Create play button instead of status text
+        const playButton = document.createElement('button');
+        playButton.type = 'button';
+        playButton.className = 'playlist-play-button';
+        playButton.textContent = 'Play';
+
+        // Add play button to card
         button.appendChild(cardContent);
+        button.appendChild(playButton);
 
         const entry = {
           favorite,
           button,
-          statusEl: status,
+          playButton: playButton,
+          statusEl: null, // Keep for compatibility but won't be used
           loading: false,
           statusMessage: SELECT_GROUP_MESSAGE,
           vibeBadge: vibeBadge
         };
+
+        // Set up event listeners
+        playButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          playFavorite(entry);
+        });
 
         button.addEventListener('click', (event) => {
           playFavorite(entry);
@@ -4402,12 +4561,17 @@ async function checkAuthAndInit() {
           } else {
             // Playback failed, clear active favorite
             markActiveFavorite(null);
-            updateFavoriteStatus(entry, FAVORITE_ERROR_MESSAGE);
+            if (entry.playButton) {
+              entry.playButton.textContent = 'Play';
+            }
           }
         } catch (error) {
           console.error('Failed to play favorite:', error);
           setFavoriteLoading(entry, false);
-          updateFavoriteStatus(entry, FAVORITE_ERROR_MESSAGE);
+          markActiveFavorite(null);
+          if (entry.playButton) {
+            entry.playButton.textContent = 'Play';
+          }
           showFeedback('Failed to start playback. Please try again.', true);
         }
 
@@ -4417,9 +4581,14 @@ async function checkAuthAndInit() {
       function setFavoriteLoading(entry, isLoading) {
         entry.loading = isLoading;
         entry.button.disabled = true;
+        if (entry.playButton) {
+          entry.playButton.disabled = isLoading;
+        }
         if (isLoading) {
           entry.button.classList.add('loading');
-          updateFavoriteStatus(entry, LOADING_MESSAGE);
+          if (entry.playButton) {
+            entry.playButton.textContent = 'Loading...';
+          }
         } else {
           entry.button.classList.remove('loading');
         }
@@ -4427,7 +4596,10 @@ async function checkAuthAndInit() {
 
       function updateFavoriteStatus(entry, message) {
         entry.statusMessage = message;
-        entry.statusEl.textContent = message;
+        // Status element may not exist for new cards, so check
+        if (entry.statusEl) {
+          entry.statusEl.textContent = message;
+        }
       }
 
       function evaluateFavoritesAvailability() {
@@ -4440,16 +4612,24 @@ async function checkAuthAndInit() {
 
           entry.button.disabled = !enabled;
           entry.button.classList.toggle('disabled', !enabled);
+          if (entry.playButton) {
+            entry.playButton.disabled = !enabled;
+          }
 
           if (!enabled) {
             entry.button.classList.remove('active');
-            updateFavoriteStatus(entry, 'Select a household to play');
+            if (entry.playButton) {
+              entry.playButton.textContent = 'Select a household to play';
+            }
           } else if (
             entry.statusMessage === SELECT_GROUP_MESSAGE ||
             entry.statusMessage === READY_MESSAGE ||
             entry.statusMessage === ''
           ) {
-            updateFavoriteStatus(entry, READY_MESSAGE);
+            // Only update to "Play" if not active
+            if (!entry.button.classList.contains('active') && entry.playButton) {
+              entry.playButton.textContent = 'Play';
+            }
           }
         });
 
@@ -4469,6 +4649,16 @@ async function checkAuthAndInit() {
 
           const isActive = Boolean(favoriteId) && entry.favorite.id === favoriteId;
           entry.button.classList.toggle('active', isActive);
+
+          if (entry.playButton) {
+            if (isActive) {
+              // Show green "Playing" button with icon
+              entry.playButton.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Playing';
+            } else {
+              // Show simple "Play" text
+              entry.playButton.textContent = 'Play';
+            }
+          }
 
           if (isActive) {
             updateFavoriteStatus(entry, FAVORITE_SUCCESS_MESSAGE);
