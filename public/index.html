@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Sonos Controller</title>
     
     <!-- Favicon -->
@@ -73,11 +73,11 @@
 
       .container {
         width: min(480px, 100vw);
-        padding: 20px;
+        padding: 12px 20px 20px 20px;
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: 16px;
       }
 
       .header-wrapper {
@@ -389,6 +389,30 @@
         transition: all 0.2s ease;
       }
 
+      .vibe-filter-btn.active {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border-color: var(--border-color);
+      }
+
+      .vibe-filter-btn.active.down {
+        background: #ffffff;
+        color: #000000;
+        border-color: #ffffff;
+      }
+
+      .vibe-filter-btn.active.down-mid {
+        background: #808080;
+        color: #ffffff;
+        border-color: #808080;
+      }
+
+      .vibe-filter-btn.active.mid {
+        background: #000000;
+        color: #ffffff;
+        border-color: #000000;
+      }
+
 
 
       .favorites-grid {
@@ -539,44 +563,20 @@
         opacity: 0.7;
       }
 
-      .playlist-play-button {
-        margin-top: 12px;
-        padding: 10px 16px;
-        border-radius: 8px;
-        border: none;
-        background: transparent;
-        color: var(--text-secondary);
-        font-size: 0.875rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        text-align: left;
-        width: 100%;
-        align-self: stretch;
+      .playlist-card.active {
+        border-color: var(--success);
+        background: var(--bg-primary);
       }
 
-      .playlist-play-button:hover {
-        color: var(--text-primary);
-      }
-
-      .playlist-card.active .playlist-play-button {
+      .playlist-card.active::after {
+        content: '';
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
         background: var(--success);
-        color: var(--bg-primary);
-        font-weight: 600;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-      }
-
-      .playlist-card.active .playlist-play-button:hover {
-        opacity: 0.9;
-      }
-
-      .playlist-card.active .playlist-play-button svg {
-        width: 18px;
-        height: 18px;
-        fill: currentColor;
       }
 
       /* Hide vibe selector and actions only on favorites (controls page) */
@@ -2056,14 +2056,14 @@
           </div>
           <div class="favorites">
             <div class="favorites-header">
-              <span class="section-title">Favorites</span>
+              <span class="section-title">Favourites</span>
               <button id="favorites-toggle" class="favorites-toggle" type="button">
-                View All Favorites <span>▼</span>
+                View All Favourites <span>▼</span>
               </button>
             </div>
             <div id="favorites-content" class="favorites-content hidden">
               <div id="vibe-filters" class="vibe-filters"></div>
-              <p id="favorites-status" class="favorites-status">Sign in to load favorites.</p>
+              <p id="favorites-status" class="favorites-status">Sign in to load favourites.</p>
               <div id="favorites-grid" class="favorites-grid"></div>
             </div>
           </div>
@@ -2296,10 +2296,10 @@
     <script>
       const SELECT_GROUP_MESSAGE = 'Ready to play';
       const READY_MESSAGE = 'Ready to play';
-      const FAVORITE_SUCCESS_MESSAGE = 'Loaded • Shuffle / Repeat / Crossfade ON';
-      const FAVORITE_ERROR_MESSAGE = 'Favorite failed to start';
+      const FAVORITE_SUCCESS_MESSAGE = '';
+      const FAVORITE_ERROR_MESSAGE = 'Favourite failed to start';
       const LOADING_MESSAGE = 'Loading…';
-      const FAVORITE_SUCCESS_TOAST = 'Favorite loaded with shuffle, repeat, crossfade.';
+      const FAVORITE_SUCCESS_TOAST = 'Favourite loaded with shuffle, repeat, crossfade.';
 
       const statusLabel = document.getElementById('status');
       const feedbackLabel = document.getElementById('feedback');
@@ -2671,7 +2671,7 @@ favoritesToggle.addEventListener('click', () => {
   if (arrow) {
     arrow.textContent = isHidden ? '▲' : '▼';
   }
-  favoritesToggle.innerHTML = `${isHidden ? 'Hide' : 'View'} All Favorites <span>${isHidden ? '▲' : '▼'}</span>`;
+  favoritesToggle.innerHTML = `${isHidden ? 'Hide' : 'View'} All Favourites <span>${isHidden ? '▲' : '▼'}</span>`;
 });
 
 function setAuthUI(loggedIn) {
@@ -2698,10 +2698,14 @@ async function checkAuthAndInit() {
 
     if (loggedIn) {
       await refreshUI();
+    } else {
+      // User needs to sign in, hide loading screen
+      hideLoadingOverlay();
     }
   } catch (error) {
     console.error('Auth status check failed:', error);
     setAuthUI(false);
+    hideLoadingOverlay();
   }
 }
 
@@ -2745,7 +2749,7 @@ async function checkAuthAndInit() {
           currentHouseholdId = null;
           currentHouseholdName = null;
           householdTitle.textContent = '';
-          favoritesStatus.textContent = 'Login required to load favorites.';
+          favoritesStatus.textContent = 'Login required to load favourites.';
           vibeFiltersContainer.innerHTML = '';
           currentGroupId = null;
           currentGroupName = 'No group selected';
@@ -2812,7 +2816,7 @@ async function checkAuthAndInit() {
             hideLoadingOverlay();
             setAuthUI(false);
             showFeedback('Login required to load Sonos households.', true);
-            favoritesStatus.textContent = 'Login required to load favorites.';
+            favoritesStatus.textContent = 'Login required to load favourites.';
             return;
           }
 
@@ -2869,7 +2873,7 @@ async function checkAuthAndInit() {
           console.error('Failed to load households:', error);
           showFeedback('Could not load households. Please try again.', true);
           setAuthUI(false);
-          favoritesStatus.textContent = 'Unable to load favorites.';
+          favoritesStatus.textContent = 'Unable to load favourites.';
         }
       }
 
@@ -4268,9 +4272,15 @@ async function checkAuthAndInit() {
         const allButton = document.createElement('button');
         allButton.className = 'vibe-filter-btn';
         allButton.textContent = 'All';
-        allButton.classList.toggle('active', currentVibeFilter === null);
+        const isAllActive = currentVibeFilter === null;
+        allButton.classList.toggle('active', isAllActive);
         allButton.addEventListener('click', () => {
+          // Remove active class and vibe classes from all buttons
+          vibeFiltersContainer.querySelectorAll('.vibe-filter-btn').forEach(btn => {
+            btn.classList.remove('active', 'down', 'down-mid', 'mid');
+          });
           currentVibeFilter = null;
+          allButton.classList.add('active');
           applyVibeFilter();
         });
         vibeFiltersContainer.appendChild(allButton);
@@ -4279,9 +4289,31 @@ async function checkAuthAndInit() {
           const button = document.createElement('button');
           button.className = 'vibe-filter-btn';
           button.textContent = vibe;
-          button.classList.toggle('active', currentVibeFilter === vibe);
+          const isActive = currentVibeFilter === vibe;
+          button.classList.toggle('active', isActive);
+          if (isActive) {
+            if (vibe === 'Down') {
+              button.classList.add('down');
+            } else if (vibe === 'Down/Mid') {
+              button.classList.add('down-mid');
+            } else if (vibe === 'Mid') {
+              button.classList.add('mid');
+            }
+          }
           button.addEventListener('click', () => {
+            // Remove active class and vibe classes from all buttons
+            vibeFiltersContainer.querySelectorAll('.vibe-filter-btn').forEach(btn => {
+              btn.classList.remove('active', 'down', 'down-mid', 'mid');
+            });
             currentVibeFilter = vibe;
+            button.classList.add('active');
+            if (vibe === 'Down') {
+              button.classList.add('down');
+            } else if (vibe === 'Down/Mid') {
+              button.classList.add('down-mid');
+            } else if (vibe === 'Mid') {
+              button.classList.add('mid');
+            }
             applyVibeFilter();
           });
           vibeFiltersContainer.appendChild(button);
@@ -4302,14 +4334,14 @@ async function checkAuthAndInit() {
 
         if (!householdId) {
           favoritesStatus.textContent = isSonosConnected
-            ? 'Select a household to load favorites.'
-            : 'Login required to load favorites.';
+            ? 'Select a household to load favourites.'
+            : 'Login required to load favourites.';
           vibeFiltersContainer.innerHTML = '';
           evaluateFavoritesAvailability();
           return;
         }
 
-        favoritesStatus.textContent = 'Loading favorites…';
+        favoritesStatus.textContent = 'Loading favourites…';
 
         try {
           await loadPlaylistVibes();
@@ -4324,7 +4356,7 @@ async function checkAuthAndInit() {
 
           if (response.status === 401) {
             setAuthUI(false);
-            favoritesStatus.textContent = 'Login required to load favorites.';
+            favoritesStatus.textContent = 'Login required to load favourites.';
             return;
           }
 
@@ -4337,7 +4369,7 @@ async function checkAuthAndInit() {
           currentActiveFavoriteId = data.activeFavorite ?? null;
 
           if (!items.length) {
-            favoritesStatus.textContent = 'No favorites found.';
+            favoritesStatus.textContent = 'No favourites found.';
             vibeFiltersContainer.innerHTML = '';
             evaluateFavoritesAvailability();
             return;
@@ -4361,7 +4393,7 @@ async function checkAuthAndInit() {
           }
         } catch (error) {
           console.error('Failed to load favorites:', error);
-          favoritesStatus.textContent = 'Could not load favorites. Please try again.';
+          favoritesStatus.textContent = 'Could not load favourites. Please try again.';
           vibeFiltersContainer.innerHTML = '';
           evaluateFavoritesAvailability();
         }
@@ -4409,7 +4441,7 @@ async function checkAuthAndInit() {
 
         const title = document.createElement('span');
         title.className = 'playlist-name';
-        title.textContent = favorite.name || 'Unnamed Favorite';
+        title.textContent = favorite.name || 'Unnamed Favourite';
         nameRow.appendChild(title);
 
         const vibe = playlistVibes[favorite.id] || '';
@@ -4437,31 +4469,17 @@ async function checkAuthAndInit() {
         cardContent.appendChild(artWrapper);
         cardContent.appendChild(meta);
 
-        // Create play button instead of status text
-        const playButton = document.createElement('button');
-        playButton.type = 'button';
-        playButton.className = 'playlist-play-button';
-        playButton.textContent = 'Play';
-
-        // Add play button to card
         button.appendChild(cardContent);
-        button.appendChild(playButton);
 
         const entry = {
           favorite,
           button,
-          playButton: playButton,
+          playButton: null, // Removed - clicking card plays it
           statusEl: null, // Keep for compatibility but won't be used
           loading: false,
           statusMessage: SELECT_GROUP_MESSAGE,
           vibeBadge: vibeBadge
         };
-
-        // Set up event listeners
-        playButton.addEventListener('click', (e) => {
-          e.stopPropagation();
-          playFavorite(entry);
-        });
 
         button.addEventListener('click', (event) => {
           playFavorite(entry);
@@ -4561,17 +4579,11 @@ async function checkAuthAndInit() {
           } else {
             // Playback failed, clear active favorite
             markActiveFavorite(null);
-            if (entry.playButton) {
-              entry.playButton.textContent = 'Play';
-            }
           }
         } catch (error) {
-          console.error('Failed to play favorite:', error);
+          console.error('Failed to play favourite:', error);
           setFavoriteLoading(entry, false);
           markActiveFavorite(null);
-          if (entry.playButton) {
-            entry.playButton.textContent = 'Play';
-          }
           showFeedback('Failed to start playback. Please try again.', true);
         }
 
@@ -4581,14 +4593,8 @@ async function checkAuthAndInit() {
       function setFavoriteLoading(entry, isLoading) {
         entry.loading = isLoading;
         entry.button.disabled = true;
-        if (entry.playButton) {
-          entry.playButton.disabled = isLoading;
-        }
         if (isLoading) {
           entry.button.classList.add('loading');
-          if (entry.playButton) {
-            entry.playButton.textContent = 'Loading...';
-          }
         } else {
           entry.button.classList.remove('loading');
         }
@@ -4612,25 +4618,6 @@ async function checkAuthAndInit() {
 
           entry.button.disabled = !enabled;
           entry.button.classList.toggle('disabled', !enabled);
-          if (entry.playButton) {
-            entry.playButton.disabled = !enabled;
-          }
-
-          if (!enabled) {
-            entry.button.classList.remove('active');
-            if (entry.playButton) {
-              entry.playButton.textContent = 'Select a household to play';
-            }
-          } else if (
-            entry.statusMessage === SELECT_GROUP_MESSAGE ||
-            entry.statusMessage === READY_MESSAGE ||
-            entry.statusMessage === ''
-          ) {
-            // Only update to "Play" if not active
-            if (!entry.button.classList.contains('active') && entry.playButton) {
-              entry.playButton.textContent = 'Play';
-            }
-          }
         });
 
         if (enabled) {
@@ -4649,22 +4636,6 @@ async function checkAuthAndInit() {
 
           const isActive = Boolean(favoriteId) && entry.favorite.id === favoriteId;
           entry.button.classList.toggle('active', isActive);
-
-          if (entry.playButton) {
-            if (isActive) {
-              // Show green "Playing" button with icon
-              entry.playButton.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Playing';
-            } else {
-              // Show simple "Play" text
-              entry.playButton.textContent = 'Play';
-            }
-          }
-
-          if (isActive) {
-            updateFavoriteStatus(entry, FAVORITE_SUCCESS_MESSAGE);
-          } else if (entry.statusMessage === FAVORITE_SUCCESS_MESSAGE) {
-            updateFavoriteStatus(entry, READY_MESSAGE);
-          }
         });
 
         // Update recommendation card buttons
@@ -4797,7 +4768,7 @@ async function checkAuthAndInit() {
 
           if (response.status === 401) {
             setAuthUI(false);
-            favoritesStatus.textContent = 'Login required to load favorites.';
+            favoritesStatus.textContent = 'Login required to load favourites.';
             return;
           }
 
@@ -5492,6 +5463,8 @@ async function checkAuthAndInit() {
       }
 
       window.addEventListener('load', () => {
+        // Show loading screen immediately
+        showLoadingOverlay();
         applyAuthFeedback();
         checkAuthAndInit();
       });
