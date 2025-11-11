@@ -736,6 +736,19 @@
         gap: 6px;
       }
 
+      .currently-playing-loudness {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .currently-playing-loudness .loudness-label {
+        opacity: 0.8;
+      }
+
       .currently-playing-controls {
         display: flex;
         align-items: center;
@@ -2021,6 +2034,9 @@
             <div class="currently-playing-artist" id="currently-playing-artist">
               <span></span>
             </div>
+            <div class="currently-playing-loudness" id="currently-playing-loudness" style="display: none;">
+              <span class="loudness-label"></span>
+            </div>
           </div>
           <div class="currently-playing-controls">
             <div class="currently-playing-group-indicator" id="currently-playing-group-indicator" style="display: none;">
@@ -2068,6 +2084,7 @@
       const currentlyPlayingLocation = document.getElementById('currently-playing-location');
       const currentlyPlayingTitle = document.getElementById('currently-playing-title');
       const currentlyPlayingArtist = document.getElementById('currently-playing-artist');
+      const currentlyPlayingLoudness = document.getElementById('currently-playing-loudness');
       const currentlyPlayingGroupIndicator = document.getElementById('currently-playing-group-indicator');
       const currentlyPlayingGroupCount = document.getElementById('currently-playing-group-count');
       const currentlyPlayingVolume = document.getElementById('currently-playing-volume');
@@ -2139,6 +2156,8 @@ settingsStatusLabel.textContent = '';
       let currentPlaybackState = null;
       let currentImageUrl = null;
       let lastPlayActionTime = 0; // Track when last play action occurred to prevent refresh interference
+      let previousTrackId = null; // Track previous track identifier for change detection
+      let baseVolume = null; // Store base/reference volume level for loudness normalization
 
       function login() {
         window.location.href = '/auth/sonos/login';
@@ -4359,6 +4378,8 @@ async function checkAuthAndInit() {
         }
 
         masterVolumeValue.textContent = `${level}%`;
+        // Update base volume when user manually adjusts volume
+        baseVolume = level;
         const success = await sendCommand(
           `/api/groups/${encodeURIComponent(groupId)}/volume`,
           {
@@ -4651,6 +4672,64 @@ async function checkAuthAndInit() {
           const item = status.currentItem || status.item || status.playback?.currentItem || null;
           const track = item?.track || item?.container?.metadata || status.track || null;
           
+          // Track change detection and volume adjustment based on replayGain
+          if (track) {
+            // Create a unique track identifier (use id if available, otherwise name + artist)
+            const trackName = track.name || track.title || '';
+            const trackArtist = typeof track.artist === 'string' ? track.artist : (track.artist?.name || track.artist?.value || '');
+            const trackId = track.id || (trackName && trackArtist ? `${trackName}_${trackArtist}` : trackName || 'unknown');
+            
+            // Check if track has changed (only if we have a valid identifier)
+            const trackChanged = trackId && trackId !== 'unknown' && trackId !== previousTrackId;
+            
+            if (trackChanged && isPlaying) {
+              // Store base volume on first track or when user manually adjusts volume
+              // If baseVolume is null, use current volume as base
+              if (baseVolume === null) {
+                const currentVolume = status.volume || 0;
+                baseVolume = currentVolume;
+              }
+              
+              // Apply volume adjustment if replayGain is available
+              if (track.replayGain !== null && track.replayGain !== undefined && Number.isFinite(track.replayGain)) {
+                const replayGain = Number(track.replayGain);
+                
+                // Convert dB to linear volume adjustment
+                // replayGain is in dB, convert to linear: 10^(dB/20)
+                const volumeAdjustment = Math.pow(10, replayGain / 20);
+                
+                // Calculate target volume based on base volume
+                let targetVolume = baseVolume * volumeAdjustment;
+                
+                // Clamp between 0-100
+                targetVolume = Math.max(0, Math.min(100, Math.round(targetVolume)));
+                
+                // Only adjust if the difference is significant (more than 1%)
+                if (Math.abs(targetVolume - baseVolume) > 1) {
+                  // Apply volume adjustment
+                  sendCommand(
+                    `/api/groups/${encodeURIComponent(groupId)}/volume`,
+                    { volume: targetVolume },
+                    `Volume adjusted for track loudness (${replayGain > 0 ? '+' : ''}${replayGain.toFixed(1)} dB).`
+                  ).catch(err => {
+                    console.error('Failed to adjust volume for replayGain:', err);
+                  });
+                }
+              }
+              
+            }
+            
+            // Update previous track ID even if no replayGain (to prevent repeated adjustments)
+            if (trackId && trackId !== 'unknown') {
+              previousTrackId = trackId;
+            }
+          }
+          
+          // Reset track tracking when playback stops
+          if (!isPlaying || playbackState === 'STOPPED') {
+            previousTrackId = null;
+          }
+          
           // Determine if we should show the panel - be more permissive
           const hasContent = !!(track || item);
           const isActive = isPlaying || playbackState !== 'STOPPED';
@@ -4749,6 +4828,28 @@ async function checkAuthAndInit() {
             }
             if (!artist && !album) {
               currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
+            }
+
+            // Update loudness indicator if replayGain is available
+            if (track && track.replayGain !== null && track.replayGain !== undefined && Number.isFinite(track.replayGain)) {
+              const replayGain = Number(track.replayGain);
+              const loudnessLabel = currentlyPlayingLoudness.querySelector('.loudness-label');
+              
+              // Determine loudness category
+              let loudnessText = '';
+              if (replayGain > 3) {
+                loudnessText = 'Loud';
+              } else if (replayGain > -3) {
+                loudnessText = 'Normal';
+              } else {
+                loudnessText = 'Quiet';
+              }
+              
+              // Display with dB value
+              loudnessLabel.textContent = `${loudnessText} (${replayGain > 0 ? '+' : ''}${replayGain.toFixed(1)} dB)`;
+              currentlyPlayingLoudness.style.display = 'block';
+            } else {
+              currentlyPlayingLoudness.style.display = 'none';
             }
 
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;

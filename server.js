@@ -338,11 +338,21 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
           return String(field);
         };
 
+        // Extract replayGain if available (floating-point number, typically -13 to +13 dB)
+        let replayGain = null;
+        if (track.replayGain !== undefined && track.replayGain !== null) {
+          const gainValue = Number(track.replayGain);
+          if (Number.isFinite(gainValue)) {
+            replayGain = gainValue;
+          }
+        }
+
         track = {
           name: normalizeField(track.name) || normalizeField(track.title),
           artist: normalizeField(track.artist) || normalizeField(track.albumArtist) || normalizeField(track.creator),
           album: normalizeField(track.album) || normalizeField(track.albumName),
           imageUrl: normalizeField(track.imageUrl) || normalizeField(track.albumArtUri) || normalizeField(track.albumArtURL),
+          replayGain: replayGain,
           ...track
         };
       }
