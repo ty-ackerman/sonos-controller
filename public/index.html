@@ -2512,10 +2512,10 @@ async function checkAuthAndInit() {
       await refreshUI();
     }
   } catch (error) {
-          console.error('Auth status check failed:', error);
-          setAuthUI(false);
-        }
-      }
+    console.error('Auth status check failed:', error);
+    setAuthUI(false);
+  }
+}
 
       // Playback control handlers for now-playing section
 
