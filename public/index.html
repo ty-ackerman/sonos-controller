@@ -5244,31 +5244,67 @@ async function checkAuthAndInit() {
               album = typeof track.albumName === 'string' ? track.albumName : track.albumName?.name || track.albumName?.value || '';
             }
             
-            // Get cover art with multiple fallbacks
+            // Get track/album cover art with extensive fallbacks - prioritize track/album art
             let imageUrl = null;
-            // Primary: track.images[0].url
+            
+            // Primary: track.images[0].url (most reliable)
             if (track?.images && Array.isArray(track.images) && track.images.length > 0) {
               imageUrl = track.images[0]?.url || null;
             }
+            
             // Fallback 1: track.imageUrl
             if (!imageUrl && track?.imageUrl) {
               imageUrl = typeof track.imageUrl === 'string' ? track.imageUrl : track.imageUrl?.url || null;
             }
-            // Fallback 2: activeFavorite.imageUrl
-            if (!imageUrl && status.activeFavorite?.imageUrl) {
-              imageUrl = status.activeFavorite.imageUrl;
+            
+            // Fallback 2: item.track.images[0].url (from currentItem)
+            if (!imageUrl && item?.track?.images && Array.isArray(item.track.images) && item.track.images.length > 0) {
+              imageUrl = item.track.images[0]?.url || null;
             }
-            // Fallback 3: container.images[0].url
+            
+            // Fallback 3: item.track.imageUrl
+            if (!imageUrl && item?.track?.imageUrl) {
+              imageUrl = typeof item.track.imageUrl === 'string' ? item.track.imageUrl : item.track.imageUrl?.url || null;
+            }
+            
+            // Fallback 4: currentItem.track.images[0].url
+            if (!imageUrl && status.currentItem?.track?.images && Array.isArray(status.currentItem.track.images) && status.currentItem.track.images.length > 0) {
+              imageUrl = status.currentItem.track.images[0]?.url || null;
+            }
+            
+            // Fallback 5: currentItem.track.imageUrl
+            if (!imageUrl && status.currentItem?.track?.imageUrl) {
+              imageUrl = typeof status.currentItem.track.imageUrl === 'string' 
+                ? status.currentItem.track.imageUrl 
+                : status.currentItem.track.imageUrl?.url || null;
+            }
+            
+            // Fallback 6: track.albumArtUri or track.albumArtURL
+            if (!imageUrl && track?.albumArtUri) {
+              imageUrl = typeof track.albumArtUri === 'string' ? track.albumArtUri : track.albumArtUri?.url || null;
+            }
+            if (!imageUrl && track?.albumArtURL) {
+              imageUrl = typeof track.albumArtURL === 'string' ? track.albumArtURL : track.albumArtURL?.url || null;
+            }
+            
+            // Fallback 7: container.images[0].url (playlist cover as last resort)
             if (!imageUrl && status.container?.images && Array.isArray(status.container.images) && status.container.images.length > 0) {
               imageUrl = status.container.images[0]?.url || null;
             }
-            // Fallback 4: container.imageUrl
+            
+            // Fallback 8: container.imageUrl
             if (!imageUrl && status.container?.imageUrl) {
               imageUrl = typeof status.container.imageUrl === 'string' 
                 ? status.container.imageUrl 
                 : status.container.imageUrl?.url || null;
             }
-            // Fallback 5: favoritesRegistry image
+            
+            // Fallback 9: activeFavorite.imageUrl
+            if (!imageUrl && status.activeFavorite?.imageUrl) {
+              imageUrl = status.activeFavorite.imageUrl;
+            }
+            
+            // Fallback 10: favoritesRegistry image
             if (!imageUrl && activeFavoriteId) {
               const favoriteEntry = favoritesRegistry.get(activeFavoriteId);
               if (favoriteEntry?.favorite) {
@@ -5283,7 +5319,8 @@ async function checkAuthAndInit() {
               }
             }
             
-            if (imageUrl && !imageUrl.startsWith('http')) {
+            // Only reject if it's clearly not a valid URL (allow local IPs and http/https)
+            if (imageUrl && !imageUrl.startsWith('http') && !imageUrl.startsWith('//') && !imageUrl.startsWith('/')) {
               imageUrl = null;
             }
 
