@@ -5399,53 +5399,6 @@ async function checkAuthAndInit() {
               imageUrl = null;
             }
 
-            currentlyPlayingTitle.textContent = title;
-            currentlyPlayingArtist.innerHTML = '';
-            if (artist) {
-              const artistSpan = document.createElement('span');
-              artistSpan.textContent = artist;
-              currentlyPlayingArtist.appendChild(artistSpan);
-            }
-            if (album && artist) {
-              const separator = document.createTextNode(' • ');
-              currentlyPlayingArtist.appendChild(separator);
-              const albumSpan = document.createElement('span');
-              albumSpan.textContent = album;
-              currentlyPlayingArtist.appendChild(albumSpan);
-            }
-            if (!artist && !album) {
-              currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
-            }
-
-            // Update loudness indicator if replayGain is available
-            if (track && track.replayGain !== null && track.replayGain !== undefined && Number.isFinite(track.replayGain)) {
-              const replayGain = Number(track.replayGain);
-              const loudnessLabel = currentlyPlayingLoudness.querySelector('.loudness-label');
-              
-              if (loudnessLabel) {
-                // Determine loudness category
-                let loudnessText = '';
-                if (replayGain > 3) {
-                  loudnessText = 'Loud';
-                } else if (replayGain > -3) {
-                  loudnessText = 'Normal';
-                } else {
-                  loudnessText = 'Quiet';
-                }
-                
-                // Display with dB value
-                loudnessLabel.textContent = `${loudnessText} (${replayGain > 0 ? '+' : ''}${replayGain.toFixed(1)} dB)`;
-                currentlyPlayingLoudness.style.display = 'block';
-              }
-            } else {
-              currentlyPlayingLoudness.style.display = 'none';
-              // Debug: log when replayGain is not available
-              if (track) {
-              }
-            }
-
-            currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
-
             // Handle image loading - always proxy through server
             // Calculate the final URL we'll use (proxy URL if HTTP/HTTPS)
             let finalImageUrl = null;
@@ -5457,15 +5410,64 @@ async function checkAuthAndInit() {
               }
             }
             
-            // Only update if the final URL has actually changed
-            if (finalImageUrl && finalImageUrl !== currentImageUrl) {
-              loadImage(finalImageUrl, imageUrl);
-            } else if (!finalImageUrl) {
-              // No image - only show placeholder if there's no image element
-              if (!currentlyPlayingArt.querySelector('img')) {
-                currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+            // Batch all DOM updates together using requestAnimationFrame to ensure they render simultaneously
+            requestAnimationFrame(() => {
+              // Update title and artist
+              currentlyPlayingTitle.textContent = title;
+              currentlyPlayingArtist.innerHTML = '';
+              if (artist) {
+                const artistSpan = document.createElement('span');
+                artistSpan.textContent = artist;
+                currentlyPlayingArtist.appendChild(artistSpan);
               }
-            }
+              if (album && artist) {
+                const separator = document.createTextNode(' • ');
+                currentlyPlayingArtist.appendChild(separator);
+                const albumSpan = document.createElement('span');
+                albumSpan.textContent = album;
+                currentlyPlayingArtist.appendChild(albumSpan);
+              }
+              if (!artist && !album) {
+                currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
+              }
+
+              // Update loudness indicator if replayGain is available
+              if (track && track.replayGain !== null && track.replayGain !== undefined && Number.isFinite(track.replayGain)) {
+                const replayGain = Number(track.replayGain);
+                const loudnessLabel = currentlyPlayingLoudness.querySelector('.loudness-label');
+                
+                if (loudnessLabel) {
+                  // Determine loudness category
+                  let loudnessText = '';
+                  if (replayGain > 3) {
+                    loudnessText = 'Loud';
+                  } else if (replayGain > -3) {
+                    loudnessText = 'Normal';
+                  } else {
+                    loudnessText = 'Quiet';
+                  }
+                  
+                  // Display with dB value
+                  loudnessLabel.textContent = `${loudnessText} (${replayGain > 0 ? '+' : ''}${replayGain.toFixed(1)} dB)`;
+                  currentlyPlayingLoudness.style.display = 'block';
+                }
+              } else {
+                currentlyPlayingLoudness.style.display = 'none';
+              }
+
+              // Update playlist name/location
+              currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
+
+              // Update image - only update if the final URL has actually changed
+              if (finalImageUrl && finalImageUrl !== currentImageUrl) {
+                loadImage(finalImageUrl, imageUrl);
+              } else if (!finalImageUrl) {
+                // No image - only show placeholder if there's no image element
+                if (!currentlyPlayingArt.querySelector('img')) {
+                  currentlyPlayingArt.innerHTML = '<span class="currently-playing-art-placeholder">♪</span>';
+                }
+              }
+            });
             
             function loadImage(url, originalUrl) {
               currentImageUrl = url;
