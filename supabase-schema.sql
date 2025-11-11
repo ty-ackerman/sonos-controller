@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS playlist_vibes (
 -- Table for storing vibe time rules
 CREATE TABLE IF NOT EXISTS vibe_time_rules (
   id SERIAL PRIMARY KEY,
+  name TEXT,
   start_hour INTEGER NOT NULL CHECK (start_hour >= 0 AND start_hour <= 23),
   end_hour INTEGER NOT NULL CHECK (end_hour >= 0 AND end_hour <= 23),
   allowed_vibes TEXT[] NOT NULL,

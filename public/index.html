@@ -1055,6 +1055,13 @@
         gap: 12px;
       }
 
+      .time-rule-name {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+      }
+
       .time-rule-info {
         flex: 1;
         display: flex;
@@ -1224,6 +1231,27 @@
         font-size: 0.875rem;
         font-weight: 500;
         color: var(--text-primary);
+      }
+
+      .time-rule-field input[type="text"] {
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        font-family: inherit;
+      }
+
+      .time-rule-field input[type="text"]:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .time-rule-field-hint {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+        margin-top: 4px;
       }
 
       .time-rule-field select {
@@ -1596,6 +1624,11 @@
                 <h4 id="time-rule-editor-title" class="time-rule-editor-title">Edit Time Rule</h4>
               <div class="time-rule-form">
                 <div class="time-rule-field">
+                  <label>Name (Optional)</label>
+                  <input type="text" id="time-rule-name" placeholder="e.g., Mornings, Afternoons, Quiet Hours" maxlength="50">
+                  <small class="time-rule-field-hint">Give this rule a descriptive name</small>
+                </div>
+                <div class="time-rule-field">
                   <label>Rule Type</label>
                   <div class="time-rule-type-selector">
                     <label class="time-rule-type-radio">
@@ -1846,6 +1879,7 @@ const addOverrideBtn = document.getElementById('add-override-btn');
 const timeRuleEditorBackdrop = document.getElementById('time-rule-editor-backdrop');
 const timeRuleEditor = document.getElementById('time-rule-editor');
 const timeRuleEditorClose = document.getElementById('time-rule-editor-close');
+const timeRuleName = document.getElementById('time-rule-name');
 const timeRuleStartHour = document.getElementById('time-rule-start-hour');
 const timeRuleEndHour = document.getElementById('time-rule-end-hour');
 const timeRuleVibeDown = document.getElementById('time-rule-vibe-down');
@@ -2705,6 +2739,7 @@ async function checkAuthAndInit() {
         editBtn.textContent = 'Edit';
         editBtn.addEventListener('click', () => {
           editingRuleId = rule.id;
+          timeRuleName.value = rule.name || '';
           timeRuleStartHour.value = rule.start_hour;
           timeRuleEndHour.value = rule.end_hour;
           timeRuleVibeDown.checked = rule.allowed_vibes.includes('Down');
@@ -2841,6 +2876,7 @@ async function checkAuthAndInit() {
 
       addBaseRuleBtn.addEventListener('click', () => {
         editingRuleId = null;
+        timeRuleName.value = '';
         timeRuleStartHour.value = '7';
         timeRuleEndHour.value = '12';
         timeRuleVibeDown.checked = false;
@@ -2859,6 +2895,7 @@ async function checkAuthAndInit() {
 
       addOverrideBtn.addEventListener('click', () => {
         editingRuleId = null;
+        timeRuleName.value = '';
         timeRuleStartHour.value = '7';
         timeRuleEndHour.value = '12';
         timeRuleVibeDown.checked = false;

@@ -6,7 +6,7 @@ export async function loadVibeTimeRules() {
   try {
     const { data, error } = await supabase
       .from('vibe_time_rules')
-      .select('id, start_hour, end_hour, allowed_vibes, days, rule_type, created_at, updated_at')
+      .select('id, name, start_hour, end_hour, allowed_vibes, days, rule_type, created_at, updated_at')
       .order('start_hour', { ascending: true });
 
     if (error) {
@@ -67,6 +67,7 @@ export async function loadVibeTimeRules() {
 
           sanitized.push({
             id: row.id,
+            name: typeof row.name === 'string' ? row.name.trim() : null,
             start_hour: row.start_hour,
             end_hour: row.end_hour,
             allowed_vibes: validVibes,
@@ -208,7 +209,15 @@ export async function saveVibeTimeRule(rule) {
       days: days
     });
 
+    // Sanitize name (optional field)
+    let name = rule.name && typeof rule.name === 'string' ? rule.name.trim() : null;
+    if (name && name.length === 0) {
+      // Empty string becomes null
+      name = null;
+    }
+
     const row = {
+      name: name,
       start_hour: rule.start_hour,
       end_hour: rule.end_hour,
       allowed_vibes: validVibes,
@@ -231,6 +240,7 @@ export async function saveVibeTimeRule(rule) {
 
       return {
         id: data.id,
+        name: data.name,
         start_hour: data.start_hour,
         end_hour: data.end_hour,
         allowed_vibes: data.allowed_vibes,
@@ -251,6 +261,7 @@ export async function saveVibeTimeRule(rule) {
 
       return {
         id: data.id,
+        name: data.name,
         start_hour: data.start_hour,
         end_hour: data.end_hour,
         allowed_vibes: data.allowed_vibes,
