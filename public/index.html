@@ -3033,6 +3033,12 @@ settingsStatusLabel.textContent = '';
       function getDeviceId() {
         const STORAGE_KEY = 'sonos_device_id';
         let deviceId = localStorage.getItem(STORAGE_KEY);
+        console.error('[AUTH_DEBUG] getDeviceId called', { 
+          existingDeviceId: deviceId, 
+          hasExisting: !!deviceId,
+          storageKey: STORAGE_KEY
+        });
+        
         if (!deviceId) {
           // Generate UUID v4
           deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -3040,8 +3046,21 @@ settingsStatusLabel.textContent = '';
             const v = c === 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
           });
+          console.error('[AUTH_DEBUG] getDeviceId: Generated new device ID', { deviceId });
           localStorage.setItem(STORAGE_KEY, deviceId);
+          console.error('[AUTH_DEBUG] getDeviceId: Saved to localStorage', { deviceId, storageKey: STORAGE_KEY });
+        } else {
+          console.error('[AUTH_DEBUG] getDeviceId: Using existing device ID from localStorage', { deviceId });
         }
+        
+        // Verify it was saved correctly
+        const verify = localStorage.getItem(STORAGE_KEY);
+        console.error('[AUTH_DEBUG] getDeviceId: Verification read from localStorage', { 
+          deviceId, 
+          verify, 
+          matches: deviceId === verify 
+        });
+        
         return deviceId;
       }
 
@@ -3069,7 +3088,10 @@ settingsStatusLabel.textContent = '';
 
       function login() {
         const deviceId = getDeviceId();
-        window.location.href = `/auth/sonos/login?device_id=${encodeURIComponent(deviceId)}`;
+        console.error('[AUTH_DEBUG] login: Initiating login', { deviceId });
+        const loginUrl = `/auth/sonos/login?device_id=${encodeURIComponent(deviceId)}`;
+        console.error('[AUTH_DEBUG] login: Redirecting to login URL', { deviceId, loginUrl });
+        window.location.href = loginUrl;
       }
 
 async function signout() {
@@ -3527,24 +3549,48 @@ function setAuthUI(loggedIn) {
 async function checkAuthAndInit() {
   try {
     const deviceId = getDeviceId();
-    const response = await fetch(`/auth/status?device_id=${encodeURIComponent(deviceId)}`);
+    console.error('[AUTH_DEBUG] checkAuthAndInit: Checking auth status', { deviceId });
+    
+    const statusUrl = `/auth/status?device_id=${encodeURIComponent(deviceId)}`;
+    console.error('[AUTH_DEBUG] checkAuthAndInit: Fetching auth status', { deviceId, statusUrl });
+    
+    const response = await fetch(statusUrl);
+    console.error('[AUTH_DEBUG] checkAuthAndInit: Auth status response received', {
+      deviceId,
+      status: response.status,
+      ok: response.ok
+    });
+    
     if (!response.ok) {
       throw new Error('Failed to check auth status');
     }
 
     const state = await response.json();
+    console.error('[AUTH_DEBUG] checkAuthAndInit: Auth status data', {
+      deviceId,
+      loggedIn: state.loggedIn,
+      expiresAt: state.expiresAt,
+      state
+    });
+    
     const loggedIn = Boolean(state.loggedIn);
+    console.error('[AUTH_DEBUG] checkAuthAndInit: Setting auth UI', { deviceId, loggedIn });
     setAuthUI(loggedIn);
     showView('control');
 
     if (loggedIn) {
+      console.error('[AUTH_DEBUG] checkAuthAndInit: User is logged in, refreshing UI', { deviceId });
       await refreshUI();
     } else {
+      console.error('[AUTH_DEBUG] checkAuthAndInit: User is not logged in', { deviceId });
       // User needs to sign in, hide loading screen
       hideLoadingOverlay();
     }
   } catch (error) {
-    console.error('Auth status check failed:', error);
+    console.error('[AUTH_DEBUG] checkAuthAndInit: Exception caught', {
+      error: error.message,
+      errorStack: error.stack
+    });
     setAuthUI(false);
     hideLoadingOverlay();
   }

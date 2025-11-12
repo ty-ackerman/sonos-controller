@@ -373,34 +373,81 @@ app.get('/auth/status', async (req, res) => {
   try {
     const { device_id } = req.query;
     
+    console.error('[AUTH_DEBUG] /auth/status called', { 
+      device_id, 
+      hasDeviceId: !!device_id,
+      queryParams: req.query,
+      allQueryParams: Object.keys(req.query)
+    });
+    
     if (!device_id) {
+      console.error('[AUTH_DEBUG] /auth/status: No device_id provided, returning loggedIn=false');
       return res.json({ loggedIn: false, expiresAt: 0 });
     }
 
+    console.error('[AUTH_DEBUG] /auth/status: Loading tokens for device_id:', device_id);
     const deviceTokens = await loadTokens(device_id);
+    console.error('[AUTH_DEBUG] /auth/status: Tokens loaded', {
+      device_id,
+      hasAccessToken: !!deviceTokens.access_token,
+      hasRefreshToken: !!deviceTokens.refresh_token,
+      expiresAt: deviceTokens.expires_at,
+      expiresAtDate: deviceTokens.expires_at ? new Date(deviceTokens.expires_at).toISOString() : null,
+      now: Date.now(),
+      nowDate: new Date().toISOString(),
+      isExpired: Date.now() >= (deviceTokens.expires_at || 0)
+    });
+    
     let loggedIn = Boolean(deviceTokens.access_token) && Date.now() < (deviceTokens.expires_at || 0);
+    console.error('[AUTH_DEBUG] /auth/status: Initial loggedIn check', {
+      device_id,
+      loggedIn,
+      hasAccessToken: !!deviceTokens.access_token,
+      notExpired: Date.now() < (deviceTokens.expires_at || 0)
+    });
 
     if (loggedIn) {
       // Temporarily set tokens for sonosRequest validation
       const originalTokens = tokens;
       tokens = deviceTokens;
+      console.error('[AUTH_DEBUG] /auth/status: Validating token with Sonos API', { device_id });
       try {
         await sonosRequest('/households', device_id);
+        console.error('[AUTH_DEBUG] /auth/status: Token validation successful', { device_id });
       } catch (error) {
+        console.error('[AUTH_DEBUG] /auth/status: Token validation failed', {
+          device_id,
+          errorStatus: error.status,
+          errorMessage: error.message
+        });
         if (error.status === 401) {
+          console.error('[AUTH_DEBUG] /auth/status: Clearing tokens due to 401', { device_id });
           await clearTokens(device_id);
           loggedIn = false;
         } else {
-          console.warn('Failed to verify token during status check:', error?.message ?? error);
+          console.error('[AUTH_DEBUG] /auth/status: Token validation error (non-401)', {
+            device_id,
+            error: error.message
+          });
         }
       } finally {
         tokens = originalTokens;
       }
     }
 
+    console.error('[AUTH_DEBUG] /auth/status: Returning status', {
+      device_id,
+      loggedIn,
+      expiresAt: loggedIn ? deviceTokens.expires_at || 0 : 0
+    });
+
     res.json({ loggedIn, expiresAt: loggedIn ? deviceTokens.expires_at || 0 : 0 });
   } catch (error) {
-    console.error('Auth status check failed:', error?.message ?? error);
+    console.error('[AUTH_DEBUG] /auth/status: Exception caught', {
+      device_id: req.query.device_id,
+      error: error.message,
+      errorStack: error.stack
+    });
     res.json({ loggedIn: false });
   }
 });
