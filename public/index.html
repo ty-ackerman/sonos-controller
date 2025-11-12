@@ -3518,8 +3518,12 @@ async function checkAuthAndInit() {
         }, 3500);
       }
 
-      // Lock body scroll while preserving scroll position
+      // Lock body scroll while preserving scroll position (only when panel is expanded)
       function lockBodyScroll() {
+        // Only lock if panel is expanded (showing volume controls)
+        if (!currentlyPlayingPanel || !currentlyPlayingPanel.classList.contains('expanded')) {
+          return;
+        }
         if (document.body.classList.contains('has-playing')) {
           return; // Already locked
         }
@@ -3540,6 +3544,15 @@ async function checkAuthAndInit() {
         document.body.style.top = '';
         document.body.style.width = '';
         window.scrollTo(0, bodyScrollLockPosition);
+      }
+
+      // Update scroll lock based on panel expanded state
+      function updateBodyScrollLock() {
+        if (currentlyPlayingPanel && currentlyPlayingPanel.classList.contains('expanded')) {
+          lockBodyScroll();
+        } else {
+          unlockBodyScroll();
+        }
       }
 
       // Prevent scroll events on now playing panel from propagating to body
@@ -6001,7 +6014,7 @@ async function checkAuthAndInit() {
           // Show panel if we have content
           if (cacheData.title || cacheData.playlistName) {
             currentlyPlayingPanel.classList.add('visible');
-            lockBodyScroll();
+            // Don't lock scroll here - only lock when expanded
             panelShouldBeVisible = true;
           }
         } catch (error) {
@@ -6553,7 +6566,8 @@ async function checkAuthAndInit() {
             updateCurrentlyPlayingRooms(groupId);
 
             currentlyPlayingPanel.classList.add('visible');
-            lockBodyScroll();
+            // Update scroll lock based on expanded state (only lock if expanded)
+            updateBodyScrollLock();
 
             // Save playback state to cache
             savePlaybackStateToCache({
@@ -6801,6 +6815,9 @@ async function checkAuthAndInit() {
         // Toggle expanded state
         currentlyPlayingPanel.classList.toggle('expanded');
         
+        // Update scroll lock based on expanded state
+        updateBodyScrollLock();
+        
         // Update rooms when expanding (in case they weren't loaded yet)
         if (currentlyPlayingPanel.classList.contains('expanded')) {
           const groupId = getSelectedGroupId();
@@ -6819,6 +6836,7 @@ async function checkAuthAndInit() {
         // If click is outside the panel, close it
         if (!currentlyPlayingPanel.contains(e.target)) {
           currentlyPlayingPanel.classList.remove('expanded');
+          updateBodyScrollLock();
         }
       });
 
