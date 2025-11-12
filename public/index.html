@@ -2844,6 +2844,7 @@
       const VIEW_STORAGE_KEY = 'sonos-controller-view';
       const VIEW_FRONT_DESK = 'front-desk';
       const VIEW_MANAGER = 'manager';
+      const PLAYBACK_STATE_STORAGE_KEY = 'sonos-controller-playback-state';
       
       // Master volume controls
       const masterVolumeSlider = document.getElementById('master-volume-slider');
@@ -5848,6 +5849,110 @@ async function checkAuthAndInit() {
       evaluateFavoritesAvailability();
       updateActiveGroupDisplay();
 
+      // Cache playback state to localStorage
+      function savePlaybackStateToCache(state) {
+        try {
+          const cacheData = {
+            title: state.title || '',
+            artist: state.artist || '',
+            album: state.album || '',
+            playlistName: state.playlistName || '',
+            imageUrl: state.imageUrl || '',
+            groupName: state.groupName || '',
+            activeFavoriteId: state.activeFavoriteId || null,
+            playbackState: state.playbackState || 'STOPPED',
+            volume: state.volume || 0,
+            timestamp: Date.now()
+          };
+          localStorage.setItem(PLAYBACK_STATE_STORAGE_KEY, JSON.stringify(cacheData));
+        } catch (error) {
+          console.warn('Failed to save playback state to cache:', error);
+        }
+      }
+
+      // Load and apply cached playback state
+      function loadCachedPlaybackState() {
+        try {
+          const cached = localStorage.getItem(PLAYBACK_STATE_STORAGE_KEY);
+          if (!cached) return null;
+          
+          const cacheData = JSON.parse(cached);
+          // Only use cache if it's less than 5 minutes old
+          const cacheAge = Date.now() - (cacheData.timestamp || 0);
+          if (cacheAge > 5 * 60 * 1000) {
+            return null; // Cache too old
+          }
+          
+          return cacheData;
+        } catch (error) {
+          console.warn('Failed to load cached playback state:', error);
+          return null;
+        }
+      }
+
+      // Apply cached playback state to UI
+      function applyCachedPlaybackState(cacheData) {
+        if (!cacheData) return;
+        
+        try {
+          // Update title and artist
+          if (cacheData.title) {
+            currentlyPlayingTitle.textContent = cacheData.title;
+          }
+          
+          currentlyPlayingArtist.innerHTML = '';
+          if (cacheData.artist) {
+            const artistSpan = document.createElement('span');
+            artistSpan.textContent = cacheData.artist;
+            currentlyPlayingArtist.appendChild(artistSpan);
+          }
+          if (cacheData.album && cacheData.artist) {
+            const separator = document.createTextNode(' • ');
+            currentlyPlayingArtist.appendChild(separator);
+            const albumSpan = document.createElement('span');
+            albumSpan.textContent = cacheData.album;
+            currentlyPlayingArtist.appendChild(albumSpan);
+          }
+          if (!cacheData.artist && !cacheData.album) {
+            currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
+          }
+
+          // Update playlist name/location
+          if (cacheData.playlistName || cacheData.groupName) {
+            currentlyPlayingLocation.innerHTML = `<span>${cacheData.playlistName || cacheData.groupName}</span>`;
+          }
+
+          // Update image if available
+          if (cacheData.imageUrl) {
+            const existingImg = currentlyPlayingArt.querySelector('img');
+            if (existingImg) {
+              existingImg.src = cacheData.imageUrl;
+            } else {
+              const img = document.createElement('img');
+              img.src = cacheData.imageUrl;
+              img.alt = cacheData.title || 'Album art';
+              currentlyPlayingArt.innerHTML = '';
+              currentlyPlayingArt.appendChild(img);
+            }
+          }
+
+          // Update highlighting if we have playlist name
+          if (cacheData.playlistName) {
+            markActiveFavoriteByName(cacheData.playlistName);
+            updateRecommendationCardButtonsByName(cacheData.playlistName);
+          }
+
+          // Show panel if we have content
+          if (cacheData.title || cacheData.playlistName) {
+            currentlyPlayingPanel.classList.add('visible');
+            document.body.classList.add('has-playing');
+            panelShouldBeVisible = true;
+          }
+        } catch (error) {
+          console.warn('Failed to apply cached playback state:', error);
+        }
+      }
+
       async function updateCurrentlyPlaying() {
         let groupId = getSelectedGroupId();
         
@@ -5864,6 +5969,13 @@ async function checkAuthAndInit() {
         }
         
         if (!groupId || !isSonosConnected) {
+          // Try to load cached state if available
+          const cached = loadCachedPlaybackState();
+          if (cached) {
+            applyCachedPlaybackState(cached);
+            return;
+          }
+          
           // Only hide if panel wasn't previously visible (don't hide during transitions)
           if (!panelShouldBeVisible) {
             clearTimeout(hidePanelTimeout);
@@ -5871,6 +5983,12 @@ async function checkAuthAndInit() {
             document.body.classList.remove('has-playing');
           }
           return;
+        }
+
+        // Load cached state immediately to prevent flicker
+        const cached = loadCachedPlaybackState();
+        if (cached) {
+          applyCachedPlaybackState(cached);
         }
 
         try {
@@ -6380,6 +6498,19 @@ async function checkAuthAndInit() {
 
             currentlyPlayingPanel.classList.add('visible');
             document.body.classList.add('has-playing');
+
+            // Save playback state to cache
+            savePlaybackStateToCache({
+              title,
+              artist,
+              album,
+              playlistName,
+              imageUrl: finalImageUrl || imageUrl,
+              groupName,
+              activeFavoriteId,
+              playbackState,
+              volume: status.volume || 0
+            });
           } else {
             // Only hide if we're truly stopped - use a delay to prevent flickering
             if (playbackState === 'STOPPED' && !isPlaying) {
@@ -6705,6 +6836,21 @@ async function checkAuthAndInit() {
         // Loading screen is already visible by default
         applyAuthFeedback();
         checkAuthAndInit();
+      });
+
+      // Restore cached playback state when tab becomes visible
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && isSonosConnected) {
+          // Tab became visible - restore cached state immediately
+          const cached = loadCachedPlaybackState();
+          if (cached) {
+            applyCachedPlaybackState(cached);
+          }
+          // Then fetch fresh data
+          if (getSelectedGroupId()) {
+            updateCurrentlyPlaying();
+          }
+        }
       });
     </script>
 
