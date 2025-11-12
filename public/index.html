@@ -3312,7 +3312,9 @@ passwordModalBackdrop.addEventListener('click', (e) => {
 updateMenuForView();
 
 // Favorites toggle handler
-favoritesToggle.addEventListener('click', () => {
+favoritesToggle.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
   const isHidden = favoritesContent.classList.contains('hidden');
   favoritesContent.classList.toggle('hidden', !isHidden);
   const arrow = favoritesToggle.querySelector('span');
@@ -3320,6 +3322,8 @@ favoritesToggle.addEventListener('click', () => {
     arrow.textContent = isHidden ? '▲' : '▼';
   }
   favoritesToggle.innerHTML = `${isHidden ? 'Hide' : 'View'} All Playlists <span>${isHidden ? '▲' : '▼'}</span>`;
+  // Prevent any scroll behavior
+  window.scrollTo(window.scrollX, window.scrollY);
 });
 
 function setAuthUI(loggedIn) {
@@ -3533,7 +3537,30 @@ async function checkAuthAndInit() {
             e.stopPropagation();
           }
         }, { passive: true });
+        
+        // Ensure now playing panel stays fixed when page scrolls
+        let lastScrollY = window.scrollY;
+        window.addEventListener('scroll', () => {
+          const currentScrollY = window.scrollY;
+          if (currentScrollY !== lastScrollY && currentlyPlayingPanel.classList.contains('visible')) {
+            // Force the panel to stay at bottom
+            currentlyPlayingPanel.style.transform = 'translateY(0)';
+            currentlyPlayingPanel.style.bottom = '0';
+          }
+          lastScrollY = currentScrollY;
+        }, { passive: true });
       }
+      
+      // Prevent dropdown interactions from causing scroll
+      document.addEventListener('click', (e) => {
+        // If clicking on a dropdown toggle, prevent scroll
+        if (e.target.closest('.favorites-toggle, .alternatives-toggle')) {
+          // Already handled in individual handlers, but ensure no scroll
+          setTimeout(() => {
+            window.scrollTo(window.scrollX, window.scrollY);
+          }, 0);
+        }
+      }, { passive: true });
 
       function getSelectedGroupId() {
         return currentGroupId;
@@ -4710,11 +4737,15 @@ async function checkAuthAndInit() {
             toggle.innerHTML = `${toggle.textContent} <span>▼</span>`;
             
             let isOpen = false;
-            toggle.addEventListener('click', () => {
+            toggle.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
               isOpen = !isOpen;
               alternativesList.classList.toggle('visible', isOpen);
               toggle.classList.toggle('expanded', isOpen);
               toggle.innerHTML = `${isOpen ? 'Hide' : 'View'} ${alternatives.length} other option${alternatives.length > 1 ? 's' : ''} <span>▼</span>`;
+              // Prevent any scroll behavior
+              window.scrollTo(window.scrollX, window.scrollY);
             });
 
             const alternativesList = document.createElement('div');
