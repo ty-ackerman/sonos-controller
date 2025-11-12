@@ -1,6 +1,6 @@
 {
-  "name": "Sonos Controller",
-  "short_name": "Sonos",
+  "name": "Alter Music Controller",
+  "short_name": "Alter Music Controller",
   "description": "Control your Sonos speakers",
   "start_url": "/",
   "display": "standalone",
