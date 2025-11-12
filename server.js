@@ -66,6 +66,14 @@ async function saveOAuthState(state, deviceId) {
   console.error('[AUTH_DEBUG] saveOAuthState called', { state, deviceId, hasDeviceId: !!deviceId });
   
   try {
+    console.error('[AUTH_DEBUG] saveOAuthState: Supabase client check', {
+      state,
+      deviceId,
+      hasSupabase: !!supabase,
+      supabaseUrl: supabase?.supabaseUrl || 'NOT_SET',
+      tableName: 'oauth_states'
+    });
+    
     const toSave = {
       state: state,
       device_id: deviceId,
@@ -246,6 +254,94 @@ app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Debug endpoint to test Supabase connection
+app.get('/debug/supabase-test', async (_req, res) => {
+  try {
+    console.error('[AUTH_DEBUG] /debug/supabase-test: Testing Supabase connection');
+    
+    // Test 1: Check if supabase client exists
+    const hasSupabase = !!supabase;
+    const supabaseUrl = supabase?.supabaseUrl || 'NOT_SET';
+    
+    // Test 2: Try to query tokens table
+    const { data: tokensData, error: tokensError } = await supabase
+      .from('tokens')
+      .select('device_id')
+      .limit(5);
+    
+    // Test 3: Try to query oauth_states table
+    const { data: statesData, error: statesError } = await supabase
+      .from('oauth_states')
+      .select('state, device_id')
+      .limit(5);
+    
+    // Test 4: Try to insert a test row (then delete it)
+    const testDeviceId = `test-${Date.now()}`;
+    const { data: insertData, error: insertError } = await supabase
+      .from('tokens')
+      .insert({
+        device_id: testDeviceId,
+        access_token: 'test',
+        refresh_token: 'test',
+        expires_at: 0
+      })
+      .select();
+    
+    let deleteError = null;
+    if (!insertError && insertData) {
+      const { error: delError } = await supabase
+        .from('tokens')
+        .delete()
+        .eq('device_id', testDeviceId);
+      deleteError = delError;
+    }
+    
+    res.json({
+      supabaseClient: {
+        exists: hasSupabase,
+        url: supabaseUrl
+      },
+      tokensTable: {
+        querySuccess: !tokensError,
+        error: tokensError?.message || null,
+        errorCode: tokensError?.code || null,
+        rowCount: tokensData?.length || 0,
+        sampleData: tokensData || []
+      },
+      oauthStatesTable: {
+        querySuccess: !statesError,
+        error: statesError?.message || null,
+        errorCode: statesError?.code || null,
+        rowCount: statesData?.length || 0,
+        sampleData: statesData || []
+      },
+      insertTest: {
+        success: !insertError,
+        error: insertError?.message || null,
+        errorCode: insertError?.code || null,
+        insertedData: insertData || null,
+        deleteSuccess: !deleteError,
+        deleteError: deleteError?.message || null
+      },
+      environment: {
+        hasSupabaseUrl: !!process.env.SUPABASE_URL,
+        hasSupabaseKey: !!process.env.SUPABASE_KEY,
+        supabaseUrlSet: process.env.SUPABASE_URL ? 'SET' : 'NOT_SET',
+        supabaseKeySet: process.env.SUPABASE_KEY ? 'SET (hidden)' : 'NOT_SET'
+      }
+    });
+  } catch (error) {
+    console.error('[AUTH_DEBUG] /debug/supabase-test: Exception', {
+      error: error.message,
+      errorStack: error.stack
+    });
+    res.status(500).json({
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 app.get('/auth/sonos/login', async (req, res) => {
   const { device_id } = req.query;
   
@@ -351,6 +447,26 @@ app.get('/auth/sonos/callback', async (req, res) => {
     await exchangeCodeForTokens(code, deviceId);
     console.error('[AUTH_DEBUG] /auth/sonos/callback: Token exchange successful', { deviceId, state });
     
+    // Verify tokens were actually saved
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: Verifying tokens were saved', { deviceId });
+    const verifyTokens = await loadTokens(deviceId);
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: Token verification', {
+      deviceId,
+      hasAccessToken: !!verifyTokens.access_token,
+      hasRefreshToken: !!verifyTokens.refresh_token,
+      expiresAt: verifyTokens.expires_at
+    });
+    
+    if (!verifyTokens.access_token) {
+      console.error('[AUTH_DEBUG] /auth/sonos/callback: CRITICAL - Tokens not saved to database!', {
+        deviceId,
+        state,
+        verifyTokens
+      });
+      await deleteOAuthState(state);
+      return res.redirect('/?auth=error&reason=tokens_not_saved');
+    }
+    
     console.error('[AUTH_DEBUG] /auth/sonos/callback: Deleting OAuth state', { state, deviceId });
     await deleteOAuthState(state);
     console.error('[AUTH_DEBUG] /auth/sonos/callback: OAuth state deleted, redirecting to success', { deviceId });
@@ -362,10 +478,24 @@ app.get('/auth/sonos/callback', async (req, res) => {
       state,
       error: err.message,
       errorStack: err.stack,
-      errorDetails: err
+      errorDetails: err,
+      errorName: err.name,
+      errorCode: err.code,
+      errorStatus: err.status
     });
+    
+    // Try to get more details about the error
+    if (err.response) {
+      console.error('[AUTH_DEBUG] /auth/sonos/callback: Error response details', {
+        deviceId,
+        status: err.response.status,
+        statusText: err.response.statusText,
+        body: await err.response.text().catch(() => 'Could not read response body')
+      });
+    }
+    
     await deleteOAuthState(state);
-    res.redirect('/?auth=error');
+    res.redirect(`/?auth=error&reason=${encodeURIComponent(err.message || 'unknown_error')}`);
   }
 });
 
@@ -2231,8 +2361,38 @@ async function exchangeCodeForTokens(code, deviceId) {
   });
 
   console.error('[AUTH_DEBUG] exchangeCodeForTokens: Saving tokens to database', { deviceId });
-  await saveTokens(tokenData, deviceId);
-  console.error('[AUTH_DEBUG] exchangeCodeForTokens: Tokens saved to database successfully', { deviceId });
+  try {
+    await saveTokens(tokenData, deviceId);
+    console.error('[AUTH_DEBUG] exchangeCodeForTokens: Tokens saved to database successfully', { deviceId });
+    
+    // Immediately verify the save worked
+    const verify = await loadTokens(deviceId);
+    if (!verify.access_token) {
+      console.error('[AUTH_DEBUG] exchangeCodeForTokens: CRITICAL - saveTokens returned success but tokens not in database!', {
+        deviceId,
+        verify,
+        tokenData: {
+          hasAccessToken: !!tokenData.access_token,
+          hasRefreshToken: !!tokenData.refresh_token,
+          expiresAt: tokenData.expires_at
+        }
+      });
+      throw new Error('Tokens were not saved to database despite saveTokens() succeeding');
+    }
+    console.error('[AUTH_DEBUG] exchangeCodeForTokens: Token save verified in database', {
+      deviceId,
+      hasAccessToken: !!verify.access_token,
+      hasRefreshToken: !!verify.refresh_token
+    });
+  } catch (saveError) {
+    console.error('[AUTH_DEBUG] exchangeCodeForTokens: ERROR saving tokens to database', {
+      deviceId,
+      error: saveError.message,
+      errorStack: saveError.stack,
+      errorDetails: saveError
+    });
+    throw saveError;
+  }
 }
 
 function storeTokens(tokenResponse) {

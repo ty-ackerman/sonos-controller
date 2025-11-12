@@ -87,6 +87,13 @@ export async function saveTokens(tokens, deviceId) {
       refreshTokenLength: toSave.refresh_token?.length || 0
     });
 
+    console.error('[AUTH_DEBUG] saveTokens: Supabase client check', {
+      deviceId,
+      hasSupabase: !!supabase,
+      supabaseUrl: supabase?.supabaseUrl || 'NOT_SET',
+      tableName: 'tokens'
+    });
+
     const { data, error } = await supabase
       .from('tokens')
       .upsert(toSave, { onConflict: 'device_id' })
