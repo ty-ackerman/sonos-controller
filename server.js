@@ -69,11 +69,20 @@ async function saveOAuthState(deviceId, state) {
       .upsert({ device_id: deviceId, state }, { onConflict: 'device_id' });
     
     if (error) {
+      // Check if it's a table doesn't exist error
+      if (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('relation') && error.message?.includes('does not exist')) {
+        console.error('oauth_states table does not exist. Please run the SQL migration in supabase-schema.sql');
+        throw new Error('Database table missing: oauth_states. Please run the SQL migration.');
+      }
       throw error;
     }
   } catch (error) {
     console.error('Error saving OAuth state:', error);
-    throw error;
+    // Re-throw with more context if it's a known error
+    if (error.message?.includes('Database table missing')) {
+      throw error;
+    }
+    throw new Error(`Failed to save OAuth state: ${error.message || error}`);
   }
 }
 
@@ -198,7 +207,15 @@ app.get('/auth/sonos/login', async (req, res) => {
     await saveOAuthState(deviceId, oauthState);
   } catch (error) {
     console.error('Failed to save OAuth state:', error);
-    return res.status(500).json({ error: 'Failed to initialize login' });
+    // Provide more helpful error message
+    const errorMessage = error.message || 'Failed to initialize login';
+    if (errorMessage.includes('Database table missing')) {
+      return res.status(500).json({ 
+        error: 'Database configuration error',
+        message: 'The oauth_states table does not exist. Please run the SQL migration in supabase-schema.sql in your Supabase SQL Editor.'
+      });
+    }
+    return res.status(500).json({ error: 'Failed to initialize login', message: errorMessage });
   }
 
   // Include device_id in the state parameter so we can retrieve it in callback
