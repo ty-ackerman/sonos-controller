@@ -1055,6 +1055,11 @@
         display: block;
       }
 
+      /* Prevent scroll chaining when now playing panel is visible */
+      body.has-playing {
+        overscroll-behavior-y: contain;
+      }
+
       .currently-playing.expanded {
         transform: translateY(0);
       }
@@ -3365,11 +3370,6 @@ async function checkAuthAndInit() {
           }
 
           showToast('Skipped to next song');
-          // Open now playing section
-          if (!currentlyPlayingPanel.classList.contains('visible')) {
-            currentlyPlayingPanel.classList.add('visible');
-            document.body.classList.add('has-playing');
-          }
           // Refresh playback status after a short delay
           setTimeout(() => {
             updateCurrentlyPlaying();
@@ -3510,15 +3510,70 @@ async function checkAuthAndInit() {
 
       // Prevent scroll events on now playing panel from propagating to body
       if (currentlyPlayingPanel) {
+        // Track touch start position
+        let touchStartY = null;
+        
+        // Use capture phase to catch all scroll events early
         currentlyPlayingPanel.addEventListener('wheel', (e) => {
-          e.stopPropagation();
-        }, { passive: true });
+          // Always stop propagation for events within the panel
+          if (currentlyPlayingPanel.contains(e.target) || e.target === currentlyPlayingPanel) {
+            e.stopPropagation();
+            // Check if the panel can scroll further
+            const panel = currentlyPlayingPanel;
+            const isAtTop = panel.scrollTop <= 1;
+            const isAtBottom = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 1;
+            
+            // Prevent default if at boundaries and trying to scroll beyond, or if panel is scrollable
+            if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
+              e.preventDefault();
+            }
+          }
+        }, { passive: false, capture: true });
+        
+        // Track touch start
+        currentlyPlayingPanel.addEventListener('touchstart', (e) => {
+          if (currentlyPlayingPanel.contains(e.target) || e.target === currentlyPlayingPanel) {
+            const touch = e.touches[0];
+            if (touch) {
+              touchStartY = touch.clientY;
+            }
+          }
+        }, { passive: true, capture: true });
+        
+        // Prevent touch scroll from propagating
         currentlyPlayingPanel.addEventListener('touchmove', (e) => {
-          // Only stop propagation if scrolling within the panel
-          if (currentlyPlayingPanel.contains(e.target)) {
+          if (currentlyPlayingPanel.contains(e.target) || e.target === currentlyPlayingPanel) {
+            e.stopPropagation();
+            
+            const touch = e.touches[0];
+            if (touch && touchStartY !== null) {
+              const deltaY = touch.clientY - touchStartY;
+              const panel = currentlyPlayingPanel;
+              const isAtTop = panel.scrollTop <= 1;
+              const isAtBottom = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 1;
+              
+              // Prevent default if at boundaries and trying to scroll beyond
+              if ((isAtTop && deltaY > 0) || (isAtBottom && deltaY < 0)) {
+                e.preventDefault();
+              }
+            }
+          }
+        }, { passive: false, capture: true });
+        
+        // Also prevent scroll events on the document when they originate from the panel
+        document.addEventListener('wheel', (e) => {
+          if (currentlyPlayingPanel.classList.contains('visible') && 
+              (currentlyPlayingPanel.contains(e.target) || e.target === currentlyPlayingPanel)) {
             e.stopPropagation();
           }
-        }, { passive: true });
+        }, { passive: false, capture: true });
+        
+        document.addEventListener('touchmove', (e) => {
+          if (currentlyPlayingPanel.classList.contains('visible') && 
+              (currentlyPlayingPanel.contains(e.target) || e.target === currentlyPlayingPanel)) {
+            e.stopPropagation();
+          }
+        }, { passive: false, capture: true });
         
         // Ensure now playing panel stays fixed when page scrolls
         let lastScrollY = window.scrollY;
