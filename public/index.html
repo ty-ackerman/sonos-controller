@@ -1074,6 +1074,10 @@
         display: block;
       }
 
+      .currently-playing.hidden {
+        display: none !important;
+      }
+
       /* Prevent scroll chaining and disable scrolling when now playing panel is visible */
       body.has-playing {
         overscroll-behavior-y: contain;
@@ -3503,10 +3507,19 @@ function setAuthUI(loggedIn) {
   panelsContainer.classList.toggle('hidden', !loggedIn);
   // Hide hamburger menu and now playing panel when not logged in
   hamburgerMenuBtn.classList.toggle('hidden', !loggedIn);
-  currentlyPlayingPanel.classList.toggle('hidden', !loggedIn);
   if (!loggedIn) {
+    // Remove visible class and ensure panel is hidden
+    currentlyPlayingPanel.classList.remove('visible');
+    currentlyPlayingPanel.classList.add('hidden');
+    // Stop any playback refresh timers
+    stopPlaybackRefresh();
+    // Clear any cached playback state
+    panelShouldBeVisible = false;
     showView('control');
     closeMenu();
+  } else {
+    // When logged in, remove hidden class (but don't force visible)
+    currentlyPlayingPanel.classList.remove('hidden');
   }
   updateConnectionStatus(loggedIn);
 }
@@ -3552,9 +3565,10 @@ async function checkAuthAndInit() {
 
         try {
           skipSongButton.disabled = true;
-          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/next`, {
+          const { url, options } = addDeviceIdToRequest(`/api/groups/${encodeURIComponent(groupId)}/next`, {
             method: 'POST'
           });
+          const response = await fetch(url, options);
 
           if (!response.ok) {
             throw new Error('Failed to skip song');
@@ -3935,9 +3949,10 @@ async function checkAuthAndInit() {
           return { groups: [], players: [] };
         }
 
-        const response = await fetch(
+        const { url } = addDeviceIdToRequest(
           `/api/households/${encodeURIComponent(householdId)}/groups-players`
         );
+        const response = await fetch(url);
 
         if (!response.ok) {
           throw new Error(await response.text());
@@ -4147,7 +4162,8 @@ async function checkAuthAndInit() {
 
           // Load favorites for playlist management (include hidden ones)
           const params = new URLSearchParams({ householdId: currentHouseholdId, includeHidden: 'true' });
-          const response = await fetch(`/api/favorites?${params.toString()}`);
+          const { url } = addDeviceIdToRequest(`/api/favorites?${params.toString()}`);
+          const response = await fetch(url);
 
           if (response.status === 401) {
             setAuthUI(false);
@@ -4315,7 +4331,8 @@ async function checkAuthAndInit() {
         // Load hidden state for this favorite
         let isHidden = false;
         try {
-          const hiddenResponse = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden`);
+          const { url: hiddenUrl } = addDeviceIdToRequest(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden`);
+          const hiddenResponse = await fetch(hiddenUrl);
           if (hiddenResponse.ok) {
             const hiddenData = await hiddenResponse.json();
             isHidden = hiddenData.hidden === true;
@@ -4335,11 +4352,12 @@ async function checkAuthAndInit() {
           const playlistName = favorite.name || 'this playlist';
           
           try {
-            const response = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden`, {
+            const { url, options } = addDeviceIdToRequest(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ hidden: newHiddenState })
             });
+            const response = await fetch(url, options);
 
             if (!response.ok) {
               let errorMessage = 'Failed to update favorite visibility';
@@ -5471,7 +5489,8 @@ async function checkAuthAndInit() {
             params.set('groupId', activeGroupId);
           }
 
-          const response = await fetch(`/api/favorites?${params.toString()}`);
+          const { url } = addDeviceIdToRequest(`/api/favorites?${params.toString()}`);
+          const response = await fetch(url);
 
           if (response.status === 401) {
             setAuthUI(false);
@@ -5614,9 +5633,10 @@ async function checkAuthAndInit() {
         setFavoriteLoading(entry, true);
 
         try {
-          const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
+          const { url: groupUrl, options: groupOptions } = addDeviceIdToRequest(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
             method: 'POST'
           });
+          const groupResponse = await fetch(groupUrl, groupOptions);
 
           if (!groupResponse.ok) {
             throw new Error('Failed to create group with all players');
@@ -5994,7 +6014,8 @@ async function checkAuthAndInit() {
         try {
           clearTimeout(refreshTimer);
           refreshTimer = null;
-          const response = await fetch(`/api/households/${encodeURIComponent(householdId)}/players`);
+          const { url } = addDeviceIdToRequest(`/api/households/${encodeURIComponent(householdId)}/players`);
+          const response = await fetch(url);
 
           if (response.status === 401) {
             setAuthUI(false);
@@ -6016,9 +6037,10 @@ async function checkAuthAndInit() {
           // Automatically create and select a group with all players if none is selected
           if (!activeGroupId && latestPlayers.length > 0 && currentHouseholdId) {
             try {
-              const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
+              const { url: groupUrl, options: groupOptions } = addDeviceIdToRequest(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
                 method: 'POST'
               });
+              const groupResponse = await fetch(groupUrl, groupOptions);
               
               if (groupResponse.ok) {
                 const groupData = await groupResponse.json();
@@ -6051,7 +6073,8 @@ async function checkAuthAndInit() {
                     params.set('householdId', currentHouseholdId);
                   }
                   const statusUrl = `/api/groups/${encodeURIComponent(groupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
-                  const response = await fetch(statusUrl);
+                  const { url: statusUrlWithDevice } = addDeviceIdToRequest(statusUrl);
+                  const response = await fetch(statusUrlWithDevice);
                   if (response.ok) {
                     const status = await response.json();
                     const playbackState = status.playbackState || status.state || 'STOPPED';
@@ -6287,8 +6310,9 @@ async function checkAuthAndInit() {
             updateRecommendationCardButtonsByName(cacheData.playlistName);
           }
 
-          // Show panel if we have content
-          if (cacheData.title || cacheData.playlistName) {
+          // Show panel if we have content and user is logged in
+          if ((cacheData.title || cacheData.playlistName) && isSonosConnected) {
+            currentlyPlayingPanel.classList.remove('hidden');
             currentlyPlayingPanel.classList.add('visible');
             // Don't lock scroll here - only lock when expanded
             panelShouldBeVisible = true;
@@ -6299,6 +6323,13 @@ async function checkAuthAndInit() {
       }
 
       async function updateCurrentlyPlaying(shouldAutoShow = true) {
+        // Don't update if not logged in
+        if (!isSonosConnected) {
+          currentlyPlayingPanel.classList.remove('visible');
+          panelShouldBeVisible = false;
+          return;
+        }
+        
         let groupId = getSelectedGroupId();
         
         // If no group is selected but we have groups, try the first one
@@ -6342,7 +6373,8 @@ async function checkAuthAndInit() {
             params.set('householdId', currentHouseholdId);
           }
           const statusUrl = `/api/groups/${encodeURIComponent(groupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
-          const response = await fetch(statusUrl).catch((fetchError) => {
+          const { url: statusUrlWithDevice } = addDeviceIdToRequest(statusUrl);
+          const response = await fetch(statusUrlWithDevice).catch((fetchError) => {
             console.error('[Client] Fetch error:', fetchError);
             throw new Error(`Network error: ${fetchError.message || 'Failed to fetch'}`);
           });
@@ -6878,6 +6910,10 @@ async function checkAuthAndInit() {
       }
 
       function updateCurrentlyPlayingRooms(groupId) {
+        // Don't update if not logged in
+        if (!isSonosConnected) {
+          return;
+        }
         if (!groupId || !latestPlayers.length) {
           currentlyPlayingRoomsList.innerHTML = '';
           return;
@@ -7059,6 +7095,9 @@ async function checkAuthAndInit() {
 
       function startPlaybackRefresh() {
         clearInterval(playbackRefreshTimer);
+        if (!isSonosConnected) {
+          return;
+        }
         playbackRefreshTimer = setInterval(() => {
           if (isSonosConnected && getSelectedGroupId()) {
             updateCurrentlyPlaying();
