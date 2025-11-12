@@ -1317,10 +1317,12 @@
         font-variant-numeric: tabular-nums;
       }
 
+      /* Add bottom padding to body to account for now playing bar */
       body {
-        padding-bottom: 0;
+        padding-bottom: 80px;
       }
 
+      /* Increase padding when panel is visible */
       body.has-playing {
         padding-bottom: 100px;
       }
