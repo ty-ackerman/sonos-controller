@@ -290,12 +290,13 @@
         top: 64px; /* Position below header (40px button + 12px top padding + 12px bottom padding) */
         left: 50%;
         transform: translateX(-50%) translateY(-100%);
-        z-index: 100; /* Below loading overlay (9999) but above content */
+        z-index: 40; /* Below header but above content */
         width: min(480px, 100vw);
         padding: 12px 20px;
         background: var(--bg-primary);
-        border-bottom: 1px solid var(--border-color);
-        box-shadow: var(--shadow-md);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
         transition: transform 0.3s ease;
       }
 
@@ -696,6 +697,7 @@
 
       #panel-playlist-management .playlist-card {
         gap: 12px;
+        overflow: visible;
       }
 
       #panel-playlist-management .playlist-name-row {
@@ -703,6 +705,14 @@
         align-items: center;
         gap: 8px;
         flex-wrap: wrap;
+        word-break: break-word;
+        overflow-wrap: break-word;
+      }
+
+      #panel-playlist-management .playlist-name {
+        word-break: break-word;
+        overflow-wrap: break-word;
+        max-width: 100%;
       }
 
       #panel-playlist-management .playlist-vibe-select {
@@ -1028,6 +1038,11 @@
         transition: transform 0.3s ease-out;
         transform: translateY(0) !important;
         touch-action: manipulation;
+        overscroll-behavior: contain;
+      }
+
+      .currently-playing-content {
+        overscroll-behavior: contain;
       }
 
       .currently-playing.visible {
@@ -2534,7 +2549,7 @@
             <div class="favorites-header">
               <div class="favorites-title-section">
                 <h2 class="favorites-main-title">All Playlists</h2>
-                <p class="favorites-description">Browse and play from your complete collection of playlists. Each playlist is curated to match different vibes and times of day.</p>
+                <p class="favorites-description">Browse and play from our complete collection of playlists. Each playlist is curated to match different vibes and times of day.</p>
               </div>
               <button id="favorites-toggle" class="favorites-toggle" type="button">
                 View All Playlists <span>▼</span>
@@ -3197,6 +3212,20 @@ function showView(name) {
   panelPlaylistManagement.classList.toggle('hidden', !isPlaylistManagement);
   panelSettings.classList.toggle('hidden', !isSettings);
   
+  // Update household title based on view
+  if (isPlaylistManagement) {
+    householdTitle.textContent = 'Playlist Management';
+  } else if (isSettings) {
+    householdTitle.textContent = 'Settings';
+  } else {
+    // For control view, show the household/group name
+    if (currentHouseholdName) {
+      householdTitle.textContent = currentHouseholdName;
+    } else {
+      householdTitle.textContent = '';
+    }
+  }
+  
   closeMenu();
   
   if (isSettings) {
@@ -3350,6 +3379,11 @@ async function checkAuthAndInit() {
           }
 
           showToast('Skipped to next song');
+          // Open now playing section
+          if (!currentlyPlayingPanel.classList.contains('visible')) {
+            currentlyPlayingPanel.classList.add('visible');
+            document.body.classList.add('has-playing');
+          }
           // Refresh playback status after a short delay
           setTimeout(() => {
             updateCurrentlyPlaying();
@@ -3486,6 +3520,19 @@ async function checkAuthAndInit() {
             toast.classList.add('hidden');
           }, 300); // Wait for animation to complete
         }, 3500);
+      }
+
+      // Prevent scroll events on now playing panel from propagating to body
+      if (currentlyPlayingPanel) {
+        currentlyPlayingPanel.addEventListener('wheel', (e) => {
+          e.stopPropagation();
+        }, { passive: true });
+        currentlyPlayingPanel.addEventListener('touchmove', (e) => {
+          // Only stop propagation if scrolling within the panel
+          if (currentlyPlayingPanel.contains(e.target)) {
+            e.stopPropagation();
+          }
+        }, { passive: true });
       }
 
       function getSelectedGroupId() {
@@ -5288,6 +5335,37 @@ async function checkAuthAndInit() {
         updateRecommendationCardButtons(favoriteId);
       }
 
+      function markActiveFavoriteByName(playlistName) {
+        if (!playlistName) {
+          // Clear all highlighting if no playlist name
+          favoritesRegistry.forEach((entry) => {
+            if (entry.button) {
+              entry.button.classList.remove('active');
+            }
+          });
+          updateRecommendationCardButtonsByName(null);
+          return;
+        }
+
+        // Match by playlist name (case-insensitive, trimmed)
+        const normalizedName = playlistName.trim().toLowerCase();
+        
+        favoritesRegistry.forEach((entry) => {
+          if (entry.loading) {
+            return;
+          }
+
+          const entryName = entry.favorite?.name?.trim().toLowerCase();
+          const isActive = entryName === normalizedName;
+          if (entry.button) {
+            entry.button.classList.toggle('active', isActive);
+          }
+        });
+
+        // Update recommendation card buttons and highlighting by name
+        updateRecommendationCardButtonsByName(playlistName);
+      }
+
       function updateRecommendationCardButtons(activeFavoriteId) {
         // Update button states
         recommendationCardButtons.forEach((button, favoriteId) => {
@@ -5316,6 +5394,72 @@ async function checkAuthAndInit() {
           if (cardFavoriteId) {
             const isActive = Boolean(activeFavoriteId) && String(cardFavoriteId) === String(activeFavoriteId);
             card.classList.toggle('active', isActive);
+          }
+        });
+      }
+
+      function updateRecommendationCardButtonsByName(playlistName) {
+        if (!playlistName) {
+          // Clear all highlighting
+          recommendationCardButtons.forEach((button) => {
+            button.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
+            button.classList.remove('playing');
+          });
+          recommendationCards.forEach((card) => {
+            if (card) {
+              card.classList.remove('now-playing');
+            }
+          });
+          document.querySelectorAll('.alternative-playlist').forEach((card) => {
+            card.classList.remove('active');
+          });
+          return;
+        }
+
+        const normalizedName = playlistName.trim().toLowerCase();
+
+        // Update button states by matching playlist names
+        recommendationCardButtons.forEach((button, favoriteId) => {
+          // Get the favorite from registry to get its name
+          const favoriteEntry = favoritesRegistry.get(favoriteId);
+          const favoriteName = favoriteEntry?.favorite?.name?.trim().toLowerCase();
+          const isActive = favoriteName === normalizedName;
+          
+          if (isActive) {
+            button.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Playing';
+            button.classList.add('playing');
+          } else {
+            button.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
+            button.classList.remove('playing');
+          }
+        });
+        
+        // Update card highlighting for recommended playlists by name
+        recommendationCards.forEach((card, favoriteId) => {
+          if (card) {
+            const favoriteEntry = favoritesRegistry.get(favoriteId);
+            const favoriteName = favoriteEntry?.favorite?.name?.trim().toLowerCase();
+            const isActive = favoriteName === normalizedName;
+            card.classList.toggle('now-playing', isActive);
+          }
+        });
+        
+        // Update alternative playlist cards by name
+        document.querySelectorAll('.alternative-playlist').forEach((card) => {
+          const cardFavoriteId = card.dataset.favoriteId;
+          if (cardFavoriteId) {
+            const favoriteEntry = favoritesRegistry.get(cardFavoriteId);
+            const favoriteName = favoriteEntry?.favorite?.name?.trim().toLowerCase();
+            const isActive = favoriteName === normalizedName;
+            card.classList.toggle('active', isActive);
+          } else {
+            // Try to get name from card text content as fallback
+            const cardNameElement = card.querySelector('.alternative-playlist-name');
+            if (cardNameElement) {
+              const cardName = cardNameElement.textContent.trim().toLowerCase();
+              const isActive = cardName === normalizedName;
+              card.classList.toggle('active', isActive);
+            }
           }
         });
       }
@@ -5357,7 +5501,7 @@ async function checkAuthAndInit() {
           {
             volume: level
           },
-          showFeedbackMessage ? `Volume set to ${level}%.` : null
+          null
         );
 
         if (!success) {
@@ -5802,11 +5946,7 @@ async function checkAuthAndInit() {
             // Use activeFavoriteId directly from server response (no syncing needed)
             const activeFavoriteId = status.activeFavoriteId;
             
-            // Update UI highlighting based on server response
-            markActiveFavorite(activeFavoriteId);
-            updateRecommendationCardButtons(activeFavoriteId);
-
-            // Get playlist name with multiple fallbacks
+            // Get playlist name with multiple fallbacks (needed for highlighting by name)
             let playlistName = null;
             // Primary: container.name from metadata
             if (status.container?.name) {
@@ -5831,6 +5971,10 @@ async function checkAuthAndInit() {
                 ? status.container.title
                 : status.container.title?.name || status.container.title?.value || null;
             }
+            
+            // Update UI highlighting based on playlist name (not just ID)
+            markActiveFavoriteByName(playlistName);
+            updateRecommendationCardButtonsByName(playlistName);
             
             const title = track?.name || track?.title || item?.name || (isPlaying ? 'Loading...' : 'Unknown Track');
             
