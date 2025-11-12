@@ -810,22 +810,22 @@ app.delete('/api/vibe-time-rules/:id', async (req, res) => {
 // Note: When endHour is 0 (12:00 AM), it means "ends before midnight" (exclusive of hour 0)
 // So a rule from 19-0 means 7:00 PM through 11:59 PM (hours 19-23), NOT including hour 0
 function timeRangeContainsHour(startHour, endHour, hour) {
-  // Special case: if endHour is 0, treat it as "ends before midnight" (exclusive)
-  // Convert 0 to 23 for the purpose of range checking
-  let effectiveEndHour = endHour;
+  // Special case: if endHour is 0 (12AM), the rule applies until 11:59 PM (hour 23)
+  // This means hour 23 is included, but hour 0 is NOT included
   if (endHour === 0 && startHour > 0) {
-    // Rule ends at midnight - treat as ending at 23:59 (hour 23)
-    effectiveEndHour = 23;
+    // Rule ends at midnight - include hour 23, exclude hour 0
+    return hour >= startHour && hour <= 23;
   }
   
-  if (startHour <= effectiveEndHour) {
-    // Normal range (e.g., 7-12 means 7:00 AM through 12:59 PM)
-    // Or 19-23 means 7:00 PM through 11:59 PM (when endHour was 0)
-    return hour >= startHour && hour <= effectiveEndHour;
+  // For normal ranges, make endHour exclusive (e.g., 17-23 means 5:00 PM through 10:59 PM, NOT including 11:00 PM)
+  if (startHour <= endHour) {
+    // Normal range (e.g., 7-12 means 7:00 AM through 11:59 AM, NOT including 12:00 PM)
+    // Make endHour exclusive: hour must be < endHour (not <=)
+    return hour >= startHour && hour < endHour;
   } else {
-    // Wraps around midnight (e.g., 22-6 means 10:00 PM through 6:59 AM)
-    // This includes both hours >= startHour (evening) AND hours <= effectiveEndHour (early morning)
-    return hour >= startHour || hour <= effectiveEndHour;
+    // Wraps around midnight (e.g., 22-6 means 10:00 PM through 5:59 AM, NOT including 6:00 AM)
+    // This includes hours >= startHour (evening) OR hours < endHour (early morning, exclusive)
+    return hour >= startHour || hour < endHour;
   }
 }
 
