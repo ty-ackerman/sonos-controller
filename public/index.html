@@ -561,39 +561,25 @@
 
       .playlist-card.loading {
         cursor: progress;
-        position: relative;
         pointer-events: none;
-        opacity: 0.7;
+        opacity: 0.8;
       }
 
-      .playlist-card.loading::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 12px;
-        display: flex;
+      .playlist-loading-indicator {
+        display: none;
         align-items: center;
-        justify-content: center;
-        z-index: 10;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        font-weight: 500;
+        margin-left: 8px;
       }
 
-      .playlist-card.loading::before {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 32px;
-        height: 32px;
-        border: 3px solid rgba(255, 255, 255, 0.2);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-        z-index: 11;
+      .playlist-card.loading .playlist-loading-indicator {
+        display: inline-flex;
       }
 
 
@@ -2372,39 +2358,25 @@
       }
 
       .recommended-playlist.loading {
-        opacity: 0.7;
+        opacity: 0.8;
         pointer-events: none;
-        position: relative;
       }
 
-      .recommended-playlist.loading::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 16px;
-        display: flex;
+      .recommended-playlist-loading-indicator {
+        display: none;
         align-items: center;
-        justify-content: center;
-        z-index: 10;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        font-weight: 500;
+        margin-top: 8px;
       }
 
-      .recommended-playlist.loading::before {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 40px;
-        height: 40px;
-        border: 3px solid rgba(255, 255, 255, 0.2);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-        z-index: 11;
+      .recommended-playlist.loading .recommended-playlist-loading-indicator {
+        display: inline-flex;
       }
 
       .alternatives-dropdown {
@@ -2504,39 +2476,25 @@
       }
 
       .alternative-playlist.loading {
-        opacity: 0.7;
+        opacity: 0.8;
         pointer-events: none;
-        position: relative;
       }
 
-      .alternative-playlist.loading::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 12px;
-        display: flex;
+      .alternative-playlist-loading-indicator {
+        display: none;
         align-items: center;
-        justify-content: center;
-        z-index: 10;
+        gap: 4px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        font-size: 0.6875rem;
+        font-weight: 500;
+        margin-top: 4px;
       }
 
-      .alternative-playlist.loading::before {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 28px;
-        height: 28px;
-        border: 2.5px solid rgba(255, 255, 255, 0.2);
-        border-top-color: var(--accent);
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-        z-index: 11;
+      .alternative-playlist.loading .alternative-playlist-loading-indicator {
+        display: inline-flex;
       }
 
       .alternative-playlist-art {
@@ -5179,6 +5137,19 @@ async function checkAuthAndInit() {
             playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Loading...';
             card.classList.add('loading');
             
+            // Add loading indicator to recommended playlist
+            let loadingIndicator = card.querySelector('.recommended-playlist-loading-indicator');
+            if (!loadingIndicator) {
+              loadingIndicator = document.createElement('span');
+              loadingIndicator.className = 'recommended-playlist-loading-indicator';
+              loadingIndicator.textContent = 'Loading...';
+              const meta = card.querySelector('.recommended-playlist-meta');
+              if (meta) {
+                meta.appendChild(loadingIndicator);
+              }
+            }
+            loadingIndicator.style.display = 'inline-flex';
+            
             try {
               const entry = favoritesRegistry.get(favorite.id);
               if (entry) {
@@ -5194,6 +5165,9 @@ async function checkAuthAndInit() {
               // Button state will be updated by updateRecommendationCardButtons
               updateRecommendationCardButtons(null); // Will be updated from status
               card.classList.remove('loading');
+              if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+              }
             }
           });
 
@@ -5211,6 +5185,19 @@ async function checkAuthAndInit() {
             playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Loading...';
             card.classList.add('loading');
             
+            // Add loading indicator to recommended playlist
+            let loadingIndicator = card.querySelector('.recommended-playlist-loading-indicator');
+            if (!loadingIndicator) {
+              loadingIndicator = document.createElement('span');
+              loadingIndicator.className = 'recommended-playlist-loading-indicator';
+              loadingIndicator.textContent = 'Loading...';
+              const meta = card.querySelector('.recommended-playlist-meta');
+              if (meta) {
+                meta.appendChild(loadingIndicator);
+              }
+            }
+            loadingIndicator.style.display = 'inline-flex';
+            
             try {
               const entry = favoritesRegistry.get(favorite.id);
               if (entry) {
@@ -5225,6 +5212,9 @@ async function checkAuthAndInit() {
               playBtn.disabled = false;
               updateRecommendationCardButtons(null); // Will be updated from status
               card.classList.remove('loading');
+              if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+              }
             }
           });
         } else {
@@ -5295,6 +5285,20 @@ async function checkAuthAndInit() {
 
           card.addEventListener('click', async () => {
             card.classList.add('loading');
+            
+            // Add loading indicator to alternative playlist
+            let loadingIndicator = card.querySelector('.alternative-playlist-loading-indicator');
+            if (!loadingIndicator) {
+              loadingIndicator = document.createElement('span');
+              loadingIndicator.className = 'alternative-playlist-loading-indicator';
+              loadingIndicator.textContent = 'Loading...';
+              const info = card.querySelector('.alternative-playlist-info');
+              if (info) {
+                info.appendChild(loadingIndicator);
+              }
+            }
+            loadingIndicator.style.display = 'inline-flex';
+            
             try {
               const entry = favoritesRegistry.get(favorite.id);
               if (entry) {
@@ -5307,6 +5311,9 @@ async function checkAuthAndInit() {
               console.error('Failed to play alternative playlist:', error);
             } finally {
               card.classList.remove('loading');
+              if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+              }
             }
           });
         }
@@ -5603,11 +5610,36 @@ async function checkAuthAndInit() {
 
       function setFavoriteLoading(entry, isLoading) {
         entry.loading = isLoading;
-        entry.button.disabled = true;
-        if (isLoading) {
-          entry.button.classList.add('loading');
-        } else {
-          entry.button.classList.remove('loading');
+        if (entry.button) {
+          entry.button.disabled = isLoading;
+          if (isLoading) {
+            entry.button.classList.add('loading');
+            // Add loading indicator if it doesn't exist
+            let loadingIndicator = entry.button.querySelector('.playlist-loading-indicator');
+            if (!loadingIndicator) {
+              loadingIndicator = document.createElement('span');
+              loadingIndicator.className = 'playlist-loading-indicator';
+              loadingIndicator.textContent = 'Loading...';
+              // Add it to the name row if it exists, otherwise to the meta
+              const nameRow = entry.button.querySelector('.playlist-name-row');
+              if (nameRow) {
+                nameRow.appendChild(loadingIndicator);
+              } else {
+                const meta = entry.button.querySelector('.playlist-meta');
+                if (meta) {
+                  meta.appendChild(loadingIndicator);
+                }
+              }
+            }
+            loadingIndicator.style.display = 'inline-flex';
+          } else {
+            entry.button.classList.remove('loading');
+            // Hide loading indicator
+            const loadingIndicator = entry.button.querySelector('.playlist-loading-indicator');
+            if (loadingIndicator) {
+              loadingIndicator.style.display = 'none';
+            }
+          }
         }
       }
 
