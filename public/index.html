@@ -1055,9 +1055,10 @@
         display: block;
       }
 
-      /* Prevent scroll chaining when now playing panel is visible */
+      /* Prevent scroll chaining and disable scrolling when now playing panel is visible */
       body.has-playing {
         overscroll-behavior-y: contain;
+        overflow: hidden;
       }
 
       .currently-playing.expanded {
@@ -2902,6 +2903,8 @@ settingsStatusLabel.textContent = '';
       // Track user interaction with panel and scroll position (used for scroll detection)
       let isInteractingWithPanel = false;
       let panelScrollTopBefore = 0;
+      // Track body scroll position for scroll lock
+      let bodyScrollLockPosition = 0;
       let currentPlaybackState = null;
       let currentImageUrl = null; // Store the source imageUrl (before proxying) for comparison
       let currentProxiedImageUrl = null; // Store the proxied URL for DOM updates
@@ -3481,7 +3484,7 @@ async function checkAuthAndInit() {
           }
           stopPlaybackRefresh();
           currentlyPlayingPanel.classList.remove('visible');
-          document.body.classList.remove('has-playing');
+          unlockBodyScroll();
         }
 
         settingsSaveButton.disabled = !connected;
@@ -3513,6 +3516,30 @@ async function checkAuthAndInit() {
             toast.classList.add('hidden');
           }, 300); // Wait for animation to complete
         }, 3500);
+      }
+
+      // Lock body scroll while preserving scroll position
+      function lockBodyScroll() {
+        if (document.body.classList.contains('has-playing')) {
+          return; // Already locked
+        }
+        bodyScrollLockPosition = window.scrollY || document.documentElement.scrollTop;
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${bodyScrollLockPosition}px`;
+        document.body.style.width = '100%';
+        document.body.classList.add('has-playing');
+      }
+
+      // Unlock body scroll and restore scroll position
+      function unlockBodyScroll() {
+        if (!document.body.classList.contains('has-playing')) {
+          return; // Already unlocked
+        }
+        document.body.classList.remove('has-playing');
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        window.scrollTo(0, bodyScrollLockPosition);
       }
 
       // Prevent scroll events on now playing panel from propagating to body
@@ -5974,7 +6001,7 @@ async function checkAuthAndInit() {
           // Show panel if we have content
           if (cacheData.title || cacheData.playlistName) {
             currentlyPlayingPanel.classList.add('visible');
-            document.body.classList.add('has-playing');
+            lockBodyScroll();
             panelShouldBeVisible = true;
           }
         } catch (error) {
@@ -6009,7 +6036,7 @@ async function checkAuthAndInit() {
           if (!panelShouldBeVisible) {
             clearTimeout(hidePanelTimeout);
             currentlyPlayingPanel.classList.remove('visible');
-            document.body.classList.remove('has-playing');
+            unlockBodyScroll();
           }
           return;
         }
@@ -6526,7 +6553,7 @@ async function checkAuthAndInit() {
             updateCurrentlyPlayingRooms(groupId);
 
             currentlyPlayingPanel.classList.add('visible');
-            document.body.classList.add('has-playing');
+            lockBodyScroll();
 
             // Save playback state to cache
             savePlaybackStateToCache({
@@ -6547,7 +6574,7 @@ async function checkAuthAndInit() {
               hidePanelTimeout = setTimeout(() => {
                 if (!panelShouldBeVisible) {
                   currentlyPlayingPanel.classList.remove('visible');
-                  document.body.classList.remove('has-playing');
+                  unlockBodyScroll();
                   currentImageUrl = null;
                 }
               }, 2000); // Wait 2 seconds before hiding
@@ -6556,7 +6583,7 @@ async function checkAuthAndInit() {
         } catch (error) {
           console.error('Failed to update currently playing:', error);
           currentlyPlayingPanel.classList.remove('visible');
-          document.body.classList.remove('has-playing');
+          unlockBodyScroll();
         }
       }
 
