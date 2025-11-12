@@ -63,27 +63,54 @@ let initializationPromise = null;
 
 // OAuth state management using database for serverless compatibility
 async function saveOAuthState(state, deviceId) {
+  console.error('[AUTH_DEBUG] saveOAuthState called', { state, deviceId, hasDeviceId: !!deviceId });
+  
   try {
-    const { error } = await supabase
+    const toSave = {
+      state: state,
+      device_id: deviceId,
+      created_at: new Date().toISOString()
+    };
+    
+    console.error('[AUTH_DEBUG] saveOAuthState: Upserting to oauth_states table', { state, deviceId, toSave });
+    
+    const { data, error } = await supabase
       .from('oauth_states')
-      .upsert({
-        state: state,
-        device_id: deviceId,
-        created_at: new Date().toISOString()
-      }, { onConflict: 'state' });
+      .upsert(toSave, { onConflict: 'state' })
+      .select();
     
     if (error) {
-      console.error('Error saving OAuth state:', error);
+      console.error('[AUTH_DEBUG] saveOAuthState: Supabase upsert ERROR', {
+        state,
+        deviceId,
+        error: error.message,
+        errorCode: error.code,
+        errorDetails: error
+      });
       throw error;
     }
+    
+    console.error('[AUTH_DEBUG] saveOAuthState: Supabase upsert SUCCESS', {
+      state,
+      deviceId,
+      returnedData: data
+    });
   } catch (error) {
-    console.error('Failed to save OAuth state:', error);
+    console.error('[AUTH_DEBUG] saveOAuthState: Exception caught', {
+      state,
+      deviceId,
+      error: error.message,
+      errorStack: error.stack
+    });
     throw error;
   }
 }
 
 async function getDeviceIdFromState(state) {
+  console.error('[AUTH_DEBUG] getDeviceIdFromState called', { state, hasState: !!state });
+  
   try {
+    console.error('[AUTH_DEBUG] getDeviceIdFromState: Querying oauth_states table', { state });
     const { data, error } = await supabase
       .from('oauth_states')
       .select('device_id')
@@ -92,31 +119,62 @@ async function getDeviceIdFromState(state) {
     
     if (error) {
       if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
+        console.error('[AUTH_DEBUG] getDeviceIdFromState: State not found', { state, errorCode: error.code });
         return null;
       }
-      console.error('Error retrieving OAuth state:', error);
+      console.error('[AUTH_DEBUG] getDeviceIdFromState: Error retrieving OAuth state', {
+        state,
+        error: error.message,
+        errorCode: error.code,
+        errorDetails: error
+      });
       return null;
     }
     
-    return data?.device_id || null;
+    const deviceId = data?.device_id || null;
+    console.error('[AUTH_DEBUG] getDeviceIdFromState: Success', { state, deviceId, hasDeviceId: !!deviceId });
+    return deviceId;
   } catch (error) {
-    console.error('Failed to retrieve OAuth state:', error);
+    console.error('[AUTH_DEBUG] getDeviceIdFromState: Exception caught', {
+      state,
+      error: error.message,
+      errorStack: error.stack
+    });
     return null;
   }
 }
 
 async function deleteOAuthState(state) {
+  console.error('[AUTH_DEBUG] deleteOAuthState called', { state, hasState: !!state });
+  
   try {
-    const { error } = await supabase
+    console.error('[AUTH_DEBUG] deleteOAuthState: Deleting from oauth_states table', { state });
+    const { data, error } = await supabase
       .from('oauth_states')
       .delete()
-      .eq('state', state);
+      .eq('state', state)
+      .select();
     
     if (error) {
-      console.error('Error deleting OAuth state:', error);
+      console.error('[AUTH_DEBUG] deleteOAuthState: Supabase delete ERROR', {
+        state,
+        error: error.message,
+        errorCode: error.code,
+        errorDetails: error
+      });
+    } else {
+      console.error('[AUTH_DEBUG] deleteOAuthState: Supabase delete SUCCESS', {
+        state,
+        deletedRows: data?.length || 0,
+        deletedData: data
+      });
     }
   } catch (error) {
-    console.error('Failed to delete OAuth state:', error);
+    console.error('[AUTH_DEBUG] deleteOAuthState: Exception caught', {
+      state,
+      error: error.message,
+      errorStack: error.stack
+    });
   }
 }
 
@@ -191,16 +249,36 @@ app.get('/healthz', (_req, res) => {
 app.get('/auth/sonos/login', async (req, res) => {
   const { device_id } = req.query;
   
+  console.error('[AUTH_DEBUG] /auth/sonos/login called', { 
+    device_id, 
+    hasDeviceId: !!device_id,
+    queryParams: req.query 
+  });
+  
   if (!device_id) {
+    console.error('[AUTH_DEBUG] /auth/sonos/login: ERROR - Missing device_id');
     return res.redirect('/?auth=missing_device_id');
   }
 
   const oauthState = crypto.randomBytes(16).toString('hex');
+  console.error('[AUTH_DEBUG] /auth/sonos/login: Generated OAuth state', { 
+    device_id, 
+    oauthState,
+    stateLength: oauthState.length 
+  });
   
   try {
+    console.error('[AUTH_DEBUG] /auth/sonos/login: Saving OAuth state to database', { device_id, oauthState });
     await saveOAuthState(oauthState, device_id);
+    console.error('[AUTH_DEBUG] /auth/sonos/login: OAuth state saved successfully', { device_id, oauthState });
   } catch (error) {
-    console.error('Failed to save OAuth state:', error);
+    console.error('[AUTH_DEBUG] /auth/sonos/login: Failed to save OAuth state', { 
+      device_id, 
+      oauthState,
+      error: error.message,
+      errorStack: error.stack,
+      errorDetails: error 
+    });
     return res.redirect('/?auth=error');
   }
 
@@ -212,38 +290,80 @@ app.get('/auth/sonos/login', async (req, res) => {
     state: oauthState
   });
 
-  res.redirect(`${SONOS_AUTH_BASE}/login/v3/oauth?${params.toString()}`);
+  const redirectUrl = `${SONOS_AUTH_BASE}/login/v3/oauth?${params.toString()}`;
+  console.error('[AUTH_DEBUG] /auth/sonos/login: Redirecting to Sonos OAuth', { 
+    device_id, 
+    oauthState,
+    redirectUrl: redirectUrl.substring(0, 100) + '...' 
+  });
+
+  res.redirect(redirectUrl);
 });
 
 app.get('/auth/sonos/callback', async (req, res) => {
   const { code, state, error } = req.query;
 
+  console.error('[AUTH_DEBUG] /auth/sonos/callback called', { 
+    hasCode: !!code,
+    hasState: !!state,
+    hasError: !!error,
+    error,
+    codeLength: code?.length || 0,
+    stateLength: state?.length || 0,
+    queryParams: req.query
+  });
+
   if (error) {
-    console.error('Sonos OAuth error:', error);
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: Sonos OAuth error returned', { error, state });
     return res.redirect('/?auth=error');
   }
 
   if (!code) {
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: ERROR - Missing code', { state });
     return res.redirect('/?auth=missing_code');
   }
 
   if (!state) {
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: ERROR - Missing state');
     return res.redirect('/?auth=invalid_state');
   }
 
   // Retrieve device_id from OAuth state
+  console.error('[AUTH_DEBUG] /auth/sonos/callback: Retrieving device_id from OAuth state', { state });
   const deviceId = await getDeviceIdFromState(state);
+  console.error('[AUTH_DEBUG] /auth/sonos/callback: Retrieved device_id from state', { 
+    state, 
+    deviceId, 
+    hasDeviceId: !!deviceId 
+  });
+  
   if (!deviceId) {
-    console.error('OAuth state not found or expired');
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: ERROR - OAuth state not found or expired', { state });
     return res.redirect('/?auth=invalid_state');
   }
 
   try {
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: Exchanging code for tokens', { 
+      deviceId, 
+      codeLength: code.length,
+      state 
+    });
     await exchangeCodeForTokens(code, deviceId);
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: Token exchange successful', { deviceId, state });
+    
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: Deleting OAuth state', { state, deviceId });
     await deleteOAuthState(state);
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: OAuth state deleted, redirecting to success', { deviceId });
+    
     res.redirect('/?auth=success');
   } catch (err) {
-    console.error('Failed to exchange code for tokens', err);
+    console.error('[AUTH_DEBUG] /auth/sonos/callback: ERROR - Failed to exchange code for tokens', {
+      deviceId,
+      state,
+      error: err.message,
+      errorStack: err.stack,
+      errorDetails: err
+    });
     await deleteOAuthState(state);
     res.redirect('/?auth=error');
   }
@@ -373,13 +493,6 @@ app.post('/api/groups/:groupId/volume', async (req, res) => {
     });
     const responseData = await response.json().catch(() => ({}));
     
-    console.log('[SonosData] Volume set response:', {
-      groupId,
-      requestedVolume: level,
-      responseVolume: responseData.volume || responseData.groupVolume || level,
-      responseData: responseData
-    });
-    
     res.json({ status: 'ok', volume: level });
   } catch (error) {
     handleProxyError(res, error);
@@ -471,17 +584,6 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     
     const currentItem = metadata.currentItem || metadata.item || null;
     const container = currentItem?.container || metadata.container || null;
-    
-    // Log raw Sonos data for debugging
-    console.log('[SonosData] Status response:', {
-      groupId,
-      volume: volume.volume || volume.groupVolume || 0,
-      playbackState: playbackState.playbackState || playbackState.state,
-      hasCurrentItem: !!currentItem,
-      hasContainer: !!container,
-      metadataKeys: Object.keys(metadata),
-      playbackStateKeys: Object.keys(playbackState)
-    });
     
     const normalizeField = (field) => {
       if (!field) return null;
@@ -622,19 +724,6 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     const finalActiveFavoriteId = (finalPlaybackState === 'STOPPED' && !currentItem) ? null : (activeFavorite?.id || null);
     const finalActiveFavorite = (finalPlaybackState === 'STOPPED' && !currentItem) ? null : activeFavorite;
     
-    // Log final status data being sent to client
-    console.log('[SonosData] Final status response:', {
-      groupId,
-      volume: volume.volume || volume.groupVolume || 0,
-      activeFavoriteId: finalActiveFavoriteId,
-      activeFavorite: finalActiveFavorite ? {
-        id: finalActiveFavorite.id,
-        name: finalActiveFavorite.name,
-        hasImageUrl: !!finalActiveFavorite.imageUrl
-      } : null,
-      playbackState: finalPlaybackState,
-      hasCurrentItem: !!currentItem
-    });
 
     res.json({
       playbackState: finalPlaybackState,
@@ -987,18 +1076,18 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
       // Use client-provided time (user's local timezone)
       currentHour = userHour;
       currentDay = userDay;
-      console.log(`[Recommendations] Using client-provided time: hour ${currentHour}, day ${currentDay}${timezoneOffset ? ` (timezone offset: ${timezoneOffset}h)` : ''}`);
+      // Removed console.log for recommendations time
     } else {
       // Fallback to server time (for backward compatibility)
       const now = new Date();
       currentHour = now.getHours();
       currentDay = now.getDay();
-      console.log(`[Recommendations] Using server time (no client time provided): hour ${currentHour}, day ${currentDay}`);
+      // Removed console.log for server time
     }
 
     // Load all time rules
     const allRules = await loadVibeTimeRules();
-    console.log(`[Recommendations] Current hour: ${currentHour}, Current day: ${currentDay}, Total rules: ${allRules.length}`);
+    // Removed console.log for recommendations rules
 
     // Separate base schedule rules and override rules
     const baseRules = allRules.filter(r => r.rule_type === 'base');
@@ -1548,13 +1637,6 @@ app.post('/api/players/:playerId/volume', async (req, res) => {
       // Response might not be JSON
     }
     
-    console.log('[SonosData] Player volume POST response:', {
-      playerId,
-      requestedVolume: volumeLevel,
-      responseStatus: response.status,
-      responseData: responseData
-    });
-    
     res.json({ status: 'ok', volume: volumeLevel });
   } catch (error) {
     handleProxyError(res, error);
@@ -2010,10 +2092,34 @@ async function clearGroupQueue(groupId, deviceId) {
 }
 
 async function exchangeCodeForTokens(code, deviceId) {
+  console.error('[AUTH_DEBUG] exchangeCodeForTokens called', { 
+    deviceId, 
+    hasDeviceId: !!deviceId,
+    codeLength: code?.length || 0,
+    hasCode: !!code
+  });
+
+  if (!deviceId) {
+    console.error('[AUTH_DEBUG] exchangeCodeForTokens: ERROR - No deviceId provided');
+    throw new Error('Device ID is required');
+  }
+
+  if (!code) {
+    console.error('[AUTH_DEBUG] exchangeCodeForTokens: ERROR - No code provided');
+    throw new Error('Authorization code is required');
+  }
+
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
     redirect_uri: REDIRECT_URI
+  });
+
+  console.error('[AUTH_DEBUG] exchangeCodeForTokens: Requesting tokens from Sonos', {
+    deviceId,
+    grantType: 'authorization_code',
+    redirectUri: REDIRECT_URI,
+    codeLength: code.length
   });
 
   const response = await fetch(`${SONOS_AUTH_BASE}/login/v3/oauth/access`, {
@@ -2025,14 +2131,46 @@ async function exchangeCodeForTokens(code, deviceId) {
     body
   });
 
+  console.error('[AUTH_DEBUG] exchangeCodeForTokens: Sonos API response received', {
+    deviceId,
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok
+  });
+
   if (!response.ok) {
     const text = await response.text();
+    console.error('[AUTH_DEBUG] exchangeCodeForTokens: Sonos API error', {
+      deviceId,
+      status: response.status,
+      errorText: text
+    });
     throw new Error(`OAuth token exchange failed: ${text}`);
   }
 
   const payload = await response.json();
+  console.error('[AUTH_DEBUG] exchangeCodeForTokens: Token payload received from Sonos', {
+    deviceId,
+    hasAccessToken: !!payload.access_token,
+    hasRefreshToken: !!payload.refresh_token,
+    expiresIn: payload.expires_in,
+    tokenType: payload.token_type,
+    accessTokenLength: payload.access_token?.length || 0,
+    refreshTokenLength: payload.refresh_token?.length || 0
+  });
+
   const tokenData = storeTokens(payload);
+  console.error('[AUTH_DEBUG] exchangeCodeForTokens: Token data processed', {
+    deviceId,
+    hasAccessToken: !!tokenData.access_token,
+    hasRefreshToken: !!tokenData.refresh_token,
+    expiresAt: tokenData.expires_at,
+    expiresAtDate: new Date(tokenData.expires_at).toISOString()
+  });
+
+  console.error('[AUTH_DEBUG] exchangeCodeForTokens: Saving tokens to database', { deviceId });
   await saveTokens(tokenData, deviceId);
+  console.error('[AUTH_DEBUG] exchangeCodeForTokens: Tokens saved to database successfully', { deviceId });
 }
 
 function storeTokens(tokenResponse) {
@@ -2218,6 +2356,6 @@ export { app };
 // Only listen if not in serverless environment
 if (process.env.NETLIFY !== 'true' && process.env.AWS_LAMBDA_FUNCTION_NAME === undefined) {
   app.listen(PORT, () => {
-    console.log(`Sonos controller server listening on port ${PORT}`);
+    // Removed console.log for server listening message
   });
 }
