@@ -456,14 +456,29 @@ app.post('/auth/signout', async (req, res) => {
   try {
     const { device_id } = req.body;
     
+    console.error('[AUTH_DEBUG] /auth/signout called', {
+      device_id,
+      hasDeviceId: !!device_id,
+      body: req.body,
+      allBodyKeys: Object.keys(req.body || {})
+    });
+    
     if (!device_id) {
+      console.error('[AUTH_DEBUG] /auth/signout: ERROR - No device_id provided');
       return res.status(400).json({ error: 'device_id is required' });
     }
 
+    console.error('[AUTH_DEBUG] /auth/signout: Clearing tokens for device_id:', device_id);
     await clearTokens(device_id);
+    console.error('[AUTH_DEBUG] /auth/signout: Tokens cleared successfully', { device_id });
+    
     res.json({ ok: true });
   } catch (error) {
-    console.error('Sign out failed:', error);
+    console.error('[AUTH_DEBUG] /auth/signout: Exception caught', {
+      device_id: req.body?.device_id,
+      error: error.message,
+      errorStack: error.stack
+    });
     res.status(500).json({ error: 'Sign out failed' });
   }
 });

@@ -3097,13 +3097,40 @@ settingsStatusLabel.textContent = '';
 async function signout() {
   try {
     const deviceId = getDeviceId();
-    await fetch('/auth/signout', {
+    console.error('[AUTH_DEBUG] signout: Initiating signout', { deviceId });
+    
+    const signoutBody = { device_id: deviceId };
+    console.error('[AUTH_DEBUG] signout: Sending signout request', { deviceId, signoutBody });
+    
+    const response = await fetch('/auth/signout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ device_id: deviceId })
+      body: JSON.stringify(signoutBody)
     });
+    
+    console.error('[AUTH_DEBUG] signout: Signout response received', {
+      deviceId,
+      status: response.status,
+      ok: response.ok
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[AUTH_DEBUG] signout: Signout failed', {
+        deviceId,
+        status: response.status,
+        errorText
+      });
+      throw new Error(`Signout failed: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.error('[AUTH_DEBUG] signout: Signout successful', { deviceId, result });
   } catch (error) {
-    console.error('Sign out failed:', error);
+    console.error('[AUTH_DEBUG] signout: Exception caught', {
+      error: error.message,
+      errorStack: error.stack
+    });
   }
   closeMenu();
   setAuthUI(false);

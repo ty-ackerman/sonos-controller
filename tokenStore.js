@@ -135,6 +135,30 @@ export async function saveTokens(tokens, deviceId) {
       });
     }
 
+    // Also list ALL tokens in the database to verify device-specific storage
+    const { data: allTokens, error: allTokensError } = await supabase
+      .from('tokens')
+      .select('device_id, access_token, refresh_token, expires_at')
+      .not('device_id', 'is', null);
+
+    if (allTokensError) {
+      console.error('[AUTH_DEBUG] saveTokens: Failed to list all tokens', {
+        deviceId,
+        allTokensError: allTokensError.message
+      });
+    } else {
+      console.error('[AUTH_DEBUG] saveTokens: All tokens in database', {
+        deviceId,
+        totalTokens: allTokens?.length || 0,
+        allDeviceIds: allTokens?.map(t => t.device_id) || [],
+        tokenCounts: allTokens?.map(t => ({
+          device_id: t.device_id,
+          hasAccessToken: !!t.access_token,
+          hasRefreshToken: !!t.refresh_token
+        })) || []
+      });
+    }
+
     return toSave;
   } catch (error) {
     console.error('[AUTH_DEBUG] saveTokens: Exception caught', {
@@ -180,8 +204,29 @@ export async function clearTokens(deviceId) {
     console.error('[AUTH_DEBUG] clearTokens: Supabase update SUCCESS', {
       deviceId,
       updatedRows: data?.length || 0,
-      updatedData: data
+      updatedData: data,
+      updatedDeviceIds: data?.map(d => d.device_id) || []
     });
+
+    // Verify only this device's tokens were cleared by listing all tokens
+    const { data: allTokensAfter, error: allTokensError } = await supabase
+      .from('tokens')
+      .select('device_id, access_token, refresh_token, expires_at')
+      .not('device_id', 'is', null);
+
+    if (allTokensError) {
+      console.error('[AUTH_DEBUG] clearTokens: Failed to list all tokens after clear', {
+        deviceId,
+        allTokensError: allTokensError.message
+      });
+    } else {
+      console.error('[AUTH_DEBUG] clearTokens: All tokens in database after clear', {
+        deviceId,
+        totalTokens: allTokensAfter?.length || 0,
+        allDeviceIds: allTokensAfter?.map(t => t.device_id) || [],
+        clearedDeviceStillHasTokens: allTokensAfter?.some(t => t.device_id === deviceId && (t.access_token || t.refresh_token))
+      });
+    }
 
     return { access_token: null, refresh_token: null, expires_at: 0 };
   } catch (error) {
