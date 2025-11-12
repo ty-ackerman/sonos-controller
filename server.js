@@ -62,11 +62,19 @@ let initialized = false;
 let initializationPromise = null;
 
 // Helper function to get tokens for a device
+// CRITICAL: Always returns empty tokens if deviceId is missing to prevent cross-device token sharing
 function getDeviceTokens(deviceId) {
   if (!deviceId) {
+    console.warn('[getDeviceTokens] Called without deviceId - returning empty tokens');
     return { access_token: null, refresh_token: null, expires_at: 0 };
   }
-  return tokens.get(deviceId) || { access_token: null, refresh_token: null, expires_at: 0 };
+  const deviceTokens = tokens.get(deviceId) || { access_token: null, refresh_token: null, expires_at: 0 };
+  // Double-check: if we somehow got tokens without a device ID, return empty
+  if (deviceTokens && !deviceId) {
+    console.error('[getDeviceTokens] CRITICAL: Found tokens without deviceId - returning empty');
+    return { access_token: null, refresh_token: null, expires_at: 0 };
+  }
+  return deviceTokens;
 }
 
 // Helper function to set tokens for a device
@@ -136,10 +144,14 @@ app.use((req, res, next) => {
 // Note: Static files are served by Netlify, so we only initialize for dynamic routes
 app.use(/^\/(api|auth|healthz)/, async (req, res, next) => {
   await ensureInitialized();
-  // Load device-specific tokens if device ID is present
-  if (req.deviceId && !tokens.has(req.deviceId)) {
+  // ALWAYS reload device-specific tokens from database to ensure we have the latest
+  // This is critical for serverless environments where in-memory state doesn't persist
+  if (req.deviceId) {
     const deviceTokens = await loadTokens(req.deviceId);
     tokens.set(req.deviceId, deviceTokens);
+    console.log('[Middleware] Loaded tokens for device:', req.deviceId, 'hasToken:', !!deviceTokens.access_token);
+  } else {
+    console.warn('[Middleware] Request without device ID:', req.path);
   }
   next();
 });
@@ -225,16 +237,27 @@ app.get('/auth/sonos/callback', async (req, res) => {
 app.get('/auth/status', async (req, res) => {
   try {
     const deviceId = req.deviceId;
-    const deviceTokens = getDeviceTokens(deviceId);
+    
+    // CRITICAL: Require device ID - no device ID means not logged in
+    if (!deviceId) {
+      console.warn('[Auth] Status check without device ID');
+      return res.json({ loggedIn: false, expiresAt: 0 });
+    }
+    
+    // ALWAYS reload from database to ensure we have the latest tokens for this specific device
+    const deviceTokens = await loadTokens(deviceId);
+    tokens.set(deviceId, deviceTokens);
+    
     let loggedIn = Boolean(deviceTokens.access_token) && Date.now() < (deviceTokens.expires_at || 0);
     
-    console.log('[Auth] Status check for device:', deviceId, 'loggedIn:', loggedIn);
+    console.log('[Auth] Status check for device:', deviceId, 'loggedIn:', loggedIn, 'hasToken:', !!deviceTokens.access_token);
 
     if (loggedIn) {
       try {
         await sonosRequest('/households', deviceId);
       } catch (error) {
         if (error.status === 401) {
+          console.log('[Auth] Token validation failed for device:', deviceId, 'clearing tokens');
           const cleared = await clearTokens(deviceId);
           setDeviceTokens(deviceId, cleared);
           loggedIn = false;
@@ -247,7 +270,7 @@ app.get('/auth/status', async (req, res) => {
     res.json({ loggedIn, expiresAt: loggedIn ? deviceTokens.expires_at || 0 : 0 });
   } catch (error) {
     console.error('Auth status check failed:', error?.message ?? error);
-    res.json({ loggedIn: false });
+    res.json({ loggedIn: false, expiresAt: 0 });
   }
 });
 
@@ -1923,26 +1946,38 @@ async function refreshAccessToken(deviceId) {
 
 async function ensureValidAccessToken(deviceId) {
   if (!deviceId) {
+    console.error('[ensureValidAccessToken] CRITICAL: Called without deviceId');
     throw Object.assign(new Error('Device ID is required'), { status: 401 });
   }
 
   // Ensure tokens are initialized
   await ensureInitialized();
   
-  const deviceTokens = getDeviceTokens(deviceId);
+  // ALWAYS reload from database to ensure we have the latest tokens for this device
+  // This prevents cross-device token sharing in serverless environments
+  const deviceTokens = await loadTokens(deviceId);
+  tokens.set(deviceId, deviceTokens);
+  
   if (!deviceTokens || !deviceTokens.access_token) {
+    console.log('[ensureValidAccessToken] No valid token for device:', deviceId);
     throw Object.assign(new Error('Not authenticated with Sonos'), { status: 401 });
   }
 
   if (Date.now() >= deviceTokens.expires_at) {
+    console.log('[ensureValidAccessToken] Token expired for device:', deviceId, 'refreshing...');
     await refreshAccessToken(deviceId);
+    // Reload after refresh
+    const refreshed = await loadTokens(deviceId);
+    tokens.set(deviceId, refreshed);
   }
 }
 
 async function sonosFetch(endpoint, deviceId, options = {}) {
   await ensureValidAccessToken(deviceId);
 
-  const deviceTokens = getDeviceTokens(deviceId);
+  // Get fresh tokens after ensureValidAccessToken (which reloads from DB)
+  const deviceTokens = await loadTokens(deviceId);
+  tokens.set(deviceId, deviceTokens);
   const initialHeaders = {
     ...(options.headers ?? {})
   };
@@ -1963,7 +1998,9 @@ async function sonosFetch(endpoint, deviceId, options = {}) {
 
   if (response.status === 401 && deviceTokens.refresh_token) {
     await refreshAccessToken(deviceId);
-    const refreshedTokens = getDeviceTokens(deviceId);
+    // Reload fresh tokens after refresh
+    const refreshedTokens = await loadTokens(deviceId);
+    tokens.set(deviceId, refreshedTokens);
     requestOptions.headers.Authorization = `Bearer ${refreshedTokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
   }
@@ -1990,7 +2027,9 @@ async function sonosRequest(endpoint, deviceIdOrOptions, options = {}) {
 
   await ensureValidAccessToken(deviceId);
 
-  const deviceTokens = getDeviceTokens(deviceId);
+  // Get fresh tokens after ensureValidAccessToken (which reloads from DB)
+  const deviceTokens = await loadTokens(deviceId);
+  tokens.set(deviceId, deviceTokens);
   const initialHeaders = {
     Accept: 'application/json',
     ...(actualOptions.headers ?? {})
@@ -2012,7 +2051,9 @@ async function sonosRequest(endpoint, deviceIdOrOptions, options = {}) {
 
   if (response.status === 401 && deviceTokens.refresh_token) {
     await refreshAccessToken(deviceId);
-    const refreshedTokens = getDeviceTokens(deviceId);
+    // Reload fresh tokens after refresh
+    const refreshedTokens = await loadTokens(deviceId);
+    tokens.set(deviceId, refreshedTokens);
     requestOptions.headers.Authorization = `Bearer ${refreshedTokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
     if (response.status === 401) {

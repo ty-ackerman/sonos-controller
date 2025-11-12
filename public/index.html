@@ -3486,6 +3486,14 @@ function setAuthUI(loggedIn) {
   signinButton.classList.toggle('hidden', loggedIn);
   authBar.classList.toggle('hidden', loggedIn);
   panelsContainer.classList.toggle('hidden', !loggedIn);
+  // Hide now playing panel and hamburger menu when logged out
+  if (currentlyPlayingPanel) {
+    currentlyPlayingPanel.classList.toggle('hidden', !loggedIn);
+    currentlyPlayingPanel.classList.remove('visible', !loggedIn);
+  }
+  if (hamburgerMenuBtn) {
+    hamburgerMenuBtn.classList.toggle('hidden', !loggedIn);
+  }
   if (!loggedIn) {
     showView('control');
     closeMenu();
