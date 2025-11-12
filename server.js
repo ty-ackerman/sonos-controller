@@ -177,8 +177,14 @@ app.get('/auth/sonos/login', (req, res) => {
   const randomState = crypto.randomBytes(16).toString('hex');
   // Encode device ID in state to survive serverless function invocations
   // Format: {randomState}:{base64EncodedDeviceId}
-  const encodedDeviceId = Buffer.from(deviceId).toString('base64url');
+  // Use regular base64 and replace URL-unsafe characters
+  const encodedDeviceId = Buffer.from(deviceId).toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
   const oauthState = `${randomState}:${encodedDeviceId}`;
+
+  console.log('[OAuth] Generated state with device ID:', { randomState, deviceId, encodedDeviceId, oauthState });
 
   const params = new URLSearchParams({
     client_id: SONOS_CLIENT_ID,
@@ -210,17 +216,23 @@ app.get('/auth/sonos/callback', async (req, res) => {
   // Extract device ID from state (format: {randomState}:{base64EncodedDeviceId})
   let deviceId;
   try {
+    console.log('[OAuth] Received callback with state:', state);
     const parts = state.split(':');
     if (parts.length !== 2) {
-      throw new Error('Invalid state format');
+      console.error('[OAuth] State format invalid - expected format: randomState:encodedDeviceId, got:', state);
+      throw new Error(`Invalid state format: expected 2 parts, got ${parts.length}`);
     }
-    deviceId = Buffer.from(parts[1], 'base64url').toString('utf8');
+    // Decode base64url (replace URL-safe chars back)
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    // Add padding if needed
+    const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+    deviceId = Buffer.from(padded, 'base64').toString('utf8');
     if (!deviceId) {
-      throw new Error('Device ID is empty');
+      throw new Error('Device ID is empty after decoding');
     }
-    console.log('[OAuth] Extracted device ID from callback state:', deviceId);
+    console.log('[OAuth] Successfully extracted device ID from callback state:', deviceId);
   } catch (err) {
-    console.error('[OAuth] Failed to extract device ID from state:', err);
+    console.error('[OAuth] Failed to extract device ID from state:', err.message, 'state:', state);
     return res.redirect('/?auth=invalid_state');
   }
 
