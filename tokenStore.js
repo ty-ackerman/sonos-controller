@@ -1,11 +1,16 @@
 import { supabase } from './supabase.js';
 
-export async function loadTokens() {
+export async function loadTokens(deviceId) {
+  if (!deviceId) {
+    console.error('Device ID is required to load tokens');
+    return { access_token: null, refresh_token: null, expires_at: 0 };
+  }
+
   try {
     const { data, error } = await supabase
       .from('tokens')
       .select('access_token, refresh_token, expires_at')
-      .eq('id', 1)
+      .eq('device_id', deviceId)
       .single();
 
     if (error) {
@@ -29,10 +34,14 @@ export async function loadTokens() {
   }
 }
 
-export async function saveTokens(tokens) {
+export async function saveTokens(tokens, deviceId) {
+  if (!deviceId) {
+    throw new Error('Device ID is required to save tokens');
+  }
+
   try {
     const toSave = {
-      id: 1,
+      device_id: deviceId,
       access_token: tokens.access_token || null,
       refresh_token: tokens.refresh_token || null,
       expires_at: Number(tokens.expires_at || 0)
@@ -40,7 +49,7 @@ export async function saveTokens(tokens) {
 
     const { error } = await supabase
       .from('tokens')
-      .upsert(toSave, { onConflict: 'id' });
+      .upsert(toSave, { onConflict: 'device_id' });
 
     if (error) {
       throw error;
@@ -53,7 +62,12 @@ export async function saveTokens(tokens) {
   }
 }
 
-export async function clearTokens() {
+export async function clearTokens(deviceId) {
+  if (!deviceId) {
+    console.error('Device ID is required to clear tokens');
+    return { access_token: null, refresh_token: null, expires_at: 0 };
+  }
+
   try {
     const { error } = await supabase
       .from('tokens')
@@ -62,7 +76,7 @@ export async function clearTokens() {
         refresh_token: null,
         expires_at: 0
       })
-      .eq('id', 1);
+      .eq('device_id', deviceId);
 
     if (error) {
       throw error;

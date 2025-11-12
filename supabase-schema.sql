@@ -2,9 +2,9 @@
 -- Run this SQL in your Supabase SQL Editor
 
 -- Table for storing Sonos OAuth tokens
--- Using a single row with id=1 to store the tokens
+-- Using device_id as primary key to support device-specific authentication
 CREATE TABLE IF NOT EXISTS tokens (
-  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  device_id TEXT PRIMARY KEY,
   access_token TEXT,
   refresh_token TEXT,
   expires_at BIGINT,
@@ -46,11 +46,20 @@ CREATE TABLE IF NOT EXISTS hidden_favorites (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Table for storing OAuth states per device during authentication flow
+CREATE TABLE IF NOT EXISTS oauth_states (
+  device_id TEXT PRIMARY KEY,
+  state TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Create indexes for better query performance
+CREATE INDEX IF NOT EXISTS idx_tokens_updated_at ON tokens(updated_at);
 CREATE INDEX IF NOT EXISTS idx_speaker_volumes_updated_at ON speaker_volumes(updated_at);
 CREATE INDEX IF NOT EXISTS idx_playlist_vibes_updated_at ON playlist_vibes(updated_at);
 CREATE INDEX IF NOT EXISTS idx_vibe_time_rules_updated_at ON vibe_time_rules(updated_at);
 CREATE INDEX IF NOT EXISTS idx_hidden_favorites_updated_at ON hidden_favorites(updated_at);
+CREATE INDEX IF NOT EXISTS idx_oauth_states_created_at ON oauth_states(created_at);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -77,8 +86,6 @@ CREATE TRIGGER update_vibe_time_rules_updated_at BEFORE UPDATE ON vibe_time_rule
 CREATE TRIGGER update_hidden_favorites_updated_at BEFORE UPDATE ON hidden_favorites
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Insert initial token row if it doesn't exist
-INSERT INTO tokens (id, access_token, refresh_token, expires_at)
-VALUES (1, NULL, NULL, 0)
-ON CONFLICT (id) DO NOTHING;
+-- Note: Tokens are now device-specific. No initial insert needed.
+-- Each device will create its own token row on first login.
 

@@ -3025,13 +3025,39 @@ settingsStatusLabel.textContent = '';
       let currentPlaylistName = null; // Track current playlist name to detect playlist changes
       let baseVolume = null; // Store base/reference volume level for loudness normalization
 
+      // Device ID generation and management
+      const DEVICE_ID_STORAGE_KEY = 'sonos_device_id';
+      
+      function getDeviceId() {
+        let deviceId = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+        if (!deviceId) {
+          // Generate a new device ID using crypto.randomUUID if available, otherwise use a fallback
+          if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            deviceId = crypto.randomUUID();
+          } else {
+            // Fallback for browsers without crypto.randomUUID
+            deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+          }
+          localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
+        }
+        return deviceId;
+      }
+
       function login() {
-        window.location.href = '/auth/sonos/login';
+        const deviceId = getDeviceId();
+        window.location.href = `/auth/sonos/login?device_id=${encodeURIComponent(deviceId)}`;
       }
 
 async function signout() {
   try {
-    await fetch('/auth/signout', { method: 'POST' });
+    const deviceId = getDeviceId();
+    await fetch('/auth/signout', { 
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ device_id: deviceId })
+    });
   } catch (error) {
     console.error('Sign out failed:', error);
   }
@@ -3457,16 +3483,22 @@ function setAuthUI(loggedIn) {
   signinButton.classList.toggle('hidden', loggedIn);
   authBar.classList.toggle('hidden', loggedIn);
   panelsContainer.classList.toggle('hidden', !loggedIn);
+  // Hide hamburger menu and now playing panel when not logged in
+  hamburgerMenuBtn.classList.toggle('hidden', !loggedIn);
+  currentlyPlayingPanel.classList.toggle('hidden', !loggedIn);
   if (!loggedIn) {
     showView('control');
     closeMenu();
+    // Ensure now playing panel is hidden
+    currentlyPlayingPanel.classList.remove('visible');
   }
   updateConnectionStatus(loggedIn);
 }
 
 async function checkAuthAndInit() {
   try {
-    const response = await fetch('/auth/status');
+    const deviceId = getDeviceId();
+    const response = await fetch(`/auth/status?device_id=${encodeURIComponent(deviceId)}`);
     if (!response.ok) {
       throw new Error('Failed to check auth status');
     }
@@ -3816,7 +3848,8 @@ async function checkAuthAndInit() {
           // Show loading overlay
           showLoadingOverlay();
           
-          const response = await fetch('/api/households');
+          const deviceId = getDeviceId();
+          const response = await fetch(`/api/households?device_id=${encodeURIComponent(deviceId)}`);
 
           if (response.status === 401) {
             hideLoadingOverlay();
@@ -3933,9 +3966,10 @@ async function checkAuthAndInit() {
         try {
           // Always fetch fresh data from the database when settings panel loads
           // This ensures settings saved on other devices are immediately visible
+          const deviceId = getDeviceId();
           const [snapshot, defaults] = await Promise.all([
             fetchGroupsPlayers(householdId),
-            fetch('/api/settings/volumes', {
+            fetch(`/api/settings/volumes?device_id=${encodeURIComponent(deviceId)}`, {
               cache: 'no-store',
               headers: {
                 'Cache-Control': 'no-cache'
@@ -4041,10 +4075,11 @@ async function checkAuthAndInit() {
                 payload[playerId] = value !== '' ? Number(value) : '';
               });
 
-              const response = await fetch('/api/settings/volumes', {
+              const deviceId = getDeviceId();
+              const response = await fetch(`/api/settings/volumes?device_id=${encodeURIComponent(deviceId)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ ...payload, device_id: deviceId })
               });
 
               if (!response.ok) {
@@ -4330,7 +4365,8 @@ async function checkAuthAndInit() {
 
       async function loadTimeRules() {
         try {
-          const response = await fetch('/api/vibe-time-rules');
+          const deviceId = getDeviceId();
+          const response = await fetch(`/api/vibe-time-rules?device_id=${encodeURIComponent(deviceId)}`);
           if (response.ok) {
             timeRules = await response.json();
           } else {
@@ -4830,10 +4866,11 @@ async function checkAuthAndInit() {
               throw new Error('Failed to update rule');
             }
           } else {
-            const response = await fetch('/api/vibe-time-rules', {
+            const deviceId = getDeviceId();
+            const response = await fetch(`/api/vibe-time-rules?device_id=${encodeURIComponent(deviceId)}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(rule)
+              body: JSON.stringify({ ...rule, device_id: deviceId })
             });
             if (!response.ok) {
               throw new Error('Failed to create rule');
@@ -4856,7 +4893,8 @@ async function checkAuthAndInit() {
 
       async function loadPlaylistVibes() {
         try {
-          const response = await fetch('/api/playlist-vibes');
+          const deviceId = getDeviceId();
+          const response = await fetch(`/api/playlist-vibes?device_id=${encodeURIComponent(deviceId)}`);
           if (response.ok) {
             playlistVibes = await response.json();
           }
@@ -4873,10 +4911,11 @@ async function checkAuthAndInit() {
         }
 
         try {
-          const response = await fetch('/api/playlist-vibes', {
+          const deviceId = getDeviceId();
+          const response = await fetch(`/api/playlist-vibes?device_id=${encodeURIComponent(deviceId)}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(playlistVibes)
+            body: JSON.stringify({ ...playlistVibes, device_id: deviceId })
           });
 
           if (!response.ok) {
@@ -4919,11 +4958,13 @@ async function checkAuthAndInit() {
           const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
           const timezoneOffset = -now.getTimezoneOffset() / 60; // Offset in hours (e.g., -5 for EST)
 
+          const deviceId = getDeviceId();
           const params = new URLSearchParams({
             householdId: currentHouseholdId,
             hour: currentHour.toString(),
             day: currentDay.toString(),
-            timezoneOffset: timezoneOffset.toString()
+            timezoneOffset: timezoneOffset.toString(),
+            device_id: deviceId
           });
           const url = `/api/playlist-recommendations?${params.toString()}`;
           const response = await fetch(url);
@@ -5889,10 +5930,16 @@ async function checkAuthAndInit() {
 
       async function sendCommand(endpoint, body, successMessage = 'Command sent to Sonos.') {
         try {
-          const response = await fetch(endpoint, {
+          const deviceId = getDeviceId();
+          const url = new URL(endpoint, window.location.origin);
+          url.searchParams.set('device_id', deviceId);
+          
+          const requestBody = body ? { ...body, device_id: deviceId } : { device_id: deviceId };
+          
+          const response = await fetch(url.toString(), {
             method: 'POST',
-            headers: body ? { 'Content-Type': 'application/json' } : undefined,
-            body: body ? JSON.stringify(body) : undefined
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
           });
 
           if (response.status === 401) {
@@ -5935,7 +5982,8 @@ async function checkAuthAndInit() {
         try {
           clearTimeout(refreshTimer);
           refreshTimer = null;
-          const response = await fetch(`/api/households/${encodeURIComponent(householdId)}/players`);
+          const deviceId = getDeviceId();
+          const response = await fetch(`/api/households/${encodeURIComponent(householdId)}/players?device_id=${encodeURIComponent(deviceId)}`);
 
           if (response.status === 401) {
             setAuthUI(false);
@@ -5957,8 +6005,10 @@ async function checkAuthAndInit() {
           // Automatically create and select a group with all players if none is selected
           if (!activeGroupId && latestPlayers.length > 0 && currentHouseholdId) {
             try {
-              const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
-                method: 'POST'
+              const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group?device_id=${encodeURIComponent(deviceId)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_id: deviceId })
               });
               
               if (groupResponse.ok) {
@@ -6282,6 +6332,8 @@ async function checkAuthAndInit() {
           if (currentHouseholdId) {
             params.set('householdId', currentHouseholdId);
           }
+          const deviceId = getDeviceId();
+          params.set('device_id', deviceId);
           const statusUrl = `/api/groups/${encodeURIComponent(groupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
           const response = await fetch(statusUrl).catch((fetchError) => {
             console.error('[Client] Fetch error:', fetchError);
