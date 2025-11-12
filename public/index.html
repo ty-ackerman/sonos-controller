@@ -9,10 +9,10 @@
     <link rel="icon" type="image/svg+xml" href="./images/alterxsonos.png" />
     
     <!-- Apple Touch Icon (for iOS Home Screen) -->
-    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='wood' x1='0' y1='0' x2='0' y2='100'%3E%3Cstop offset='0' stop-color='%23d4a574'/%3E%3Cstop offset='1' stop-color='%23c8956a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23wood)' width='100' height='100'/%3E%3Crect fill='%23a67c52' x='0' y='0' width='100' height='15'/%3E%3Crect fill='%23a67c52' x='0' y='20' width='15' height='60'/%3E%3Crect fill='%23a67c52' x='85' y='20' width='15' height='60'/%3E%3Crect fill='%238b6f47' x='20' y='40' width='60' height='15'/%3E%3Crect fill='%238b6f47' x='20' y='60' width='60' height='15'/%3E%3Crect fill='%23404040' x='70' y='70' width='20' height='20' rx='2'/%3E%3Ccircle fill='%23ffd700' cx='85' cy='15' r='6'/%3E%3Cpath fill='%23ffffff' opacity='0.7' d='M25 25 Q35 15 45 25 T65 25'/%3E%3Cpath fill='%23ffffff' opacity='0.5' d='M20 30 Q30 20 40 30 T60 30'/%3E%3C/svg%3E" />
+    <link rel="apple-touch-icon" href="./images/alterxsonos.png" />
     
     <!-- Open Graph / Social Sharing -->
-    <meta property="og:image" content="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='wood' x1='0' y1='0' x2='0' y2='100'%3E%3Cstop offset='0' stop-color='%23d4a574'/%3E%3Cstop offset='1' stop-color='%23c8956a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23wood)' width='100' height='100'/%3E%3Crect fill='%23a67c52' x='0' y='0' width='100' height='15'/%3E%3Crect fill='%23a67c52' x='0' y='20' width='15' height='60'/%3E%3Crect fill='%23a67c52' x='85' y='20' width='15' height='60'/%3E%3Crect fill='%238b6f47' x='20' y='40' width='60' height='15'/%3E%3Crect fill='%238b6f47' x='20' y='60' width='60' height='15'/%3E%3Crect fill='%23404040' x='70' y='70' width='20' height='20' rx='2'/%3E%3Ccircle fill='%23ffd700' cx='85' cy='15' r='6'/%3E%3Cpath fill='%23ffffff' opacity='0.7' d='M25 25 Q35 15 45 25 T65 25'/%3E%3Cpath fill='%23ffffff' opacity='0.5' d='M20 30 Q30 20 40 30 T60 30'/%3E%3C/svg%3E" />
+    <meta property="og:image" content="./images/alterxsonos.png" />
     <meta property="og:title" content="Sonos Controller" />
     <meta property="og:type" content="website" />
     
@@ -500,14 +500,14 @@
 
       .favorites-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
         gap: 16px;
       }
 
       @media (max-width: 480px) {
         .favorites-grid {
-          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-          gap: 12px;
+          grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+          gap: 16px;
         }
       }
 
@@ -846,9 +846,30 @@
 
       .favorites-header {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 16px;
+        flex-direction: column;
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .favorites-title-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .favorites-main-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0;
+      }
+
+      .favorites-description {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        margin: 0;
+        max-width: 600px;
       }
 
       .favorites-toggle {
@@ -992,10 +1013,10 @@
       }
 
       .currently-playing {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
         background: var(--bg-primary);
         border-top: 1px solid var(--border-color);
         padding: 12px 16px 24px 16px;
@@ -1005,7 +1026,7 @@
         max-height: 100vh;
         overflow-y: auto;
         transition: transform 0.3s ease-out;
-        transform: translateY(0);
+        transform: translateY(0) !important;
         touch-action: manipulation;
       }
 
@@ -1104,21 +1125,21 @@
       }
 
       .currently-playing-vibe-badge.down {
-        background: rgba(59, 130, 246, 0.15);
-        border-color: rgba(59, 130, 246, 0.3);
-        color: rgb(96, 165, 250);
+        background: var(--bg-secondary);
+        border-color: var(--border-color);
+        color: var(--text-primary);
       }
 
       .currently-playing-vibe-badge.down-mid {
-        background: rgba(168, 85, 247, 0.15);
-        border-color: rgba(168, 85, 247, 0.3);
-        color: rgb(192, 132, 252);
+        background: var(--bg-tertiary);
+        border-color: var(--border-color);
+        color: var(--text-secondary);
       }
 
       .currently-playing-vibe-badge.mid {
-        background: rgba(236, 72, 153, 0.15);
-        border-color: rgba(236, 72, 153, 0.3);
-        color: rgb(244, 114, 182);
+        background: var(--bg-primary);
+        border-color: var(--text-primary);
+        color: var(--text-primary);
       }
 
       .currently-playing-loudness {
@@ -2404,21 +2425,21 @@
       }
 
       .alternative-playlist-vibe.down {
-        background: rgba(59, 130, 246, 0.15);
-        border-color: rgba(59, 130, 246, 0.3);
-        color: rgb(96, 165, 250);
+        background: var(--bg-secondary);
+        border-color: var(--border-color);
+        color: var(--text-primary);
       }
 
       .alternative-playlist-vibe.down-mid {
-        background: rgba(168, 85, 247, 0.15);
-        border-color: rgba(168, 85, 247, 0.3);
-        color: rgb(192, 132, 252);
+        background: var(--bg-tertiary);
+        border-color: var(--border-color);
+        color: var(--text-secondary);
       }
 
       .alternative-playlist-vibe.mid {
-        background: rgba(236, 72, 153, 0.15);
-        border-color: rgba(236, 72, 153, 0.3);
-        color: rgb(244, 114, 182);
+        background: var(--bg-primary);
+        border-color: var(--text-primary);
+        color: var(--text-primary);
       }
     </style>
   </head>
@@ -2511,7 +2532,10 @@
           </div>
           <div class="favorites">
             <div class="favorites-header">
-              <span class="section-title">Playlists</span>
+              <div class="favorites-title-section">
+                <h2 class="favorites-main-title">All Playlists</h2>
+                <p class="favorites-description">Browse and play from your complete collection of playlists. Each playlist is curated to match different vibes and times of day.</p>
+              </div>
               <button id="favorites-toggle" class="favorites-toggle" type="button">
                 View All Playlists <span>▼</span>
               </button>
@@ -3317,7 +3341,7 @@ async function checkAuthAndInit() {
 
         try {
           skipSongButton.disabled = true;
-          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playback/skipToNextTrack`, {
+          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/next`, {
             method: 'POST'
           });
 
@@ -3328,7 +3352,7 @@ async function checkAuthAndInit() {
           showToast('Skipped to next song');
           // Refresh playback status after a short delay
           setTimeout(() => {
-            refreshPlaybackStatus();
+            updateCurrentlyPlaying();
           }, 500);
         } catch (error) {
           console.error('Failed to skip song:', error);
@@ -5254,18 +5278,20 @@ async function checkAuthAndInit() {
             return;
           }
 
-          const isActive = Boolean(favoriteId) && entry.favorite.id === favoriteId;
-          entry.button.classList.toggle('active', isActive);
+          const isActive = Boolean(favoriteId) && entry.favorite && String(entry.favorite.id) === String(favoriteId);
+          if (entry.button) {
+            entry.button.classList.toggle('active', isActive);
+          }
         });
 
-        // Update recommendation card buttons
+        // Update recommendation card buttons and highlighting
         updateRecommendationCardButtons(favoriteId);
       }
 
       function updateRecommendationCardButtons(activeFavoriteId) {
         // Update button states
         recommendationCardButtons.forEach((button, favoriteId) => {
-          const isActive = Boolean(activeFavoriteId) && favoriteId === activeFavoriteId;
+          const isActive = Boolean(activeFavoriteId) && String(favoriteId) === String(activeFavoriteId);
           
           if (isActive) {
             button.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Playing';
@@ -5278,15 +5304,19 @@ async function checkAuthAndInit() {
         
         // Update card highlighting for recommended playlists
         recommendationCards.forEach((card, favoriteId) => {
-          const isActive = Boolean(activeFavoriteId) && favoriteId === activeFavoriteId;
-          card.classList.toggle('now-playing', isActive);
+          if (card && favoriteId) {
+            const isActive = Boolean(activeFavoriteId) && String(favoriteId) === String(activeFavoriteId);
+            card.classList.toggle('now-playing', isActive);
+          }
         });
         
         // Update alternative playlist cards
         document.querySelectorAll('.alternative-playlist').forEach((card) => {
           const cardFavoriteId = card.dataset.favoriteId;
-          const isActive = Boolean(activeFavoriteId) && cardFavoriteId === activeFavoriteId;
-          card.classList.toggle('active', isActive);
+          if (cardFavoriteId) {
+            const isActive = Boolean(activeFavoriteId) && String(cardFavoriteId) === String(activeFavoriteId);
+            card.classList.toggle('active', isActive);
+          }
         });
       }
 
@@ -6357,85 +6387,6 @@ async function checkAuthAndInit() {
 
       // Use event delegation on the content area only - prevents accidental toggles when adjusting volume
       const currentlyPlayingContent = document.querySelector('.currently-playing-content');
-      
-      let nowPlayingTouchStartY = null;
-      let nowPlayingTouchStartTime = null;
-      
-      function handleNowPlayingTouchStart(e) {
-        // Only handle touches that start within the content area
-        if (!e.target.closest('.currently-playing-content')) {
-          return;
-        }
-        // Don't handle if touch started in volume area
-        if (e.target.closest('.currently-playing-volume')) {
-          return;
-        }
-        const touch = e.touches[0];
-        nowPlayingTouchStartY = touch.clientY;
-        nowPlayingTouchStartTime = Date.now();
-      }
-      
-      function handleNowPlayingTouchMove(e) {
-        if (nowPlayingTouchStartY === null) {
-          return;
-        }
-        // Only handle if still within content area
-        if (!e.target.closest('.currently-playing-content')) {
-          return;
-        }
-        // Don't handle if moved into volume area
-        if (e.target.closest('.currently-playing-volume')) {
-          nowPlayingTouchStartY = null;
-          return;
-        }
-      }
-      
-      function handleNowPlayingTouchEnd(e) {
-        if (nowPlayingTouchStartY === null) {
-          return;
-        }
-        
-        const touch = e.changedTouches[0];
-        const deltaY = touch.clientY - nowPlayingTouchStartY;
-        const deltaTime = Date.now() - (nowPlayingTouchStartTime || 0);
-        const absDeltaY = Math.abs(deltaY);
-        
-        // Only handle if still within content area
-        if (!e.target.closest('.currently-playing-content')) {
-          nowPlayingTouchStartY = null;
-          return;
-        }
-        
-        // Don't handle if ended in volume area
-        if (e.target.closest('.currently-playing-volume')) {
-          nowPlayingTouchStartY = null;
-          return;
-        }
-        
-        // Swipe down to collapse, swipe up to expand
-        // Require minimum distance and reasonable time
-        if (absDeltaY > 30 && deltaTime < 300) {
-          if (deltaY > 0 && currentlyPlayingPanel.classList.contains('expanded')) {
-            // Swipe down - collapse
-            currentlyPlayingPanel.classList.remove('expanded');
-          } else if (deltaY < 0 && !currentlyPlayingPanel.classList.contains('expanded')) {
-            // Swipe up - expand
-            currentlyPlayingPanel.classList.add('expanded');
-            const groupId = getSelectedGroupId();
-            if (groupId) {
-              updateCurrentlyPlayingRooms(groupId);
-            }
-          }
-        }
-        
-        nowPlayingTouchStartY = null;
-        nowPlayingTouchStartTime = null;
-      }
-      
-      // Add touch handlers for swipe gestures on content area only
-      currentlyPlayingContent.addEventListener('touchstart', handleNowPlayingTouchStart, { passive: true });
-      currentlyPlayingContent.addEventListener('touchmove', handleNowPlayingTouchMove, { passive: true });
-      currentlyPlayingContent.addEventListener('touchend', handleNowPlayingTouchEnd, { passive: true });
       
       currentlyPlayingContent.addEventListener('click', (e) => {
         // Don't toggle if clicking on interactive elements
