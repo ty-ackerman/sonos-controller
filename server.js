@@ -12,6 +12,7 @@ import {
   deleteVibeTimeRule
 } from './vibeTimeRulesStore.js';
 import { loadHiddenFavorites, setFavoriteHidden } from './hiddenFavoritesStore.js';
+import { supabase } from './supabase.js';
 
 // Use native fetch (Node.js 18+) - Netlify Functions supports it
 // No need to import node-fetch which causes bundling issues
@@ -60,9 +61,67 @@ let hiddenFavorites = null;
 let initialized = false;
 let initializationPromise = null;
 
-let oauthState;
+// OAuth state management using database for serverless compatibility
+async function saveOAuthState(state, deviceId) {
+  try {
+    const { error } = await supabase
+      .from('oauth_states')
+      .upsert({
+        state: state,
+        device_id: deviceId,
+        created_at: new Date().toISOString()
+      }, { onConflict: 'state' });
+    
+    if (error) {
+      console.error('Error saving OAuth state:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Failed to save OAuth state:', error);
+    throw error;
+  }
+}
+
+async function getDeviceIdFromState(state) {
+  try {
+    const { data, error } = await supabase
+      .from('oauth_states')
+      .select('device_id')
+      .eq('state', state)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
+        return null;
+      }
+      console.error('Error retrieving OAuth state:', error);
+      return null;
+    }
+    
+    return data?.device_id || null;
+  } catch (error) {
+    console.error('Failed to retrieve OAuth state:', error);
+    return null;
+  }
+}
+
+async function deleteOAuthState(state) {
+  try {
+    const { error } = await supabase
+      .from('oauth_states')
+      .delete()
+      .eq('state', state);
+    
+    if (error) {
+      console.error('Error deleting OAuth state:', error);
+    }
+  } catch (error) {
+    console.error('Failed to delete OAuth state:', error);
+  }
+}
 
 // Initialize data stores (lazy loading for serverless)
+// Note: tokens are now loaded per-request based on device_id, not during initialization
 async function ensureInitialized() {
   if (initialized) {
     return;
@@ -74,13 +133,6 @@ async function ensureInitialized() {
   
   initializationPromise = (async () => {
     try {
-      if (!tokens) {
-        tokens = await loadTokens();
-        // Ensure tokens object exists
-        if (!tokens) {
-          tokens = { access_token: null, refresh_token: null, expires_at: 0 };
-        }
-      }
       if (!speakerVolumes) {
         speakerVolumes = await loadSpeakerVolumes();
         // Ensure speakerVolumes object exists
@@ -106,7 +158,6 @@ async function ensureInitialized() {
     } catch (error) {
       console.error('Error initializing data stores:', error);
       // Set defaults on error
-      tokens = tokens || { access_token: null, refresh_token: null, expires_at: 0 };
       speakerVolumes = speakerVolumes || {};
       playlistVibes = playlistVibes || {};
       hiddenFavorites = hiddenFavorites || new Set();
@@ -116,6 +167,11 @@ async function ensureInitialized() {
   })();
   
   return initializationPromise;
+}
+
+// Helper function to extract device_id from request
+function getDeviceIdFromRequest(req) {
+  return req.query.device_id || req.body.device_id;
 }
 
 // Middleware to ensure initialization before handling API/auth requests
@@ -132,8 +188,21 @@ app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.get('/auth/sonos/login', (_req, res) => {
-  oauthState = crypto.randomBytes(16).toString('hex');
+app.get('/auth/sonos/login', async (req, res) => {
+  const { device_id } = req.query;
+  
+  if (!device_id) {
+    return res.redirect('/?auth=missing_device_id');
+  }
+
+  const oauthState = crypto.randomBytes(16).toString('hex');
+  
+  try {
+    await saveOAuthState(oauthState, device_id);
+  } catch (error) {
+    console.error('Failed to save OAuth state:', error);
+    return res.redirect('/?auth=error');
+  }
 
   const params = new URLSearchParams({
     client_id: SONOS_CLIENT_ID,
@@ -158,52 +227,87 @@ app.get('/auth/sonos/callback', async (req, res) => {
     return res.redirect('/?auth=missing_code');
   }
 
-  if (!state || state !== oauthState) {
+  if (!state) {
+    return res.redirect('/?auth=invalid_state');
+  }
+
+  // Retrieve device_id from OAuth state
+  const deviceId = await getDeviceIdFromState(state);
+  if (!deviceId) {
+    console.error('OAuth state not found or expired');
     return res.redirect('/?auth=invalid_state');
   }
 
   try {
-    await exchangeCodeForTokens(code);
-    oauthState = undefined;
+    await exchangeCodeForTokens(code, deviceId);
+    await deleteOAuthState(state);
     res.redirect('/?auth=success');
   } catch (err) {
     console.error('Failed to exchange code for tokens', err);
+    await deleteOAuthState(state);
     res.redirect('/?auth=error');
   }
 });
 
-app.get('/auth/status', async (_req, res) => {
+app.get('/auth/status', async (req, res) => {
   try {
-    let loggedIn = Boolean(tokens.access_token) && Date.now() < (tokens.expires_at || 0);
+    const { device_id } = req.query;
+    
+    if (!device_id) {
+      return res.json({ loggedIn: false, expiresAt: 0 });
+    }
+
+    const deviceTokens = await loadTokens(device_id);
+    let loggedIn = Boolean(deviceTokens.access_token) && Date.now() < (deviceTokens.expires_at || 0);
 
     if (loggedIn) {
+      // Temporarily set tokens for sonosRequest validation
+      const originalTokens = tokens;
+      tokens = deviceTokens;
       try {
-        await sonosRequest('/households');
+        await sonosRequest('/households', device_id);
       } catch (error) {
         if (error.status === 401) {
-          tokens = await clearTokens();
+          await clearTokens(device_id);
           loggedIn = false;
         } else {
           console.warn('Failed to verify token during status check:', error?.message ?? error);
         }
+      } finally {
+        tokens = originalTokens;
       }
     }
 
-    res.json({ loggedIn, expiresAt: loggedIn ? tokens.expires_at || 0 : 0 });
+    res.json({ loggedIn, expiresAt: loggedIn ? deviceTokens.expires_at || 0 : 0 });
   } catch (error) {
     console.error('Auth status check failed:', error?.message ?? error);
     res.json({ loggedIn: false });
   }
 });
 
-app.post('/auth/signout', async (_req, res) => {
-  tokens = await clearTokens();
-  res.json({ ok: true });
+app.post('/auth/signout', async (req, res) => {
+  try {
+    const { device_id } = req.body;
+    
+    if (!device_id) {
+      return res.status(400).json({ error: 'device_id is required' });
+    }
+
+    await clearTokens(device_id);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Sign out failed:', error);
+    res.status(500).json({ error: 'Sign out failed' });
+  }
 });
 
-app.get('/api/households', async (_req, res) => {
+app.get('/api/households', async (req, res) => {
   try {
-    const response = await sonosRequest('/households');
+    const deviceId = req.query.device_id;
+    if (!deviceId) {
+      return res.status(400).json({ error: 'device_id is required' });
+    }
+    const response = await sonosRequest('/households', { deviceId });
     const payload = await response.json();
     res.json(payload);
   } catch (error) {
@@ -213,9 +317,14 @@ app.get('/api/households', async (_req, res) => {
 
 app.get('/api/households/:householdId/groups', async (req, res) => {
   const { householdId } = req.params;
+  const deviceId = req.query.device_id;
+
+  if (!deviceId) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
 
   try {
-    const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/groups`);
+    const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/groups`, { deviceId });
     const payload = await response.json();
     res.json(payload);
   } catch (error) {
@@ -225,10 +334,16 @@ app.get('/api/households/:householdId/groups', async (req, res) => {
 
 app.post('/api/groups/:groupId/playpause', async (req, res) => {
   const { groupId } = req.params;
+  const deviceId = getDeviceIdFromRequest(req);
+
+  if (!deviceId) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
 
   try {
     await sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/togglePlayPause`, {
-      method: 'POST'
+      method: 'POST',
+      deviceId
     });
     res.json({ status: 'ok' });
   } catch (error) {
@@ -239,7 +354,12 @@ app.post('/api/groups/:groupId/playpause', async (req, res) => {
 app.post('/api/groups/:groupId/volume', async (req, res) => {
   const { groupId } = req.params;
   const { volume } = req.body ?? {};
+  const deviceId = getDeviceIdFromRequest(req);
   const level = Number(volume);
+
+  if (!deviceId) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
 
   if (!Number.isFinite(level) || level < 0 || level > 100) {
     return res.status(400).json({ error: 'Volume must be a number between 0 and 100.' });
@@ -248,7 +368,8 @@ app.post('/api/groups/:groupId/volume', async (req, res) => {
   try {
     const response = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`, {
       method: 'POST',
-      body: JSON.stringify({ volume: level })
+      body: JSON.stringify({ volume: level }),
+      deviceId
     });
     const responseData = await response.json().catch(() => ({}));
     
@@ -267,10 +388,16 @@ app.post('/api/groups/:groupId/volume', async (req, res) => {
 
 app.post('/api/groups/:groupId/next', async (req, res) => {
   const { groupId } = req.params;
+  const deviceId = getDeviceIdFromRequest(req);
+
+  if (!deviceId) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
 
   try {
     await sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/skipToNextTrack`, {
-      method: 'POST'
+      method: 'POST',
+      deviceId
     });
     res.json({ status: 'ok' });
   } catch (error) {
@@ -280,10 +407,16 @@ app.post('/api/groups/:groupId/next', async (req, res) => {
 
 app.post('/api/groups/:groupId/previous', async (req, res) => {
   const { groupId } = req.params;
+  const deviceId = getDeviceIdFromRequest(req);
+
+  if (!deviceId) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
 
   try {
     await sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/skipToPreviousTrack`, {
-      method: 'POST'
+      method: 'POST',
+      deviceId
     });
     res.json({ status: 'ok' });
   } catch (error) {
@@ -293,22 +426,27 @@ app.post('/api/groups/:groupId/previous', async (req, res) => {
 
 app.get('/api/groups/:groupId/playback/status', async (req, res) => {
   const { groupId } = req.params;
+  const deviceId = getDeviceIdFromRequest(req);
   const preferredHousehold =
     typeof req.query.householdId === 'string' && req.query.householdId.trim().length > 0
       ? req.query.householdId.trim()
       : undefined;
 
+  if (!deviceId) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
+
   try {
     // Try playbackStatus endpoint first (more reliable), fallback to playbackState
     const [statusResponse, metadataResponse] = await Promise.allSettled([
-      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackStatus`).catch(() => {
+      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackStatus`, { deviceId }).catch(() => {
         // Fallback to playbackState if playbackStatus fails
-        return sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackState`).catch((err) => {
+        return sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackState`, { deviceId }).catch((err) => {
           console.error('[PlaybackStatus] Both playbackStatus and playbackState requests failed:', err.message);
           return null;
         });
       }),
-      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playbackMetadata`).catch((err) => {
+      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playbackMetadata`, { deviceId }).catch((err) => {
         console.error('[PlaybackStatus] playbackMetadata request failed:', err.message);
         return null;
       })
@@ -328,7 +466,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
         })
       : {};
 
-    const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`).catch(() => null);
+    const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`, { deviceId }).catch(() => null);
     const volume = volumeResponse ? await volumeResponse.json().catch(() => ({})) : {};
     
     const currentItem = metadata.currentItem || metadata.item || null;
@@ -517,10 +655,16 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
 
 app.get('/api/players/:playerId/volume', async (req, res) => {
   const { playerId } = req.params;
+  const deviceId = getDeviceIdFromRequest(req);
+
+  if (!deviceId) {
+    return res.status(400).json({ error: 'device_id is required' });
+  }
 
   try {
     const response = await sonosRequest(
-      `/players/${encodeURIComponent(playerId)}/playerVolume`
+      `/players/${encodeURIComponent(playerId)}/playerVolume`,
+      { deviceId }
     );
     const body = await response.text();
     res.status(response.status).send(body);
@@ -1776,7 +1920,7 @@ async function clearGroupQueue(groupId) {
   }
 }
 
-async function exchangeCodeForTokens(code) {
+async function exchangeCodeForTokens(code, deviceId) {
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -1798,26 +1942,35 @@ async function exchangeCodeForTokens(code) {
   }
 
   const payload = await response.json();
-  storeTokens(payload);
-  await saveTokens(tokens);
+  const tokenData = storeTokens(payload);
+  await saveTokens(tokenData, deviceId);
 }
 
 function storeTokens(tokenResponse) {
-  tokens.access_token = tokenResponse.access_token ?? tokens.access_token ?? null;
-  tokens.refresh_token = tokenResponse.refresh_token ?? tokens.refresh_token ?? null;
+  const tokenData = {
+    access_token: tokenResponse.access_token ?? null,
+    refresh_token: tokenResponse.refresh_token ?? null,
+    expires_at: 0
+  };
   const expiresIn = Number(tokenResponse.expires_in ?? 0);
   const bufferMs = 60 * 1000;
-  tokens.expires_at = Date.now() + Math.max(expiresIn * 1000 - bufferMs, bufferMs);
+  tokenData.expires_at = Date.now() + Math.max(expiresIn * 1000 - bufferMs, bufferMs);
+  return tokenData;
 }
 
-async function refreshAccessToken() {
-  if (!tokens.refresh_token) {
+async function refreshAccessToken(deviceId) {
+  if (!deviceId) {
+    throw Object.assign(new Error('Device ID is required'), { status: 401 });
+  }
+
+  const deviceTokens = await loadTokens(deviceId);
+  if (!deviceTokens.refresh_token) {
     throw Object.assign(new Error('Missing refresh token'), { status: 401 });
   }
 
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
-    refresh_token: tokens.refresh_token
+    refresh_token: deviceTokens.refresh_token
   });
 
   const response = await fetch(`${SONOS_AUTH_BASE}/login/v3/oauth/access`, {
@@ -1830,31 +1983,48 @@ async function refreshAccessToken() {
   });
 
   if (!response.ok) {
-    tokens = await clearTokens();
+    await clearTokens(deviceId);
     const text = await response.text();
     throw Object.assign(new Error(`Token refresh failed: ${text}`), { status: response.status });
   }
 
   const payload = await response.json();
-  storeTokens(payload);
-  await saveTokens(tokens);
+  const tokenData = storeTokens(payload);
+  await saveTokens(tokenData, deviceId);
+  return tokenData;
 }
 
-async function ensureValidAccessToken() {
-  // Ensure tokens are initialized
+async function ensureValidAccessToken(deviceId) {
+  if (!deviceId) {
+    throw Object.assign(new Error('Device ID is required'), { status: 401 });
+  }
+
+  // Ensure other data stores are initialized
   await ensureInitialized();
   
-  if (!tokens || !tokens.access_token) {
+  // Load tokens for this device
+  const deviceTokens = await loadTokens(deviceId);
+  
+  if (!deviceTokens || !deviceTokens.access_token) {
     throw Object.assign(new Error('Not authenticated with Sonos'), { status: 401 });
   }
 
-  if (Date.now() >= tokens.expires_at) {
-    await refreshAccessToken();
+  if (Date.now() >= deviceTokens.expires_at) {
+    const refreshedTokens = await refreshAccessToken(deviceId);
+    // Update the tokens variable for this request
+    tokens = refreshedTokens;
+  } else {
+    tokens = deviceTokens;
   }
 }
 
 async function sonosFetch(endpoint, options = {}) {
-  await ensureValidAccessToken();
+  const deviceId = options.deviceId;
+  if (!deviceId) {
+    throw Object.assign(new Error('Device ID is required'), { status: 401 });
+  }
+
+  await ensureValidAccessToken(deviceId);
 
   const initialHeaders = {
     ...(options.headers ?? {})
@@ -1875,20 +2045,33 @@ async function sonosFetch(endpoint, options = {}) {
   let response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
 
   if (response.status === 401 && tokens.refresh_token) {
-    await refreshAccessToken();
+    await refreshAccessToken(deviceId);
     requestOptions.headers.Authorization = `Bearer ${tokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
   }
 
   if (response.status === 401) {
-    tokens = await clearTokens();
+    await clearTokens(deviceId);
   }
 
   return response;
 }
 
 async function sonosRequest(endpoint, options = {}) {
-  await ensureValidAccessToken();
+  // Handle case where deviceId is passed as second parameter (backward compatibility)
+  let deviceId;
+  if (typeof options === 'string') {
+    deviceId = options;
+    options = {};
+  } else {
+    deviceId = options.deviceId;
+  }
+
+  if (!deviceId) {
+    throw Object.assign(new Error('Device ID is required'), { status: 401 });
+  }
+
+  await ensureValidAccessToken(deviceId);
 
   const initialHeaders = {
     Accept: 'application/json',
@@ -1910,11 +2093,11 @@ async function sonosRequest(endpoint, options = {}) {
   let response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
 
   if (response.status === 401 && tokens.refresh_token) {
-    await refreshAccessToken();
+    await refreshAccessToken(deviceId);
     requestOptions.headers.Authorization = `Bearer ${tokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
     if (response.status === 401) {
-      tokens = await clearTokens();
+      await clearTokens(deviceId);
       throw Object.assign(new Error('Unauthorized request after refresh'), { status: 401 });
     }
   }

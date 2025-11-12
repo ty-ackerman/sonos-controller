@@ -3025,13 +3025,57 @@ settingsStatusLabel.textContent = '';
       let currentPlaylistName = null; // Track current playlist name to detect playlist changes
       let baseVolume = null; // Store base/reference volume level for loudness normalization
 
+      // Device ID management
+      function getDeviceId() {
+        const STORAGE_KEY = 'sonos_device_id';
+        let deviceId = localStorage.getItem(STORAGE_KEY);
+        if (!deviceId) {
+          // Generate UUID v4
+          deviceId = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+          });
+          localStorage.setItem(STORAGE_KEY, deviceId);
+        }
+        return deviceId;
+      }
+
+      // Helper function to add device_id to URL or request body
+      function addDeviceIdToRequest(url, options = {}) {
+        const deviceId = getDeviceId();
+        const urlObj = new URL(url, window.location.origin);
+        urlObj.searchParams.set('device_id', deviceId);
+        
+        const newOptions = { ...options };
+        if (newOptions.body && typeof newOptions.body === 'string') {
+          try {
+            const bodyObj = JSON.parse(newOptions.body);
+            bodyObj.device_id = deviceId;
+            newOptions.body = JSON.stringify(bodyObj);
+          } catch (e) {
+            // If body is not JSON, add device_id as query param only
+          }
+        } else if (newOptions.body && typeof newOptions.body === 'object') {
+          newOptions.body = { ...newOptions.body, device_id: deviceId };
+        }
+        
+        return { url: urlObj.toString(), options: newOptions };
+      }
+
       function login() {
-        window.location.href = '/auth/sonos/login';
+        const deviceId = getDeviceId();
+        window.location.href = `/auth/sonos/login?device_id=${encodeURIComponent(deviceId)}`;
       }
 
 async function signout() {
   try {
-    await fetch('/auth/signout', { method: 'POST' });
+    const deviceId = getDeviceId();
+    await fetch('/auth/signout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ device_id: deviceId })
+    });
   } catch (error) {
     console.error('Sign out failed:', error);
   }
@@ -3457,6 +3501,9 @@ function setAuthUI(loggedIn) {
   signinButton.classList.toggle('hidden', loggedIn);
   authBar.classList.toggle('hidden', loggedIn);
   panelsContainer.classList.toggle('hidden', !loggedIn);
+  // Hide hamburger menu and now playing panel when not logged in
+  hamburgerMenuBtn.classList.toggle('hidden', !loggedIn);
+  currentlyPlayingPanel.classList.toggle('hidden', !loggedIn);
   if (!loggedIn) {
     showView('control');
     closeMenu();
@@ -3466,7 +3513,8 @@ function setAuthUI(loggedIn) {
 
 async function checkAuthAndInit() {
   try {
-    const response = await fetch('/auth/status');
+    const deviceId = getDeviceId();
+    const response = await fetch(`/auth/status?device_id=${encodeURIComponent(deviceId)}`);
     if (!response.ok) {
       throw new Error('Failed to check auth status');
     }
@@ -3816,7 +3864,8 @@ async function checkAuthAndInit() {
           // Show loading overlay
           showLoadingOverlay();
           
-          const response = await fetch('/api/households');
+          const { url } = addDeviceIdToRequest('/api/households');
+          const response = await fetch(url);
 
           if (response.status === 401) {
             hideLoadingOverlay();
@@ -3935,12 +3984,15 @@ async function checkAuthAndInit() {
           // This ensures settings saved on other devices are immediately visible
           const [snapshot, defaults] = await Promise.all([
             fetchGroupsPlayers(householdId),
-            fetch('/api/settings/volumes', {
-              cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-cache'
-              }
-            }).then((response) => {
+            (async () => {
+              const { url, options } = addDeviceIdToRequest('/api/settings/volumes', {
+                cache: 'no-store',
+                headers: {
+                  'Cache-Control': 'no-cache'
+                }
+              });
+              return fetch(url, options);
+            })().then((response) => {
               if (!response.ok) {
                 throw new Error('Failed to load saved volumes');
               }
@@ -4041,11 +4093,12 @@ async function checkAuthAndInit() {
                 payload[playerId] = value !== '' ? Number(value) : '';
               });
 
-              const response = await fetch('/api/settings/volumes', {
+              const { url, options } = addDeviceIdToRequest('/api/settings/volumes', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
               });
+              const response = await fetch(url, options);
 
               if (!response.ok) {
                 throw new Error(await response.text());
@@ -4330,7 +4383,8 @@ async function checkAuthAndInit() {
 
       async function loadTimeRules() {
         try {
-          const response = await fetch('/api/vibe-time-rules');
+          const { url } = addDeviceIdToRequest('/api/vibe-time-rules');
+          const response = await fetch(url);
           if (response.ok) {
             timeRules = await response.json();
           } else {
@@ -4830,11 +4884,12 @@ async function checkAuthAndInit() {
               throw new Error('Failed to update rule');
             }
           } else {
-            const response = await fetch('/api/vibe-time-rules', {
+            const { url, options } = addDeviceIdToRequest('/api/vibe-time-rules', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(rule)
             });
+            const response = await fetch(url, options);
             if (!response.ok) {
               throw new Error('Failed to create rule');
             }
@@ -4856,7 +4911,8 @@ async function checkAuthAndInit() {
 
       async function loadPlaylistVibes() {
         try {
-          const response = await fetch('/api/playlist-vibes');
+          const { url } = addDeviceIdToRequest('/api/playlist-vibes');
+          const response = await fetch(url);
           if (response.ok) {
             playlistVibes = await response.json();
           }
@@ -4873,11 +4929,12 @@ async function checkAuthAndInit() {
         }
 
         try {
-          const response = await fetch('/api/playlist-vibes', {
+          const { url, options } = addDeviceIdToRequest('/api/playlist-vibes', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(playlistVibes)
           });
+          const response = await fetch(url, options);
 
           if (!response.ok) {
             throw new Error('Failed to save vibe');
@@ -5826,9 +5883,10 @@ async function checkAuthAndInit() {
           // Auto-grouping is handled on load, but if we still don't have a group, try to create one
           if (currentHouseholdId && latestPlayers.length > 0) {
             try {
-              const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
+              const { url, options } = addDeviceIdToRequest(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
                 method: 'POST'
               });
+              const groupResponse = await fetch(url, options);
               if (groupResponse.ok) {
                 const groupData = await groupResponse.json();
                 if (groupData.groupId) {
@@ -5889,11 +5947,12 @@ async function checkAuthAndInit() {
 
       async function sendCommand(endpoint, body, successMessage = 'Command sent to Sonos.') {
         try {
-          const response = await fetch(endpoint, {
+          const { url, options } = addDeviceIdToRequest(endpoint, {
             method: 'POST',
             headers: body ? { 'Content-Type': 'application/json' } : undefined,
             body: body ? JSON.stringify(body) : undefined
           });
+          const response = await fetch(url, options);
 
           if (response.status === 401) {
             setAuthUI(false);
