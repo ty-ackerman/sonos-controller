@@ -6,7 +6,7 @@
     <title>Sonos Controller</title>
     
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='wood' x1='0' y1='0' x2='0' y2='100'%3E%3Cstop offset='0' stop-color='%23d4a574'/%3E%3Cstop offset='1' stop-color='%23c8956a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23wood)' width='100' height='100'/%3E%3Crect fill='%23a67c52' x='0' y='0' width='100' height='15'/%3E%3Crect fill='%23a67c52' x='0' y='20' width='15' height='60'/%3E%3Crect fill='%23a67c52' x='85' y='20' width='15' height='60'/%3E%3Crect fill='%238b6f47' x='20' y='40' width='60' height='15'/%3E%3Crect fill='%238b6f47' x='20' y='60' width='60' height='15'/%3E%3Crect fill='%23404040' x='70' y='70' width='20' height='20' rx='2'/%3E%3Ccircle fill='%23ffd700' cx='85' cy='15' r='6'/%3E%3Cpath fill='%23ffffff' opacity='0.7' d='M25 25 Q35 15 45 25 T65 25'/%3E%3Cpath fill='%23ffffff' opacity='0.5' d='M20 30 Q30 20 40 30 T60 30'/%3E%3C/svg%3E" />
+    <link rel="icon" type="image/svg+xml" href="./images/alterxsonos.png" />
     
     <!-- Apple Touch Icon (for iOS Home Screen) -->
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='wood' x1='0' y1='0' x2='0' y2='100'%3E%3Cstop offset='0' stop-color='%23d4a574'/%3E%3Cstop offset='1' stop-color='%23c8956a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23wood)' width='100' height='100'/%3E%3Crect fill='%23a67c52' x='0' y='0' width='100' height='15'/%3E%3Crect fill='%23a67c52' x='0' y='20' width='15' height='60'/%3E%3Crect fill='%23a67c52' x='85' y='20' width='15' height='60'/%3E%3Crect fill='%238b6f47' x='20' y='40' width='60' height='15'/%3E%3Crect fill='%238b6f47' x='20' y='60' width='60' height='15'/%3E%3Crect fill='%23404040' x='70' y='70' width='20' height='20' rx='2'/%3E%3Ccircle fill='%23ffd700' cx='85' cy='15' r='6'/%3E%3Cpath fill='%23ffffff' opacity='0.7' d='M25 25 Q35 15 45 25 T65 25'/%3E%3Cpath fill='%23ffffff' opacity='0.5' d='M20 30 Q30 20 40 30 T60 30'/%3E%3C/svg%3E" />
@@ -266,6 +266,7 @@
 
       .loading-text .alter-logo-light {
         display: block;
+        filter: brightness(0);
       }
 
       .loading-text .alter-logo-dark {
@@ -448,7 +449,8 @@
       .favorites {
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 20px;
+        margin-top: 24px;
       }
 
       .vibe-filters {
@@ -498,8 +500,15 @@
 
       .favorites-grid {
         display: grid;
-        grid-template-columns: 1fr;
-        gap: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 16px;
+      }
+
+      @media (max-width: 480px) {
+        .favorites-grid {
+          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+          gap: 12px;
+        }
       }
 
       .favorites-status {
@@ -832,16 +841,17 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 12px;
+        margin-bottom: 16px;
       }
 
       .favorites-toggle {
-        padding: 6px 12px;
-        border-radius: 6px;
+        padding: 10px 16px;
+        border-radius: 12px;
         border: 1px solid var(--border-color);
         background: var(--bg-secondary);
         color: var(--text-primary);
         font-size: 0.875rem;
+        font-weight: 500;
         cursor: pointer;
         text-align: left;
         display: flex;
@@ -853,12 +863,18 @@
 
       .favorites-toggle:hover {
         background: var(--bg-tertiary);
+        border-color: var(--accent);
       }
 
       .favorites-content {
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 16px;
+        padding: 20px;
+        background: var(--bg-secondary);
+        border-radius: 16px;
+        border: 1px solid var(--border-color);
+        transition: all 0.3s ease;
       }
 
       .favorites-content.hidden {
@@ -983,6 +999,7 @@
         overflow-y: auto;
         transition: transform 0.3s ease-out;
         transform: translateY(0);
+        touch-action: manipulation;
       }
 
       .currently-playing.visible {
@@ -1062,6 +1079,41 @@
         gap: 6px;
       }
 
+      .currently-playing-vibe {
+        margin-top: 4px;
+        display: inline-flex;
+      }
+
+      .currently-playing-vibe-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 10px;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-size: 0.75rem;
+        font-weight: 500;
+        border: 1px solid var(--border-color);
+      }
+
+      .currently-playing-vibe-badge.down {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: rgba(59, 130, 246, 0.3);
+        color: rgb(96, 165, 250);
+      }
+
+      .currently-playing-vibe-badge.down-mid {
+        background: rgba(168, 85, 247, 0.15);
+        border-color: rgba(168, 85, 247, 0.3);
+        color: rgb(192, 132, 252);
+      }
+
+      .currently-playing-vibe-badge.mid {
+        background: rgba(236, 72, 153, 0.15);
+        border-color: rgba(236, 72, 153, 0.3);
+        color: rgb(244, 114, 182);
+      }
+
       .currently-playing-loudness {
         font-size: 0.75rem;
         color: var(--text-secondary);
@@ -1080,6 +1132,41 @@
         align-items: center;
         gap: 12px;
         flex-shrink: 0;
+      }
+
+      .skip-song-button {
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+      }
+
+      .skip-song-button:hover {
+        background: var(--bg-tertiary);
+        border-color: var(--accent);
+      }
+
+      .skip-song-button:active {
+        transform: scale(0.98);
+      }
+
+      .skip-song-button svg {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
 
       .currently-playing-group-indicator {
@@ -1259,6 +1346,10 @@
         transition: background 0.2s ease;
       }
 
+      .menu-close-btn svg {
+        stroke: var(--text-primary);
+      }
+
 
       .menu-items {
         flex: 1;
@@ -1290,6 +1381,151 @@
 
       .menu-signout .menu-item {
         color: var(--error);
+      }
+
+      .view-indicator {
+        padding: 4px 12px;
+        margin: 0 20px 12px 20px;
+        border-radius: 6px;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-align: center;
+        border: 1px solid var(--border-color);
+      }
+
+      .password-modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1001;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease, visibility 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .password-modal-backdrop.visible {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      .password-modal {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        padding: 24px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+        transform: scale(0.95);
+        transition: transform 0.3s ease;
+      }
+
+      .password-modal-backdrop.visible .password-modal {
+        transform: scale(1);
+      }
+
+      .password-modal-title {
+        font-size: 1.125rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 16px;
+      }
+
+      .password-modal-input {
+        width: 100%;
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font-size: 0.9375rem;
+        margin-bottom: 16px;
+        box-sizing: border-box;
+      }
+
+      .password-modal-input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .password-modal-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+      }
+
+      .password-modal-button {
+        padding: 10px 20px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font-size: 0.875rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .password-modal-button:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .password-modal-button.primary {
+        background: var(--accent);
+        color: var(--bg-primary);
+        border-color: var(--accent);
+      }
+
+      .password-modal-button.primary:hover {
+        background: var(--accent-hover);
+      }
+
+      .password-modal-error {
+        color: var(--error);
+        font-size: 0.875rem;
+        margin-bottom: 12px;
+        display: none;
+      }
+
+      .password-modal-error.visible {
+        display: block;
+      }
+
+      .loading-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        vertical-align: middle;
+        margin-right: 8px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .loading-status {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
       }
 
 
@@ -1520,6 +1756,10 @@
         justify-content: center;
         border-radius: 6px;
         transition: background 0.2s ease;
+      }
+
+      .time-rule-editor-close svg {
+        stroke: var(--text-primary);
       }
 
       .time-rule-editor-close:hover {
@@ -1988,37 +2228,69 @@
       }
 
       .alternatives-dropdown {
-        margin-top: 12px;
+        margin-top: 20px;
+      }
+
+      .alternatives-explanation {
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-bottom: 12px;
+        line-height: 1.5;
       }
 
       .alternatives-toggle {
         width: 100%;
-        padding: 8px 12px;
-        border-radius: 6px;
+        padding: 12px 16px;
+        border-radius: 12px;
         border: 1px solid var(--border-color);
         background: var(--bg-secondary);
         color: var(--text-primary);
         font-size: 0.875rem;
+        font-weight: 500;
         cursor: pointer;
         text-align: left;
         display: flex;
         align-items: center;
         justify-content: space-between;
+        transition: all 0.2s ease;
       }
 
       .alternatives-toggle:hover {
         background: var(--bg-tertiary);
+        border-color: var(--accent);
+      }
+
+      .alternatives-toggle span {
+        font-size: 0.75rem;
+        opacity: 0.7;
+        transition: transform 0.2s ease;
+      }
+
+      .alternatives-toggle.expanded span {
+        transform: rotate(180deg);
       }
 
       .alternatives-list {
-        margin-top: 8px;
+        margin-top: 12px;
         display: none;
         flex-direction: column;
-        gap: 8px;
+        gap: 12px;
+        animation: slideDown 0.3s ease;
       }
 
       .alternatives-list.visible {
         display: flex;
+      }
+
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-8px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
 
       .alternative-playlist {
@@ -2066,13 +2338,39 @@
       }
 
       .alternative-playlist-vibe {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 8px;
+        border-radius: 10px;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
         font-size: 0.75rem;
-        color: var(--text-secondary);
+        font-weight: 500;
+        border: 1px solid var(--border-color);
+        margin-top: 4px;
+      }
+
+      .alternative-playlist-vibe.down {
+        background: rgba(59, 130, 246, 0.15);
+        border-color: rgba(59, 130, 246, 0.3);
+        color: rgb(96, 165, 250);
+      }
+
+      .alternative-playlist-vibe.down-mid {
+        background: rgba(168, 85, 247, 0.15);
+        border-color: rgba(168, 85, 247, 0.3);
+        color: rgb(192, 132, 252);
+      }
+
+      .alternative-playlist-vibe.mid {
+        background: rgba(236, 72, 153, 0.15);
+        border-color: rgba(236, 72, 153, 0.3);
+        color: rgb(244, 114, 182);
       }
     </style>
   </head>
   <body>
-    <div id="menu-backdrop" class="menu-backdrop"></div>
+      <div id="menu-backdrop" class="menu-backdrop"></div>
     <div id="menu-panel" class="menu-panel">
       <div class="menu-header">
         <span class="menu-title">Menu</span>
@@ -2083,13 +2381,27 @@
           </svg>
         </button>
       </div>
+      <div id="view-indicator" class="view-indicator"></div>
       <div class="menu-items">
         <button id="menu-item-controls" class="menu-item active" type="button">Controls</button>
         <button id="menu-item-playlist-management" class="menu-item" type="button">Playlist Management</button>
         <button id="menu-item-settings" class="menu-item" type="button">Settings</button>
+        <button id="menu-item-switch-view" class="menu-item" type="button" style="display: none;">Switch to Manager View</button>
       </div>
       <div class="menu-signout">
         <button id="menu-item-signout" class="menu-item" type="button">Sign out</button>
+      </div>
+    </div>
+
+    <div id="password-modal-backdrop" class="password-modal-backdrop">
+      <div class="password-modal">
+        <h3 class="password-modal-title">Enter Manager Password</h3>
+        <p class="password-modal-error" id="password-modal-error">Incorrect password. Please try again.</p>
+        <input type="password" id="password-modal-input" class="password-modal-input" placeholder="Password" autocomplete="off">
+        <div class="password-modal-actions">
+          <button id="password-modal-cancel" class="password-modal-button" type="button">Cancel</button>
+          <button id="password-modal-submit" class="password-modal-button primary" type="button">Submit</button>
+        </div>
       </div>
     </div>
 
@@ -2146,14 +2458,14 @@
           </div>
           <div class="favorites">
             <div class="favorites-header">
-              <span class="section-title">Favourites</span>
+              <span class="section-title">Playlists</span>
               <button id="favorites-toggle" class="favorites-toggle" type="button">
-                View All Favourites <span>▼</span>
+                View All Playlists <span>▼</span>
               </button>
             </div>
             <div id="favorites-content" class="favorites-content hidden">
               <div id="vibe-filters" class="vibe-filters"></div>
-              <p id="favorites-status" class="favorites-status">Sign in to load favourites.</p>
+              <p id="favorites-status" class="favorites-status">Sign in to load playlists.</p>
               <div id="favorites-grid" class="favorites-grid"></div>
             </div>
           </div>
@@ -2359,11 +2671,19 @@
             <div class="currently-playing-artist" id="currently-playing-artist">
               <span></span>
             </div>
+            <div class="currently-playing-vibe" id="currently-playing-vibe" style="display: none;"></div>
             <div class="currently-playing-loudness" id="currently-playing-loudness" style="display: none;">
               <span class="loudness-label"></span>
             </div>
           </div>
           <div class="currently-playing-controls">
+            <button id="skip-song-button" class="skip-song-button" type="button" aria-label="Skip song">
+              <svg viewBox="0 0 24 24">
+                <polygon points="5,4 15,12 5,20" />
+                <line x1="15" y1="4" x2="15" y2="20" />
+              </svg>
+              Skip Song
+            </button>
             <div class="currently-playing-group-indicator" id="currently-playing-group-indicator" style="display: none;">
               <span>🔊</span>
               <span class="currently-playing-group-count" id="currently-playing-group-count" style="display: none;">1</span>
@@ -2387,9 +2707,9 @@
       const SELECT_GROUP_MESSAGE = 'Ready to play';
       const READY_MESSAGE = 'Ready to play';
       const FAVORITE_SUCCESS_MESSAGE = '';
-      const FAVORITE_ERROR_MESSAGE = 'Favourite failed to start';
+      const FAVORITE_ERROR_MESSAGE = 'Playlist failed to start';
       const LOADING_MESSAGE = 'Loading…';
-      const FAVORITE_SUCCESS_TOAST = 'Favourite loaded with shuffle, repeat, crossfade.';
+      const FAVORITE_SUCCESS_TOAST = 'Playlist loaded with shuffle, repeat, crossfade.';
 
       const statusLabel = document.getElementById('status');
       const feedbackLabel = document.getElementById('feedback');
@@ -2414,10 +2734,12 @@
       const currentlyPlayingTitle = document.getElementById('currently-playing-title');
       const currentlyPlayingArtist = document.getElementById('currently-playing-artist');
       const currentlyPlayingLoudness = document.getElementById('currently-playing-loudness');
+      const currentlyPlayingVibe = document.getElementById('currently-playing-vibe');
       const currentlyPlayingGroupIndicator = document.getElementById('currently-playing-group-indicator');
       const currentlyPlayingGroupCount = document.getElementById('currently-playing-group-count');
       const currentlyPlayingVolume = document.getElementById('currently-playing-volume');
       const currentlyPlayingRoomsList = document.getElementById('currently-playing-rooms-list');
+      const skipSongButton = document.getElementById('skip-song-button');
       const recommendedPlaylistContainer = document.getElementById('recommended-playlist-container');
       const alternativesDropdown = document.getElementById('alternatives-dropdown');
       const recommendationRuleInfo = document.getElementById('recommendation-rule-info');
@@ -2431,6 +2753,18 @@
       const menuItemPlaylistManagement = document.getElementById('menu-item-playlist-management');
       const menuItemSettings = document.getElementById('menu-item-settings');
       const menuItemSignout = document.getElementById('menu-item-signout');
+      const menuItemSwitchView = document.getElementById('menu-item-switch-view');
+      const viewIndicator = document.getElementById('view-indicator');
+      const passwordModalBackdrop = document.getElementById('password-modal-backdrop');
+      const passwordModalInput = document.getElementById('password-modal-input');
+      const passwordModalError = document.getElementById('password-modal-error');
+      const passwordModalCancel = document.getElementById('password-modal-cancel');
+      const passwordModalSubmit = document.getElementById('password-modal-submit');
+
+      const MANAGER_PASSWORD = 'y2WN43rzcTf93ZCs7BvUhCFsZPmubkgsT68aWUtjjaMQkRAvBq6nbknbnJX8AtTH';
+      const VIEW_STORAGE_KEY = 'sonos-controller-view';
+      const VIEW_FRONT_DESK = 'front-desk';
+      const VIEW_MANAGER = 'manager';
       
       // Master volume controls
       const masterVolumeSlider = document.getElementById('master-volume-slider');
@@ -2703,7 +3037,76 @@ document.addEventListener('touchstart', handleTouchStart, { passive: true });
 document.addEventListener('touchmove', handleTouchMove, { passive: false });
 document.addEventListener('touchend', handleTouchEnd, { passive: true });
 
+// View management functions
+function getCurrentView() {
+  const stored = localStorage.getItem(VIEW_STORAGE_KEY);
+  return stored === VIEW_MANAGER ? VIEW_MANAGER : VIEW_FRONT_DESK;
+}
+
+function setCurrentView(view) {
+  localStorage.setItem(VIEW_STORAGE_KEY, view);
+  updateMenuForView();
+}
+
+function updateMenuForView() {
+  const currentView = getCurrentView();
+  const isManager = currentView === VIEW_MANAGER;
+  
+  // Update view indicator
+  viewIndicator.textContent = isManager ? 'Manager View' : 'Front Desk View';
+  
+  // Show/hide menu items based on view
+  if (isManager) {
+    menuItemPlaylistManagement.style.display = 'block';
+    menuItemSettings.style.display = 'block';
+    menuItemSwitchView.style.display = 'block';
+    menuItemSwitchView.textContent = 'Switch to Front Desk View';
+  } else {
+    menuItemPlaylistManagement.style.display = 'none';
+    menuItemSettings.style.display = 'none';
+    menuItemSwitchView.style.display = 'block';
+    menuItemSwitchView.textContent = 'Switch to Manager View';
+  }
+}
+
+function showPasswordModal() {
+  passwordModalInput.value = '';
+  passwordModalError.classList.remove('visible');
+  passwordModalBackdrop.classList.add('visible');
+  passwordModalInput.focus();
+}
+
+function hidePasswordModal() {
+  passwordModalBackdrop.classList.remove('visible');
+  passwordModalInput.value = '';
+  passwordModalError.classList.remove('visible');
+}
+
+function switchToManagerView() {
+  showPasswordModal();
+}
+
+function switchToFrontDeskView() {
+  setCurrentView(VIEW_FRONT_DESK);
+  if (panelPlaylistManagement && !panelPlaylistManagement.classList.contains('hidden')) {
+    showView('control');
+  }
+  if (panelSettings && !panelSettings.classList.contains('hidden')) {
+    showView('control');
+  }
+  closeMenu();
+}
+
 function showView(name) {
+  const currentView = getCurrentView();
+  const isManager = currentView === VIEW_MANAGER;
+  
+  // In Front Desk view, only allow control panel
+  if (!isManager && (name === 'playlist-management' || name === 'settings')) {
+    switchToManagerView();
+    return;
+  }
+  
   const isControl = name === 'control';
   const isPlaylistManagement = name === 'playlist-management';
   const isSettings = name === 'settings';
@@ -2757,6 +3160,50 @@ menuItemSignout.addEventListener('click', () => {
   signout();
 });
 
+menuItemSwitchView.addEventListener('click', () => {
+  const currentView = getCurrentView();
+  if (currentView === VIEW_MANAGER) {
+    switchToFrontDeskView();
+  } else {
+    switchToManagerView();
+  }
+});
+
+// Password modal handlers
+passwordModalCancel.addEventListener('click', () => {
+  hidePasswordModal();
+});
+
+passwordModalSubmit.addEventListener('click', () => {
+  const password = passwordModalInput.value;
+  if (password === MANAGER_PASSWORD) {
+    setCurrentView(VIEW_MANAGER);
+    hidePasswordModal();
+    closeMenu();
+  } else {
+    passwordModalError.classList.add('visible');
+    passwordModalInput.value = '';
+    passwordModalInput.focus();
+  }
+});
+
+passwordModalInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    passwordModalSubmit.click();
+  } else if (e.key === 'Escape') {
+    hidePasswordModal();
+  }
+});
+
+passwordModalBackdrop.addEventListener('click', (e) => {
+  if (e.target === passwordModalBackdrop) {
+    hidePasswordModal();
+  }
+});
+
+// Initialize view on page load
+updateMenuForView();
+
 // Favorites toggle handler
 favoritesToggle.addEventListener('click', () => {
   const isHidden = favoritesContent.classList.contains('hidden');
@@ -2765,7 +3212,7 @@ favoritesToggle.addEventListener('click', () => {
   if (arrow) {
     arrow.textContent = isHidden ? '▲' : '▼';
   }
-  favoritesToggle.innerHTML = `${isHidden ? 'Hide' : 'View'} All Favourites <span>${isHidden ? '▲' : '▼'}</span>`;
+  favoritesToggle.innerHTML = `${isHidden ? 'Hide' : 'View'} All Playlists <span>${isHidden ? '▲' : '▼'}</span>`;
 });
 
 function setAuthUI(loggedIn) {
@@ -2805,6 +3252,37 @@ async function checkAuthAndInit() {
 }
 
       // Playback control handlers for now-playing section
+
+      // Skip song button handler
+      skipSongButton.addEventListener('click', async () => {
+        const groupId = getSelectedGroupId();
+        if (!groupId) {
+          showToast('Please select a group first');
+          return;
+        }
+
+        try {
+          skipSongButton.disabled = true;
+          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playback/skipToNextTrack`, {
+            method: 'POST'
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to skip song');
+          }
+
+          showToast('Skipped to next song');
+          // Refresh playback status after a short delay
+          setTimeout(() => {
+            refreshPlaybackStatus();
+          }, 500);
+        } catch (error) {
+          console.error('Failed to skip song:', error);
+          showToast('Failed to skip song');
+        } finally {
+          skipSongButton.disabled = false;
+        }
+      });
 
       // Master volume handler
       masterVolumeSlider.addEventListener('input', (e) => {
@@ -2886,7 +3364,7 @@ async function checkAuthAndInit() {
           currentHouseholdId = null;
           currentHouseholdName = null;
           householdTitle.textContent = '';
-          favoritesStatus.textContent = 'Login required to load favourites.';
+          favoritesStatus.textContent = 'Login required to load playlists.';
           vibeFiltersContainer.innerHTML = '';
           currentGroupId = null;
           currentGroupName = 'No group selected';
@@ -2952,7 +3430,7 @@ async function checkAuthAndInit() {
             hideLoadingOverlay();
             setAuthUI(false);
             showFeedback('Login required to load Sonos households.', true);
-            favoritesStatus.textContent = 'Login required to load favourites.';
+            favoritesStatus.textContent = 'Login required to load playlists.';
             return;
           }
 
@@ -3007,7 +3485,7 @@ async function checkAuthAndInit() {
           console.error('Failed to load households:', error);
           showFeedback('Could not load households. Please try again.', true);
           setAuthUI(false);
-          favoritesStatus.textContent = 'Unable to load favourites.';
+          favoritesStatus.textContent = 'Unable to load playlists.';
         }
       }
 
@@ -3214,6 +3692,9 @@ async function checkAuthAndInit() {
           dayOverridesList.innerHTML = '';
           return;
         }
+
+        // Show loading animation
+        playlistManagementStatus.innerHTML = '<div class="loading-status"><span class="loading-spinner"></span>Loading playlists…</div>';
 
         try {
           await loadPlaylistVibes();
@@ -4092,6 +4573,11 @@ async function checkAuthAndInit() {
 
           // Render alternatives if any
           if (alternatives && alternatives.length > 0) {
+            const explanation = document.createElement('p');
+            explanation.className = 'alternatives-explanation';
+            explanation.textContent = 'If you would like to use another playlist that matches the vibe of the time of day.';
+            alternativesDropdown.appendChild(explanation);
+
             const toggle = document.createElement('button');
             toggle.className = 'alternatives-toggle';
             toggle.textContent = `View ${alternatives.length} other option${alternatives.length > 1 ? 's' : ''}`;
@@ -4101,7 +4587,8 @@ async function checkAuthAndInit() {
             toggle.addEventListener('click', () => {
               isOpen = !isOpen;
               alternativesList.classList.toggle('visible', isOpen);
-              toggle.innerHTML = `${isOpen ? 'Hide' : 'View'} ${alternatives.length} other option${alternatives.length > 1 ? 's' : ''} <span>${isOpen ? '▲' : '▼'}</span>`;
+              toggle.classList.toggle('expanded', isOpen);
+              toggle.innerHTML = `${isOpen ? 'Hide' : 'View'} ${alternatives.length} other option${alternatives.length > 1 ? 's' : ''} <span>▼</span>`;
             });
 
             const alternativesList = document.createElement('div');
@@ -4346,7 +4833,18 @@ async function checkAuthAndInit() {
           if (vibeValue) {
             const vibe = document.createElement('div');
             vibe.className = 'alternative-playlist-vibe';
-            vibe.textContent = `Vibe: ${vibeValue}`;
+            if (vibeValue === 'Down') {
+              vibe.classList.add('down');
+              vibe.textContent = 'Down';
+            } else if (vibeValue === 'Down/Mid') {
+              vibe.classList.add('down-mid');
+              vibe.textContent = 'Down/Mid';
+            } else if (vibeValue === 'Mid') {
+              vibe.classList.add('mid');
+              vibe.textContent = 'Mid';
+            } else {
+              vibe.textContent = vibeValue;
+            }
             info.appendChild(vibe);
           }
 
@@ -4435,14 +4933,14 @@ async function checkAuthAndInit() {
 
         if (!householdId) {
           favoritesStatus.textContent = isSonosConnected
-            ? 'Select a household to load favourites.'
-            : 'Login required to load favourites.';
+            ? 'Select a household to load playlists.'
+            : 'Login required to load playlists.';
           vibeFiltersContainer.innerHTML = '';
           evaluateFavoritesAvailability();
           return;
         }
 
-        favoritesStatus.textContent = 'Loading favourites…';
+        favoritesStatus.textContent = 'Loading playlists…';
 
         try {
           await loadPlaylistVibes();
@@ -4457,7 +4955,7 @@ async function checkAuthAndInit() {
 
           if (response.status === 401) {
             setAuthUI(false);
-            favoritesStatus.textContent = 'Login required to load favourites.';
+            favoritesStatus.textContent = 'Login required to load playlists.';
             return;
           }
 
@@ -4469,7 +4967,7 @@ async function checkAuthAndInit() {
           const items = Array.isArray(data.items) ? data.items : [];
 
           if (!items.length) {
-            favoritesStatus.textContent = 'No favourites found.';
+            favoritesStatus.textContent = 'No playlists found.';
             vibeFiltersContainer.innerHTML = '';
             evaluateFavoritesAvailability();
             return;
@@ -4492,7 +4990,7 @@ async function checkAuthAndInit() {
           }
         } catch (error) {
           console.error('Failed to load favorites:', error);
-          favoritesStatus.textContent = 'Could not load favourites. Please try again.';
+          favoritesStatus.textContent = 'Could not load playlists. Please try again.';
           vibeFiltersContainer.innerHTML = '';
           evaluateFavoritesAvailability();
         }
@@ -4540,7 +5038,7 @@ async function checkAuthAndInit() {
 
         const title = document.createElement('span');
         title.className = 'playlist-name';
-        title.textContent = favorite.name || 'Unnamed Favourite';
+        title.textContent = favorite.name || 'Unnamed Playlist';
         nameRow.appendChild(title);
 
         const vibe = playlistVibes[favorite.id] || '';
@@ -4645,7 +5143,7 @@ async function checkAuthAndInit() {
             markActiveFavorite(null);
           }
         } catch (error) {
-          console.error('Failed to play favourite:', error);
+          console.error('Failed to play playlist:', error);
           setFavoriteLoading(entry, false);
           markActiveFavorite(null);
           showFeedback('Failed to start playback. Please try again.', true);
@@ -4836,7 +5334,7 @@ async function checkAuthAndInit() {
 
           if (response.status === 401) {
             setAuthUI(false);
-            favoritesStatus.textContent = 'Login required to load favourites.';
+            favoritesStatus.textContent = 'Login required to load playlists.';
             return;
           }
 
@@ -5421,6 +5919,31 @@ async function checkAuthAndInit() {
             // Update playlist name/location
             currentlyPlayingLocation.innerHTML = `<span>${playlistName || groupName}</span>`;
 
+            // Update vibe badge
+            if (activeFavoriteId && playlistVibes[activeFavoriteId]) {
+              const vibe = playlistVibes[activeFavoriteId];
+              currentlyPlayingVibe.innerHTML = '';
+              const vibeBadge = document.createElement('span');
+              vibeBadge.className = 'currently-playing-vibe-badge';
+              if (vibe === 'Down') {
+                vibeBadge.classList.add('down');
+                vibeBadge.textContent = 'Down';
+              } else if (vibe === 'Down/Mid') {
+                vibeBadge.classList.add('down-mid');
+                vibeBadge.textContent = 'Down/Mid';
+              } else if (vibe === 'Mid') {
+                vibeBadge.classList.add('mid');
+                vibeBadge.textContent = 'Mid';
+              } else {
+                vibeBadge.textContent = vibe;
+              }
+              currentlyPlayingVibe.appendChild(vibeBadge);
+              currentlyPlayingVibe.style.display = 'inline-flex';
+            } else {
+              currentlyPlayingVibe.style.display = 'none';
+              currentlyPlayingVibe.innerHTML = '';
+            }
+
             // Update image - only update if playlist name changed (to prevent constant refreshing)
             const existingImg = currentlyPlayingArt.querySelector('img');
             const sourceImageUrl = imageUrl; // The original source URL before proxying
@@ -5756,8 +6279,89 @@ async function checkAuthAndInit() {
       }
 
 
-      // Use event delegation on the panel itself - simpler and more reliable
-      currentlyPlayingPanel.addEventListener('click', (e) => {
+      // Use event delegation on the content area only - prevents accidental toggles when adjusting volume
+      const currentlyPlayingContent = document.querySelector('.currently-playing-content');
+      
+      let nowPlayingTouchStartY = null;
+      let nowPlayingTouchStartTime = null;
+      
+      function handleNowPlayingTouchStart(e) {
+        // Only handle touches that start within the content area
+        if (!e.target.closest('.currently-playing-content')) {
+          return;
+        }
+        // Don't handle if touch started in volume area
+        if (e.target.closest('.currently-playing-volume')) {
+          return;
+        }
+        const touch = e.touches[0];
+        nowPlayingTouchStartY = touch.clientY;
+        nowPlayingTouchStartTime = Date.now();
+      }
+      
+      function handleNowPlayingTouchMove(e) {
+        if (nowPlayingTouchStartY === null) {
+          return;
+        }
+        // Only handle if still within content area
+        if (!e.target.closest('.currently-playing-content')) {
+          return;
+        }
+        // Don't handle if moved into volume area
+        if (e.target.closest('.currently-playing-volume')) {
+          nowPlayingTouchStartY = null;
+          return;
+        }
+      }
+      
+      function handleNowPlayingTouchEnd(e) {
+        if (nowPlayingTouchStartY === null) {
+          return;
+        }
+        
+        const touch = e.changedTouches[0];
+        const deltaY = touch.clientY - nowPlayingTouchStartY;
+        const deltaTime = Date.now() - (nowPlayingTouchStartTime || 0);
+        const absDeltaY = Math.abs(deltaY);
+        
+        // Only handle if still within content area
+        if (!e.target.closest('.currently-playing-content')) {
+          nowPlayingTouchStartY = null;
+          return;
+        }
+        
+        // Don't handle if ended in volume area
+        if (e.target.closest('.currently-playing-volume')) {
+          nowPlayingTouchStartY = null;
+          return;
+        }
+        
+        // Swipe down to collapse, swipe up to expand
+        // Require minimum distance and reasonable time
+        if (absDeltaY > 30 && deltaTime < 300) {
+          if (deltaY > 0 && currentlyPlayingPanel.classList.contains('expanded')) {
+            // Swipe down - collapse
+            currentlyPlayingPanel.classList.remove('expanded');
+          } else if (deltaY < 0 && !currentlyPlayingPanel.classList.contains('expanded')) {
+            // Swipe up - expand
+            currentlyPlayingPanel.classList.add('expanded');
+            const groupId = getSelectedGroupId();
+            if (groupId) {
+              updateCurrentlyPlayingRooms(groupId);
+            }
+          }
+        }
+        
+        nowPlayingTouchStartY = null;
+        nowPlayingTouchStartTime = null;
+      }
+      
+      // Add touch handlers for swipe gestures on content area only
+      currentlyPlayingContent.addEventListener('touchstart', handleNowPlayingTouchStart, { passive: true });
+      currentlyPlayingContent.addEventListener('touchmove', handleNowPlayingTouchMove, { passive: true });
+      currentlyPlayingContent.addEventListener('touchend', handleNowPlayingTouchEnd, { passive: true });
+      
+      currentlyPlayingContent.addEventListener('click', (e) => {
         // Don't toggle if clicking on interactive elements
         const roomVolume = e.target.closest('.currently-playing-room-volume');
         const roomSlider = e.target.closest('.currently-playing-room-slider');
