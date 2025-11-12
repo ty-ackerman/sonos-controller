@@ -178,8 +178,14 @@ app.get('/auth/sonos/login', async (req, res) => {
   const oauthState = crypto.randomBytes(16).toString('hex');
   
   // Store device ID mapping in database (survives serverless function invocations)
-  await saveOAuthState(oauthState, deviceId);
-  console.log('[OAuth] Stored OAuth state mapping:', { state: oauthState, deviceId });
+  try {
+    await saveOAuthState(oauthState, deviceId);
+    console.log('[OAuth] Stored OAuth state mapping:', { state: oauthState, deviceId });
+  } catch (err) {
+    console.error('[OAuth] Failed to save OAuth state to database:', err);
+    console.error('[OAuth] Make sure the oauth_states table exists in Supabase. Run supabase-oauth-states-table.sql');
+    return res.status(500).json({ error: 'Failed to initialize OAuth flow. Please check server logs.' });
+  }
 
   const params = new URLSearchParams({
     client_id: SONOS_CLIENT_ID,
@@ -209,11 +215,23 @@ app.get('/auth/sonos/callback', async (req, res) => {
   }
 
   // Get device ID from database using OAuth state
-  console.log('[OAuth] Received callback with state:', state);
-  const deviceId = await getOAuthStateDeviceId(state);
+  console.log('[OAuth] Received callback with state:', state, 'code:', code ? 'present' : 'missing');
+  
+  let deviceId;
+  try {
+    deviceId = await getOAuthStateDeviceId(state);
+  } catch (err) {
+    console.error('[OAuth] Error retrieving device ID from database:', err);
+    console.error('[OAuth] Make sure the oauth_states table exists in Supabase. Run supabase-oauth-states-table.sql');
+    return res.redirect('/?auth=error');
+  }
   
   if (!deviceId) {
     console.error('[OAuth] Device ID not found for state:', state);
+    console.error('[OAuth] This usually means:');
+    console.error('[OAuth] 1. The oauth_states table is missing (run supabase-oauth-states-table.sql)');
+    console.error('[OAuth] 2. The state expired or was already used');
+    console.error('[OAuth] 3. The login and callback happened in different serverless function invocations');
     return res.redirect('/?auth=invalid_state');
   }
 
@@ -227,6 +245,7 @@ app.get('/auth/sonos/callback', async (req, res) => {
     res.redirect('/?auth=success');
   } catch (err) {
     console.error('[OAuth] Failed to exchange code for tokens:', err);
+    console.error('[OAuth] Error details:', err.message, err.stack);
     // Clean up OAuth state even on error
     await deleteOAuthState(state);
     res.redirect('/?auth=error');
