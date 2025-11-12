@@ -61,10 +61,6 @@ let hiddenFavorites = null;
 let initialized = false;
 let initializationPromise = null;
 
-let oauthState;
-// Map to store device ID for each OAuth state
-const oauthStateToDeviceId = new Map();
-
 // Helper function to get tokens for a device
 function getDeviceTokens(deviceId) {
   if (!deviceId) {
@@ -156,13 +152,21 @@ app.get('/healthz', (_req, res) => {
 });
 
 app.get('/auth/sonos/login', (req, res) => {
-  const deviceId = req.deviceId;
+  // Get device ID from header (preferred) or query parameter (fallback for redirects)
+  const deviceId = req.deviceId || req.query.deviceId;
   if (!deviceId) {
+    console.error('[OAuth] Login attempt without device ID');
     return res.status(400).json({ error: 'Device ID is required' });
   }
 
-  oauthState = crypto.randomBytes(16).toString('hex');
-  oauthStateToDeviceId.set(oauthState, deviceId);
+  console.log('[OAuth] Starting login flow for device:', deviceId);
+
+  // Generate random state for CSRF protection
+  const randomState = crypto.randomBytes(16).toString('hex');
+  // Encode device ID in state to survive serverless function invocations
+  // Format: {randomState}:{base64EncodedDeviceId}
+  const encodedDeviceId = Buffer.from(deviceId).toString('base64url');
+  const oauthState = `${randomState}:${encodedDeviceId}`;
 
   const params = new URLSearchParams({
     client_id: SONOS_CLIENT_ID,
@@ -187,25 +191,33 @@ app.get('/auth/sonos/callback', async (req, res) => {
     return res.redirect('/?auth=missing_code');
   }
 
-  if (!state || state !== oauthState) {
+  if (!state) {
+    return res.redirect('/?auth=invalid_state');
+  }
+
+  // Extract device ID from state (format: {randomState}:{base64EncodedDeviceId})
+  let deviceId;
+  try {
+    const parts = state.split(':');
+    if (parts.length !== 2) {
+      throw new Error('Invalid state format');
+    }
+    deviceId = Buffer.from(parts[1], 'base64url').toString('utf8');
+    if (!deviceId) {
+      throw new Error('Device ID is empty');
+    }
+    console.log('[OAuth] Extracted device ID from callback state:', deviceId);
+  } catch (err) {
+    console.error('[OAuth] Failed to extract device ID from state:', err);
     return res.redirect('/?auth=invalid_state');
   }
 
   try {
-    const deviceId = oauthStateToDeviceId.get(state);
-    if (!deviceId) {
-      console.error('Device ID not found for OAuth state');
-      return res.redirect('/?auth=error');
-    }
     await exchangeCodeForTokens(code, deviceId);
-    oauthStateToDeviceId.delete(state);
-    oauthState = undefined;
+    console.log('[OAuth] Successfully authenticated device:', deviceId);
     res.redirect('/?auth=success');
   } catch (err) {
-    console.error('Failed to exchange code for tokens', err);
-    if (state) {
-      oauthStateToDeviceId.delete(state);
-    }
+    console.error('[OAuth] Failed to exchange code for tokens:', err);
     res.redirect('/?auth=error');
   }
 });
@@ -215,6 +227,8 @@ app.get('/auth/status', async (req, res) => {
     const deviceId = req.deviceId;
     const deviceTokens = getDeviceTokens(deviceId);
     let loggedIn = Boolean(deviceTokens.access_token) && Date.now() < (deviceTokens.expires_at || 0);
+    
+    console.log('[Auth] Status check for device:', deviceId, 'loggedIn:', loggedIn);
 
     if (loggedIn) {
       try {
@@ -1829,6 +1843,8 @@ async function exchangeCodeForTokens(code, deviceId) {
     throw new Error('Device ID is required for token exchange');
   }
 
+  console.log('[OAuth] Exchanging code for tokens for device:', deviceId);
+
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
@@ -1853,6 +1869,7 @@ async function exchangeCodeForTokens(code, deviceId) {
   const tokenData = storeTokens(payload);
   await saveTokens(deviceId, tokenData);
   setDeviceTokens(deviceId, tokenData);
+  console.log('[OAuth] Tokens saved for device:', deviceId);
 }
 
 function storeTokens(tokenResponse) {

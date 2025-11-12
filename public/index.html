@@ -3053,7 +3053,9 @@ settingsStatusLabel.textContent = '';
       }
 
       function login() {
-        window.location.href = '/auth/sonos/login';
+        const deviceId = getDeviceId();
+        // Send device ID as query parameter since window.location doesn't send headers
+        window.location.href = `/auth/sonos/login?deviceId=${encodeURIComponent(deviceId)}`;
       }
 
 async function signout() {
