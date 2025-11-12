@@ -655,18 +655,25 @@
 
       .playlist-card.active {
         border-color: var(--success);
-        background: var(--bg-primary);
+        background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(34, 197, 94, 0.05) 100%);
+        box-shadow: 0 2px 8px rgba(34, 197, 94, 0.15);
       }
 
-      .playlist-card.active::after {
-        content: '';
+      .playlist-card.active::before {
+        content: 'Now Playing';
         position: absolute;
-        top: 12px;
-        right: 12px;
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
+        top: 8px;
+        right: 8px;
+        padding: 3px 8px;
         background: var(--success);
+        color: var(--bg-primary);
+        font-size: 0.625rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-radius: 10px;
+        z-index: 1;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
       }
 
       /* Hide vibe selector and actions only on favorites (controls page) */
@@ -2080,6 +2087,29 @@
         transform: translateY(-2px);
       }
 
+      .recommended-playlist.now-playing {
+        border-color: var(--success);
+        background: linear-gradient(135deg, var(--bg-primary) 0%, rgba(34, 197, 94, 0.05) 100%);
+        box-shadow: 0 4px 12px rgba(34, 197, 94, 0.15);
+      }
+
+      .recommended-playlist.now-playing::before {
+        content: 'Now Playing';
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        padding: 4px 10px;
+        background: var(--success);
+        color: var(--bg-primary);
+        font-size: 0.6875rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-radius: 12px;
+        z-index: 1;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
       .recommended-playlist-header {
         display: flex;
         align-items: flex-start;
@@ -2303,10 +2333,33 @@
         border-radius: 6px;
         cursor: pointer;
         transition: all 0.2s ease;
+        position: relative;
       }
 
       .alternative-playlist:hover {
         background: var(--bg-tertiary);
+      }
+
+      .alternative-playlist.active {
+        border-color: var(--success);
+        background: linear-gradient(135deg, var(--bg-secondary) 0%, rgba(34, 197, 94, 0.08) 100%);
+      }
+
+      .alternative-playlist.active::before {
+        content: 'Now Playing';
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        padding: 2px 6px;
+        background: var(--success);
+        color: var(--bg-primary);
+        font-size: 0.5625rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-radius: 8px;
+        z-index: 1;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
       }
 
       .alternative-playlist-art {
@@ -2811,6 +2864,7 @@ settingsStatusLabel.textContent = '';
       let currentGroupName = 'No group selected';
       let lastStatusUpdateTime = 0; // Track when status was last updated to ignore stale responses
       const recommendationCardButtons = new Map(); // Store recommendation card buttons by favorite ID
+      const recommendationCards = new Map(); // Store recommendation card elements by favorite ID
       const favoritesRegistry = new Map();
       let latestPlayers = [];
       let latestGroups = [];
@@ -4556,6 +4610,7 @@ async function checkAuthAndInit() {
 
           // Clear containers and button references
           recommendationCardButtons.clear();
+          recommendationCards.clear();
           recommendedPlaylistContainer.innerHTML = '';
           alternativesDropdown.innerHTML = '';
 
@@ -4613,6 +4668,12 @@ async function checkAuthAndInit() {
       function createRecommendationCard(favorite, isPrimary, currentRule) {
         const card = document.createElement('div');
         card.className = isPrimary ? 'recommended-playlist' : 'alternative-playlist';
+        card.dataset.favoriteId = favorite.id;
+        
+        // Store card reference for highlighting
+        if (isPrimary) {
+          recommendationCards.set(favorite.id, card);
+        }
 
         if (isPrimary) {
           // Primary recommendation card with enhanced design
@@ -4788,6 +4849,7 @@ async function checkAuthAndInit() {
           });
         } else {
           // Alternative playlist card (simpler design)
+          card.dataset.favoriteId = favorite.id;
           const art = document.createElement('div');
           art.className = 'alternative-playlist-art';
 
@@ -5201,6 +5263,7 @@ async function checkAuthAndInit() {
       }
 
       function updateRecommendationCardButtons(activeFavoriteId) {
+        // Update button states
         recommendationCardButtons.forEach((button, favoriteId) => {
           const isActive = Boolean(activeFavoriteId) && favoriteId === activeFavoriteId;
           
@@ -5211,6 +5274,19 @@ async function checkAuthAndInit() {
             button.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Play Now';
             button.classList.remove('playing');
           }
+        });
+        
+        // Update card highlighting for recommended playlists
+        recommendationCards.forEach((card, favoriteId) => {
+          const isActive = Boolean(activeFavoriteId) && favoriteId === activeFavoriteId;
+          card.classList.toggle('now-playing', isActive);
+        });
+        
+        // Update alternative playlist cards
+        document.querySelectorAll('.alternative-playlist').forEach((card) => {
+          const cardFavoriteId = card.dataset.favoriteId;
+          const isActive = Boolean(activeFavoriteId) && cardFavoriteId === activeFavoriteId;
+          card.classList.toggle('active', isActive);
         });
       }
 
