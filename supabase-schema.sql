@@ -2,9 +2,9 @@
 -- Run this SQL in your Supabase SQL Editor
 
 -- Table for storing Sonos OAuth tokens
--- Using a single row with id=1 to store the tokens
+-- Using device_id as primary key to support device-specific sessions
 CREATE TABLE IF NOT EXISTS tokens (
-  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  device_id TEXT PRIMARY KEY,
   access_token TEXT,
   refresh_token TEXT,
   expires_at BIGINT,
@@ -77,8 +77,5 @@ CREATE TRIGGER update_vibe_time_rules_updated_at BEFORE UPDATE ON vibe_time_rule
 CREATE TRIGGER update_hidden_favorites_updated_at BEFORE UPDATE ON hidden_favorites
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Insert initial token row if it doesn't exist
-INSERT INTO tokens (id, access_token, refresh_token, expires_at)
-VALUES (1, NULL, NULL, 0)
-ON CONFLICT (id) DO NOTHING;
+-- Note: No initial token row needed - tokens are created per device on first login
 
