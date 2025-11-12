@@ -537,12 +537,9 @@ app.get('/auth/status', async (req, res) => {
     });
 
     if (loggedIn) {
-      // Temporarily set tokens for sonosRequest validation
-      const originalTokens = tokens;
-      tokens = deviceTokens;
       console.error('[AUTH_DEBUG] /auth/status: Validating token with Sonos API', { device_id });
       try {
-        await sonosRequest('/households', device_id);
+        await sonosRequest('/households', { deviceId: device_id });
         console.error('[AUTH_DEBUG] /auth/status: Token validation successful', { device_id });
       } catch (error) {
         console.error('[AUTH_DEBUG] /auth/status: Token validation failed', {
@@ -560,8 +557,6 @@ app.get('/auth/status', async (req, res) => {
             error: error.message
           });
         }
-      } finally {
-        tokens = originalTokens;
       }
     }
 
@@ -2454,16 +2449,29 @@ async function ensureValidAccessToken(deviceId) {
   // Load tokens for this device
   const deviceTokens = await loadTokens(deviceId);
   
+  console.error('[AUTH_DEBUG] ensureValidAccessToken', {
+    deviceId,
+    hasAccessToken: !!deviceTokens?.access_token,
+    hasRefreshToken: !!deviceTokens?.refresh_token,
+    expiresAt: deviceTokens?.expires_at,
+    isExpired: deviceTokens?.expires_at ? Date.now() >= deviceTokens.expires_at : true
+  });
+  
   if (!deviceTokens || !deviceTokens.access_token) {
+    console.error('[AUTH_DEBUG] ensureValidAccessToken: No tokens found for device', { deviceId });
     throw Object.assign(new Error('Not authenticated with Sonos'), { status: 401 });
   }
 
   if (Date.now() >= deviceTokens.expires_at) {
+    console.error('[AUTH_DEBUG] ensureValidAccessToken: Tokens expired, refreshing', { deviceId });
     const refreshedTokens = await refreshAccessToken(deviceId);
-    // Update the tokens variable for this request
+    // Update the tokens variable for this request (TEMPORARY - will be removed)
     tokens = refreshedTokens;
+    return refreshedTokens;
   } else {
+    // Update the tokens variable for this request (TEMPORARY - will be removed)
     tokens = deviceTokens;
+    return deviceTokens;
   }
 }
 
@@ -2473,7 +2481,8 @@ async function sonosFetch(endpoint, options = {}) {
     throw Object.assign(new Error('Device ID is required'), { status: 401 });
   }
 
-  await ensureValidAccessToken(deviceId);
+  // Get tokens for this device (not using global variable)
+  let deviceTokens = await ensureValidAccessToken(deviceId);
 
   const initialHeaders = {
     ...(options.headers ?? {})
@@ -2487,15 +2496,16 @@ async function sonosFetch(endpoint, options = {}) {
     ...options,
     headers: {
       ...initialHeaders,
-      Authorization: `Bearer ${tokens.access_token}`
+      Authorization: `Bearer ${deviceTokens.access_token}`
     }
   };
 
   let response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
 
-  if (response.status === 401 && tokens.refresh_token) {
-    await refreshAccessToken(deviceId);
-    requestOptions.headers.Authorization = `Bearer ${tokens.access_token}`;
+  if (response.status === 401 && deviceTokens.refresh_token) {
+    console.error('[AUTH_DEBUG] sonosFetch: 401 received, refreshing token', { deviceId, endpoint });
+    deviceTokens = await refreshAccessToken(deviceId);
+    requestOptions.headers.Authorization = `Bearer ${deviceTokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
   }
 
@@ -2520,7 +2530,8 @@ async function sonosRequest(endpoint, options = {}) {
     throw Object.assign(new Error('Device ID is required'), { status: 401 });
   }
 
-  await ensureValidAccessToken(deviceId);
+  // Get tokens for this device (not using global variable)
+  let deviceTokens = await ensureValidAccessToken(deviceId);
 
   const initialHeaders = {
     Accept: 'application/json',
@@ -2535,15 +2546,16 @@ async function sonosRequest(endpoint, options = {}) {
     ...options,
     headers: {
       ...initialHeaders,
-      Authorization: `Bearer ${tokens.access_token}`
+      Authorization: `Bearer ${deviceTokens.access_token}`
     }
   };
 
   let response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
 
-  if (response.status === 401 && tokens.refresh_token) {
-    await refreshAccessToken(deviceId);
-    requestOptions.headers.Authorization = `Bearer ${tokens.access_token}`;
+  if (response.status === 401 && deviceTokens.refresh_token) {
+    console.error('[AUTH_DEBUG] sonosRequest: 401 received, refreshing token', { deviceId, endpoint });
+    deviceTokens = await refreshAccessToken(deviceId);
+    requestOptions.headers.Authorization = `Bearer ${deviceTokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
     if (response.status === 401) {
       await clearTokens(deviceId);

@@ -3713,18 +3713,27 @@ async function checkAuthAndInit() {
         }
       });
       const authMessages = {
+        success: 'Successfully logged in to Sonos.',
         error: 'Authorization failed. Please try logging in again.',
         missing_code: 'Login response missing authorization code.',
-        invalid_state: 'Login validation failed. Please retry.'
+        invalid_state: 'Login validation failed. Please retry.',
+        tokens_not_saved: 'CRITICAL: Tokens were not saved to database. Check server logs.'
       };
 
       function applyAuthFeedback() {
         const params = new URLSearchParams(window.location.search);
         const state = params.get('auth');
+        const reason = params.get('reason');
 
-        if (state && authMessages[state]) {
-          showFeedback(authMessages[state], true);
+        if (state) {
+          let message = authMessages[state] || `Auth error: ${state}`;
+          if (reason) {
+            message += ` (Reason: ${decodeURIComponent(reason)})`;
+          }
+          console.error('[AUTH_DEBUG] applyAuthFeedback: Showing auth message', { state, reason, message });
+          showFeedback(message, state !== 'success');
           params.delete('auth');
+          params.delete('reason');
           const newUrl = window.location.pathname + (params.toString() ? `?${params}` : '');
           window.history.replaceState({}, '', newUrl);
         }
