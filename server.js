@@ -541,7 +541,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     if (container?.id || container?.serviceId) {
       const containerId = container.id || container.serviceId;
       try {
-        const favoriteMatch = await findFavoriteByContainerId(containerId, preferredHousehold);
+        const favoriteMatch = await findFavoriteByContainerId(containerId, preferredHousehold, req.deviceId);
         if (favoriteMatch) {
           activeFavoriteId = favoriteMatch.id;
           // Use favorite name as fallback if container doesn't have name
@@ -789,7 +789,7 @@ app.put('/api/favorites/:favoriteId/hidden', async (req, res) => {
 
     res.json({ success: true, favoriteId, hidden });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -809,7 +809,7 @@ app.get('/api/favorites/:favoriteId/hidden', async (req, res) => {
     const isHidden = hiddenFavorites.has(favoriteId);
     res.json({ favoriteId, hidden: isHidden });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -833,7 +833,7 @@ app.delete('/api/favorites/:favoriteId', async (req, res) => {
 
     res.json({ success: true, favoriteId, hidden: true });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -964,7 +964,10 @@ function timeRangeContainsHour(startHour, endHour, hour) {
 }
 
 // Helper function to get recommended playlists based on current time
-async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset) {
+async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset, deviceId) {
+  if (!deviceId) {
+    throw new Error('Device ID is required to get recommended playlists');
+  }
   try {
     // Use user's local time if provided, otherwise fall back to server time
     let currentHour, currentDay;
@@ -1057,7 +1060,7 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
     }
 
     // Get all favorites
-    const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`);
+    const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`, {}, deviceId);
     const payload = await response.json();
     let favorites = Array.isArray(payload.items) ? payload.items : [];
 
@@ -1184,11 +1187,14 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
 
 app.get('/api/playlist-recommendations', async (req, res) => {
   try {
+    if (!req.deviceId) {
+      return res.status(401).json({ error: 'Device ID is required' });
+    }
     const preferredHousehold =
       typeof req.query.householdId === 'string' && req.query.householdId.trim().length > 0
         ? req.query.householdId.trim()
         : undefined;
-    const householdId = await resolveHouseholdId(preferredHousehold);
+    const householdId = await resolveHouseholdId(preferredHousehold, req.deviceId);
 
     // Get user's local time from query params (if provided)
     const userHour = req.query.hour ? parseInt(req.query.hour, 10) : undefined;
@@ -1203,10 +1209,10 @@ app.get('/api/playlist-recommendations', async (req, res) => {
       return res.status(400).json({ error: 'Invalid day parameter (must be 0-6)' });
     }
 
-    const recommendations = await getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset);
+    const recommendations = await getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset, req.deviceId);
     res.json(recommendations);
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -1224,10 +1230,14 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
     return res.status(400).json({ error: 'favoriteId is required.' });
   }
 
+  if (!req.deviceId) {
+    return res.status(401).json({ error: 'Device ID is required' });
+  }
+
   const encodedGroupId = encodeURIComponent(groupId);
 
   try {
-    const autogroupResult = await autogroupGroupMembers(groupId, householdHint);
+    const autogroupResult = await autogroupGroupMembers(groupId, householdHint, req.deviceId);
     if (!autogroupResult.success) {
       console.warn(
         `Autogroup skipped for ${groupId}:`,
@@ -1241,10 +1251,10 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
         ? householdHint.trim()
         : null);
     if (householdForVolumes) {
-      await applyDefaultVolumes(householdForVolumes);
+      await applyDefaultVolumes(householdForVolumes, req.deviceId);
     }
 
-    const clearResult = await clearGroupQueue(groupId);
+    const clearResult = await clearGroupQueue(groupId, req.deviceId);
     if (!clearResult.success && clearResult.supported) {
       console.warn(
         `Unable to fully clear queue for group ${groupId}:`,
@@ -1261,13 +1271,13 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
           action: 'REPLACE',
           playOnCompletion: false
         })
-      });
+      }, req.deviceId);
     } catch (error) {
       if (error.status && error.status >= 400 && error.status < 500) {
         await sonosRequest(`/groups/${encodedGroupId}/favorites`, {
           method: 'POST',
           body: JSON.stringify({ favoriteId, action: 'REPLACE', playOnCompletion: false })
-        });
+        }, req.deviceId);
       } else {
         throw error;
       }
@@ -1284,13 +1294,13 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
           crossfade: Boolean(crossfade)
         }
       })
-    });
+    }, req.deviceId);
 
-    await sonosRequest(`/groups/${encodedGroupId}/playback/play`, { method: 'POST' });
+    await sonosRequest(`/groups/${encodedGroupId}/playback/play`, { method: 'POST' }, req.deviceId);
 
     res.json({ status: 'ok', favoriteId });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -1298,7 +1308,10 @@ app.get('/api/households/:householdId/players', async (req, res) => {
   const { householdId } = req.params;
 
   try {
-    const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/groups`);
+    if (!req.deviceId) {
+      return res.status(401).json({ error: 'Device ID is required' });
+    }
+    const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/groups`, {}, req.deviceId);
     const payload = await response.json();
 
     const groups = Array.isArray(payload.groups) ? payload.groups : [];
@@ -1323,7 +1336,9 @@ app.get('/api/households/:householdId/players', async (req, res) => {
 
           try {
             const volumeResponse = await sonosRequest(
-              `/players/${encodeURIComponent(player.id)}/playerVolume`
+              `/players/${encodeURIComponent(player.id)}/playerVolume`,
+              {},
+              req.deviceId
             );
             const volumePayload = await volumeResponse.json();
             const level =
@@ -1353,7 +1368,7 @@ app.get('/api/households/:householdId/players', async (req, res) => {
 
     res.json({ groups, players });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -1361,12 +1376,15 @@ app.get('/api/households/:householdId/groups-players', async (req, res) => {
   const { householdId } = req.params;
 
   try {
-    const snapshot = await getHouseholdSnapshot(householdId);
+    if (!req.deviceId) {
+      return res.status(401).json({ error: 'Device ID is required' });
+    }
+    const snapshot = await getHouseholdSnapshot(householdId, req.deviceId);
     const groups = Array.isArray(snapshot.groups) ? snapshot.groups : [];
     const players = Array.isArray(snapshot.players) ? snapshot.players : [];
     res.json({ groups, players });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -1374,7 +1392,10 @@ app.post('/api/households/:householdId/create-all-group', async (req, res) => {
   const { householdId } = req.params;
 
   try {
-    const snapshot = await getHouseholdSnapshot(householdId);
+    if (!req.deviceId) {
+      return res.status(401).json({ error: 'Device ID is required' });
+    }
+    const snapshot = await getHouseholdSnapshot(householdId, req.deviceId);
     const players = Array.isArray(snapshot.players) ? snapshot.players : [];
     const playerIds = players.map((player) => player?.id).filter(Boolean);
 
@@ -1405,14 +1426,14 @@ app.post('/api/households/:householdId/create-all-group', async (req, res) => {
       await sonosRequest(`/groups/${encodedGroupId}/groups/setGroupMembers`, {
         method: 'POST',
         body: JSON.stringify({ playerIds })
-      });
+      }, req.deviceId);
 
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
     res.json({ groupId: targetGroup.id, groupName: targetGroup.name || 'All Rooms' });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -1424,19 +1445,24 @@ app.post('/api/groups/:groupId/addPlayer', async (req, res) => {
     return res.status(400).json({ error: 'playerId is required.' });
   }
 
+  if (!req.deviceId) {
+    return res.status(401).json({ error: 'Device ID is required' });
+  }
+
   try {
     const response = await sonosRequest(
       `/groups/${encodeURIComponent(groupId)}/groupMembers/addMember`,
       {
         method: 'POST',
         body: JSON.stringify({ playerId })
-      }
+      },
+      req.deviceId
     );
 
     const body = await response.text();
     res.status(response.status).send(body);
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -1448,19 +1474,24 @@ app.post('/api/groups/:groupId/removePlayer', async (req, res) => {
     return res.status(400).json({ error: 'playerId is required.' });
   }
 
+  if (!req.deviceId) {
+    return res.status(401).json({ error: 'Device ID is required' });
+  }
+
   try {
     const response = await sonosRequest(
       `/groups/${encodeURIComponent(groupId)}/groupMembers/removeMember`,
       {
         method: 'POST',
         body: JSON.stringify({ playerId })
-      }
+      },
+      req.deviceId
     );
 
     const body = await response.text();
     res.status(response.status).send(body);
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -1473,11 +1504,15 @@ app.post('/api/players/:playerId/volume', async (req, res) => {
     return res.status(400).json({ error: 'Volume level must be between 0 and 100.' });
   }
 
+  if (!req.deviceId) {
+    return res.status(401).json({ error: 'Device ID is required' });
+  }
+
   try {
     const response = await sonosRequest(`/players/${encodeURIComponent(playerId)}/playerVolume`, {
       method: 'POST',
       body: JSON.stringify({ volume: volumeLevel })
-    });
+    }, req.deviceId);
     let responseData = {};
     try {
       responseData = await response.json();
@@ -1494,7 +1529,7 @@ app.post('/api/players/:playerId/volume', async (req, res) => {
     
     res.json({ status: 'ok', volume: volumeLevel });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
@@ -1506,10 +1541,14 @@ app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
     return res.status(400).json({ error: 'Spotify playlist URI is required.' });
   }
 
+  if (!req.deviceId) {
+    return res.status(401).json({ error: 'Device ID is required' });
+  }
+
   const encodedGroupId = encodeURIComponent(groupId);
 
   try {
-    const autogroupResult = await autogroupGroupMembers(groupId, householdHint);
+    const autogroupResult = await autogroupGroupMembers(groupId, householdHint, req.deviceId);
     if (!autogroupResult.success) {
       console.warn(
         `Autogroup skipped for ${groupId}:`,
@@ -1523,19 +1562,19 @@ app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
         ? householdHint.trim()
         : null);
     if (householdForVolumes) {
-      await applyDefaultVolumes(householdForVolumes);
+      await applyDefaultVolumes(householdForVolumes, req.deviceId);
     }
 
     await sonosRequest(`/groups/${encodedGroupId}/playback/metadata`, {
       method: 'POST',
       body: JSON.stringify({ container: { id: uri, type: 'playlist' } })
-    });
+    }, req.deviceId);
 
     if (shuffle) {
       await sonosRequest(`/groups/${encodedGroupId}/playback/shuffle`, {
         method: 'POST',
         body: JSON.stringify({ enabled: true })
-      });
+      }, req.deviceId);
     }
 
     if (repeat) {
@@ -1543,7 +1582,7 @@ app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
       await sonosRequest(`/groups/${encodedGroupId}/playback/repeat`, {
         method: 'POST',
         body: JSON.stringify({ mode })
-      });
+      }, req.deviceId);
     }
 
     if (crossfade) {
@@ -1551,7 +1590,7 @@ app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
         await sonosRequest(`/groups/${encodedGroupId}/playback/crossfade`, {
           method: 'POST',
           body: JSON.stringify({ enabled: true })
-        });
+        }, req.deviceId);
       } catch (error) {
         if (error.status && [400, 404, 409, 412, 501].includes(error.status)) {
           console.warn('Crossfade not enabled for this group:', error.message);
@@ -1561,15 +1600,15 @@ app.post('/api/groups/:groupId/spotify-playlist', async (req, res) => {
       }
     }
 
-    await sonosRequest(`/groups/${encodedGroupId}/playback/play`, { method: 'POST' });
+    await sonosRequest(`/groups/${encodedGroupId}/playback/play`, { method: 'POST' }, req.deviceId);
 
     res.json({ status: 'ok' });
   } catch (error) {
-    handleProxyError(res, error);
+    handleProxyError(res, error, req.deviceId);
   }
 });
 
-async function resolveHouseholdId(candidateId) {
+async function resolveHouseholdId(candidateId, deviceId) {
   if (candidateId) {
     return candidateId;
   }
@@ -1578,7 +1617,11 @@ async function resolveHouseholdId(candidateId) {
     return process.env.SONOS_HOUSEHOLD_ID;
   }
 
-  const response = await sonosRequest('/households');
+  if (!deviceId) {
+    throw new Error('Device ID is required to resolve household');
+  }
+
+  const response = await sonosRequest('/households', {}, deviceId);
   const payload = await response.json();
   const households = Array.isArray(payload.households) ? payload.households : [];
   const first = households[0];
@@ -1590,16 +1633,19 @@ async function resolveHouseholdId(candidateId) {
   return first.id;
 }
 
-async function listHouseholds() {
-  const response = await sonosRequest('/households');
+async function listHouseholds(deviceId) {
+  if (!deviceId) {
+    throw new Error('Device ID is required to list households');
+  }
+  const response = await sonosRequest('/households', {}, deviceId);
   const payload = await response.json();
   const households = Array.isArray(payload.households) ? payload.households : [];
   return households.map((household) => household?.id).filter(Boolean);
 }
 
 // Find favorite by container ID (for UI highlighting only - display uses container metadata directly)
-async function findFavoriteByContainerId(containerId, preferredHousehold) {
-  if (!containerId) {
+async function findFavoriteByContainerId(containerId, preferredHousehold, deviceId) {
+  if (!containerId || !deviceId) {
     return null;
   }
 
@@ -1614,12 +1660,12 @@ async function findFavoriteByContainerId(containerId, preferredHousehold) {
     };
 
     // Try preferred household first
-    let householdId = preferredHousehold ? await resolveHouseholdId(preferredHousehold).catch(() => null) : null;
+    let householdId = preferredHousehold ? await resolveHouseholdId(preferredHousehold, deviceId).catch(() => null) : null;
     let favorite = null;
 
     if (householdId) {
       try {
-        const favoritesResponse = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`).catch(() => null);
+        const favoritesResponse = await sonosRequest(`/households/${encodeURIComponent(householdId)}/favorites`, {}, deviceId).catch(() => null);
         if (favoritesResponse) {
           const favoritesData = await favoritesResponse.json().catch(() => ({}));
           const favorites = Array.isArray(favoritesData.items) ? favoritesData.items : [];
@@ -1649,11 +1695,11 @@ async function findFavoriteByContainerId(containerId, preferredHousehold) {
 
     // If not found in preferred household, try all households
     try {
-      const households = await listHouseholds();
+      const households = await listHouseholds(deviceId);
       for (const hId of households) {
         if (hId === householdId) continue; // Skip already checked household
         try {
-          const favoritesResponse = await sonosRequest(`/households/${encodeURIComponent(hId)}/favorites`).catch(() => null);
+          const favoritesResponse = await sonosRequest(`/households/${encodeURIComponent(hId)}/favorites`, {}, deviceId).catch(() => null);
           if (favoritesResponse) {
             const favoritesData = await favoritesResponse.json().catch(() => ({}));
             const favorites = Array.isArray(favoritesData.items) ? favoritesData.items : [];
@@ -1695,14 +1741,20 @@ async function findFavoriteByContainerId(containerId, preferredHousehold) {
   }
 }
 
-async function getHouseholdSnapshot(householdId) {
-  const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/groups`);
+async function getHouseholdSnapshot(householdId, deviceId) {
+  if (!deviceId) {
+    throw new Error('Device ID is required to get household snapshot');
+  }
+  const response = await sonosRequest(`/households/${encodeURIComponent(householdId)}/groups`, {}, deviceId);
   return response.json();
 }
 
-async function findGroupContext(groupId, householdHint) {
+async function findGroupContext(groupId, householdHint, deviceId) {
+  if (!deviceId) {
+    throw new Error('Device ID is required to find group context');
+  }
   const normalizedGroupId = groupId;
-  const households = await listHouseholds();
+  const households = await listHouseholds(deviceId);
   const hint =
     typeof householdHint === 'string' && householdHint.trim().length > 0
       ? householdHint.trim()
@@ -1720,7 +1772,7 @@ async function findGroupContext(groupId, householdHint) {
 
   for (const householdId of ordered) {
     try {
-      const snapshot = await getHouseholdSnapshot(householdId);
+      const snapshot = await getHouseholdSnapshot(householdId, deviceId);
       const groups = Array.isArray(snapshot.groups) ? snapshot.groups : [];
       const match = groups.find((group) => {
         const identifiers = [
@@ -1749,9 +1801,12 @@ async function findGroupContext(groupId, householdHint) {
   return null;
 }
 
-async function autogroupGroupMembers(groupId, householdHint) {
+async function autogroupGroupMembers(groupId, householdHint, deviceId) {
+  if (!deviceId) {
+    return { success: false, error: 'device_id_required' };
+  }
   try {
-    const context = await findGroupContext(groupId, householdHint);
+    const context = await findGroupContext(groupId, householdHint, deviceId);
     if (!context) {
       return { success: false, error: 'group_not_found' };
     }
@@ -1768,12 +1823,12 @@ async function autogroupGroupMembers(groupId, householdHint) {
     await sonosRequest(`/groups/${encodedGroupId}/groups/setGroupMembers`, {
       method: 'POST',
       body: JSON.stringify({ playerIds })
-    });
+    }, deviceId);
 
     const deadline = Date.now() + 3000;
     while (Date.now() < deadline) {
       try {
-        const current = await getHouseholdSnapshot(householdId);
+        const current = await getHouseholdSnapshot(householdId, deviceId);
         const allPlayers = Array.isArray(current.players) ? current.players : [];
         const everyoneInGroup = allPlayers.every(
           (player) => !player?.id || player.groupId === groupId
@@ -1798,8 +1853,8 @@ async function autogroupGroupMembers(groupId, householdHint) {
   }
 }
 
-async function applyDefaultVolumes(householdId) {
-  if (!householdId) {
+async function applyDefaultVolumes(householdId, deviceId) {
+  if (!householdId || !deviceId) {
     return;
   }
 
@@ -1809,7 +1864,7 @@ async function applyDefaultVolumes(householdId) {
     // Update cache to keep it in sync
     speakerVolumes = volumes;
 
-    const response = await sonosFetch(`/households/${encodeURIComponent(householdId)}/groups`);
+    const response = await sonosFetch(`/households/${encodeURIComponent(householdId)}/groups`, {}, deviceId);
     if (!response.ok) {
       return;
     }
@@ -1824,7 +1879,7 @@ async function applyDefaultVolumes(householdId) {
           return sonosFetch(`/players/${encodeURIComponent(player.id)}/playerVolume`, {
             method: 'POST',
             body: JSON.stringify({ volume: target })
-          });
+          }, deviceId);
         }
         return null;
       })
@@ -1841,7 +1896,10 @@ async function applyDefaultVolumes(householdId) {
   }
 }
 
-async function clearGroupQueue(groupId) {
+async function clearGroupQueue(groupId, deviceId) {
+  if (!deviceId) {
+    throw new Error('Device ID is required to clear group queue');
+  }
   const encodedGroupId = encodeURIComponent(groupId);
   const collectedIds = [];
   let supported = false;
@@ -1853,7 +1911,9 @@ async function clearGroupQueue(groupId) {
 
     while (true) {
       const response = await sonosRequest(
-        `/groups/${encodedGroupId}/playback/queue/items?quantity=${pageSize}&offset=${offset}`
+        `/groups/${encodedGroupId}/playback/queue/items?quantity=${pageSize}&offset=${offset}`,
+        {},
+        deviceId
       );
       supported = true;
 
@@ -1900,7 +1960,7 @@ async function clearGroupQueue(groupId) {
       await sonosRequest(`/groups/${encodedGroupId}/playback/queue/items/remove`, {
         method: 'POST',
         body: JSON.stringify({ itemIds: chunk })
-      });
+      }, deviceId);
     }
 
     return { success: true, supported: true };
