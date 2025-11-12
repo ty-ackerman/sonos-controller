@@ -4128,7 +4128,8 @@ async function checkAuthAndInit() {
           await loadTimeRules();
 
           // Load favorites for playlist management (include hidden ones)
-          const params = new URLSearchParams({ householdId: currentHouseholdId, includeHidden: 'true' });
+          const deviceId = getDeviceId();
+          const params = new URLSearchParams({ householdId: currentHouseholdId, includeHidden: 'true', device_id: deviceId });
           const response = await fetch(`/api/favorites?${params.toString()}`);
 
           if (response.status === 401) {
@@ -4297,7 +4298,8 @@ async function checkAuthAndInit() {
         // Load hidden state for this favorite
         let isHidden = false;
         try {
-          const hiddenResponse = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden`);
+          const deviceId = getDeviceId();
+          const hiddenResponse = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden?device_id=${encodeURIComponent(deviceId)}`);
           if (hiddenResponse.ok) {
             const hiddenData = await hiddenResponse.json();
             isHidden = hiddenData.hidden === true;
@@ -4317,10 +4319,11 @@ async function checkAuthAndInit() {
           const playlistName = favorite.name || 'this playlist';
           
           try {
-            const response = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden`, {
+            const deviceId = getDeviceId();
+            const response = await fetch(`/api/favorites/${encodeURIComponent(favorite.id)}/hidden?device_id=${encodeURIComponent(deviceId)}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ hidden: newHiddenState })
+              body: JSON.stringify({ hidden: newHiddenState, device_id: deviceId })
             });
 
             if (!response.ok) {
@@ -5449,7 +5452,8 @@ async function checkAuthAndInit() {
         try {
           await loadPlaylistVibes();
 
-          const params = new URLSearchParams({ householdId });
+          const deviceId = getDeviceId();
+          const params = new URLSearchParams({ householdId, device_id: deviceId });
           const activeGroupId = getSelectedGroupId();
           if (activeGroupId) {
             params.set('groupId', activeGroupId);
@@ -5598,8 +5602,11 @@ async function checkAuthAndInit() {
         setFavoriteLoading(entry, true);
 
         try {
-          const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
-            method: 'POST'
+          const deviceId = getDeviceId();
+          const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group?device_id=${encodeURIComponent(deviceId)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId })
           });
 
           if (!groupResponse.ok) {
@@ -5867,8 +5874,11 @@ async function checkAuthAndInit() {
           // Auto-grouping is handled on load, but if we still don't have a group, try to create one
           if (currentHouseholdId && latestPlayers.length > 0) {
             try {
-              const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group`, {
-                method: 'POST'
+              const deviceId = getDeviceId();
+              const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group?device_id=${encodeURIComponent(deviceId)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_id: deviceId })
               });
               if (groupResponse.ok) {
                 const groupData = await groupResponse.json();
