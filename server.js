@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { loadTokens, saveTokens, clearTokens } from './tokenStore.js';
+import { saveOAuthState, getOAuthStateDeviceId, deleteOAuthState } from './oauthStateStore.js';
 import { loadSpeakerVolumes, saveSpeakerVolumes } from './settingsStore.js';
 import { loadPlaylistVibes, savePlaylistVibes } from './playlistVibesStore.js';
 import {
@@ -144,13 +145,13 @@ app.use((req, res, next) => {
 // Note: Static files are served by Netlify, so we only initialize for dynamic routes
 app.use(/^\/(api|auth|healthz)/, async (req, res, next) => {
   await ensureInitialized();
-  // ALWAYS reload device-specific tokens from database to ensure we have the latest
-  // This is critical for serverless environments where in-memory state doesn't persist
-  if (req.deviceId) {
+  // Load device-specific tokens from database if not already in memory
+  // Only reload if missing from cache to avoid excessive DB calls
+  if (req.deviceId && !tokens.has(req.deviceId)) {
     const deviceTokens = await loadTokens(req.deviceId);
     tokens.set(req.deviceId, deviceTokens);
     console.log('[Middleware] Loaded tokens for device:', req.deviceId, 'hasToken:', !!deviceTokens.access_token);
-  } else {
+  } else if (!req.deviceId) {
     console.warn('[Middleware] Request without device ID:', req.path);
   }
   next();
@@ -163,7 +164,7 @@ app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-app.get('/auth/sonos/login', (req, res) => {
+app.get('/auth/sonos/login', async (req, res) => {
   // Get device ID from header (preferred) or query parameter (fallback for redirects)
   const deviceId = req.deviceId || req.query.deviceId;
   if (!deviceId) {
@@ -173,18 +174,12 @@ app.get('/auth/sonos/login', (req, res) => {
 
   console.log('[OAuth] Starting login flow for device:', deviceId);
 
-  // Generate random state for CSRF protection
-  const randomState = crypto.randomBytes(16).toString('hex');
-  // Encode device ID in state to survive serverless function invocations
-  // Format: {randomState}:{base64EncodedDeviceId}
-  // Use regular base64 and replace URL-unsafe characters
-  const encodedDeviceId = Buffer.from(deviceId).toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-  const oauthState = `${randomState}:${encodedDeviceId}`;
-
-  console.log('[OAuth] Generated state with device ID:', { randomState, deviceId, encodedDeviceId, oauthState });
+  // Generate random state for CSRF protection (just hex, no device ID encoding)
+  const oauthState = crypto.randomBytes(16).toString('hex');
+  
+  // Store device ID mapping in database (survives serverless function invocations)
+  await saveOAuthState(oauthState, deviceId);
+  console.log('[OAuth] Stored OAuth state mapping:', { state: oauthState, deviceId });
 
   const params = new URLSearchParams({
     client_id: SONOS_CLIENT_ID,
@@ -213,35 +208,27 @@ app.get('/auth/sonos/callback', async (req, res) => {
     return res.redirect('/?auth=invalid_state');
   }
 
-  // Extract device ID from state (format: {randomState}:{base64EncodedDeviceId})
-  let deviceId;
-  try {
-    console.log('[OAuth] Received callback with state:', state);
-    const parts = state.split(':');
-    if (parts.length !== 2) {
-      console.error('[OAuth] State format invalid - expected format: randomState:encodedDeviceId, got:', state);
-      throw new Error(`Invalid state format: expected 2 parts, got ${parts.length}`);
-    }
-    // Decode base64url (replace URL-safe chars back)
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    // Add padding if needed
-    const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
-    deviceId = Buffer.from(padded, 'base64').toString('utf8');
-    if (!deviceId) {
-      throw new Error('Device ID is empty after decoding');
-    }
-    console.log('[OAuth] Successfully extracted device ID from callback state:', deviceId);
-  } catch (err) {
-    console.error('[OAuth] Failed to extract device ID from state:', err.message, 'state:', state);
+  // Get device ID from database using OAuth state
+  console.log('[OAuth] Received callback with state:', state);
+  const deviceId = await getOAuthStateDeviceId(state);
+  
+  if (!deviceId) {
+    console.error('[OAuth] Device ID not found for state:', state);
     return res.redirect('/?auth=invalid_state');
   }
 
+  console.log('[OAuth] Found device ID for state:', { state, deviceId });
+
   try {
     await exchangeCodeForTokens(code, deviceId);
+    // Clean up OAuth state after successful token exchange
+    await deleteOAuthState(state);
     console.log('[OAuth] Successfully authenticated device:', deviceId);
     res.redirect('/?auth=success');
   } catch (err) {
     console.error('[OAuth] Failed to exchange code for tokens:', err);
+    // Clean up OAuth state even on error
+    await deleteOAuthState(state);
     res.redirect('/?auth=error');
   }
 });
@@ -256,9 +243,12 @@ app.get('/auth/status', async (req, res) => {
       return res.json({ loggedIn: false, expiresAt: 0 });
     }
     
-    // ALWAYS reload from database to ensure we have the latest tokens for this specific device
-    const deviceTokens = await loadTokens(deviceId);
-    tokens.set(deviceId, deviceTokens);
+    // Get tokens from cache, reload from DB if missing
+    let deviceTokens = getDeviceTokens(deviceId);
+    if (!deviceTokens || !deviceTokens.access_token) {
+      deviceTokens = await loadTokens(deviceId);
+      tokens.set(deviceId, deviceTokens);
+    }
     
     let loggedIn = Boolean(deviceTokens.access_token) && Date.now() < (deviceTokens.expires_at || 0);
     
@@ -1965,10 +1955,13 @@ async function ensureValidAccessToken(deviceId) {
   // Ensure tokens are initialized
   await ensureInitialized();
   
-  // ALWAYS reload from database to ensure we have the latest tokens for this device
-  // This prevents cross-device token sharing in serverless environments
-  const deviceTokens = await loadTokens(deviceId);
-  tokens.set(deviceId, deviceTokens);
+  // Get tokens from cache, reload from DB if missing
+  let deviceTokens = getDeviceTokens(deviceId);
+  if (!deviceTokens || !deviceTokens.access_token) {
+    // Reload from database if not in cache or invalid
+    deviceTokens = await loadTokens(deviceId);
+    tokens.set(deviceId, deviceTokens);
+  }
   
   if (!deviceTokens || !deviceTokens.access_token) {
     console.log('[ensureValidAccessToken] No valid token for device:', deviceId);
@@ -1987,9 +1980,8 @@ async function ensureValidAccessToken(deviceId) {
 async function sonosFetch(endpoint, deviceId, options = {}) {
   await ensureValidAccessToken(deviceId);
 
-  // Get fresh tokens after ensureValidAccessToken (which reloads from DB)
-  const deviceTokens = await loadTokens(deviceId);
-  tokens.set(deviceId, deviceTokens);
+  // Get tokens from cache (ensureValidAccessToken already loaded if needed)
+  const deviceTokens = getDeviceTokens(deviceId);
   const initialHeaders = {
     ...(options.headers ?? {})
   };
@@ -2010,9 +2002,8 @@ async function sonosFetch(endpoint, deviceId, options = {}) {
 
   if (response.status === 401 && deviceTokens.refresh_token) {
     await refreshAccessToken(deviceId);
-    // Reload fresh tokens after refresh
-    const refreshedTokens = await loadTokens(deviceId);
-    tokens.set(deviceId, refreshedTokens);
+    // Get refreshed tokens from cache (refreshAccessToken already updated cache)
+    const refreshedTokens = getDeviceTokens(deviceId);
     requestOptions.headers.Authorization = `Bearer ${refreshedTokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
   }
@@ -2039,9 +2030,8 @@ async function sonosRequest(endpoint, deviceIdOrOptions, options = {}) {
 
   await ensureValidAccessToken(deviceId);
 
-  // Get fresh tokens after ensureValidAccessToken (which reloads from DB)
-  const deviceTokens = await loadTokens(deviceId);
-  tokens.set(deviceId, deviceTokens);
+  // Get tokens from cache (ensureValidAccessToken already loaded if needed)
+  const deviceTokens = getDeviceTokens(deviceId);
   const initialHeaders = {
     Accept: 'application/json',
     ...(actualOptions.headers ?? {})
@@ -2063,9 +2053,8 @@ async function sonosRequest(endpoint, deviceIdOrOptions, options = {}) {
 
   if (response.status === 401 && deviceTokens.refresh_token) {
     await refreshAccessToken(deviceId);
-    // Reload fresh tokens after refresh
-    const refreshedTokens = await loadTokens(deviceId);
-    tokens.set(deviceId, refreshedTokens);
+    // Get refreshed tokens from cache (refreshAccessToken already updated cache)
+    const refreshedTokens = getDeviceTokens(deviceId);
     requestOptions.headers.Authorization = `Bearer ${refreshedTokens.access_token}`;
     response = await fetch(`${SONOS_CONTROL_BASE}${endpoint}`, requestOptions);
     if (response.status === 401) {
