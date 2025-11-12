@@ -3471,8 +3471,24 @@ favoritesToggle.addEventListener('click', (e) => {
     arrow.textContent = isHidden ? '▲' : '▼';
   }
   favoritesToggle.innerHTML = `${isHidden ? 'Hide' : 'View'} All Playlists <span>${isHidden ? '▲' : '▼'}</span>`;
-  // Prevent any scroll behavior
-  window.scrollTo(window.scrollX, window.scrollY);
+  
+  // Smooth scroll to show playlists when opening
+  if (isHidden) {
+    // Wait for content to be visible, then scroll
+    setTimeout(() => {
+      const favoritesHeader = favoritesToggle.closest('.favorites-header');
+      if (favoritesHeader) {
+        const scrollTarget = favoritesHeader.getBoundingClientRect().top + window.scrollY - 20;
+        window.scrollTo({
+          top: scrollTarget,
+          behavior: 'smooth'
+        });
+      }
+    }, 50);
+  } else {
+    // Prevent any scroll behavior when closing
+    window.scrollTo(window.scrollX, window.scrollY);
+  }
 });
 
 function setAuthUI(loggedIn) {
