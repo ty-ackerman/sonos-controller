@@ -2899,6 +2899,9 @@ settingsStatusLabel.textContent = '';
       let playlistVibes = {};
       let currentVibeFilter = null;
       let playbackRefreshTimer = null;
+      // Track user interaction with panel and scroll position (used for scroll detection)
+      let isInteractingWithPanel = false;
+      let panelScrollTopBefore = 0;
       let currentPlaybackState = null;
       let currentImageUrl = null; // Store the source imageUrl (before proxying) for comparison
       let currentProxiedImageUrl = null; // Store the proxied URL for DOM updates
@@ -3360,6 +3363,9 @@ async function checkAuthAndInit() {
           return;
         }
 
+        // Store panel visibility state before skip
+        const wasPanelVisible = currentlyPlayingPanel.classList.contains('visible');
+
         try {
           skipSongButton.disabled = true;
           const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/next`, {
@@ -3371,9 +3377,9 @@ async function checkAuthAndInit() {
           }
 
           showToast('Skipped to next song');
-          // Refresh playback status after a short delay
+          // Refresh playback status after a short delay, but don't auto-show panel
           setTimeout(() => {
-            updateCurrentlyPlaying();
+            updateCurrentlyPlaying(wasPanelVisible);
           }, 500);
         } catch (error) {
           console.error('Failed to skip song:', error);
@@ -3531,15 +3537,38 @@ async function checkAuthAndInit() {
           }
         }, { passive: false, capture: true });
         
-        // Track touch start
+        // Track touch start and user interaction
         currentlyPlayingPanel.addEventListener('touchstart', (e) => {
           if (currentlyPlayingPanel.contains(e.target) || e.target === currentlyPlayingPanel) {
+            isInteractingWithPanel = true;
+            panelScrollTopBefore = currentlyPlayingPanel.scrollTop;
             const touch = e.touches[0];
             if (touch) {
               touchStartY = touch.clientY;
             }
           }
         }, { passive: true, capture: true });
+
+        // Track mouse interaction
+        currentlyPlayingPanel.addEventListener('mousedown', (e) => {
+          if (currentlyPlayingPanel.contains(e.target) || e.target === currentlyPlayingPanel) {
+            isInteractingWithPanel = true;
+            panelScrollTopBefore = currentlyPlayingPanel.scrollTop;
+          }
+        }, { passive: true, capture: true });
+
+        // Clear interaction flag on mouse/touch end
+        currentlyPlayingPanel.addEventListener('touchend', () => {
+          setTimeout(() => {
+            isInteractingWithPanel = false;
+          }, 100);
+        }, { passive: true });
+
+        currentlyPlayingPanel.addEventListener('mouseup', () => {
+          setTimeout(() => {
+            isInteractingWithPanel = false;
+          }, 100);
+        }, { passive: true });
         
         // Prevent touch scroll from propagating
         currentlyPlayingPanel.addEventListener('touchmove', (e) => {
@@ -5953,7 +5982,7 @@ async function checkAuthAndInit() {
         }
       }
 
-      async function updateCurrentlyPlaying() {
+      async function updateCurrentlyPlaying(shouldAutoShow = true) {
         let groupId = getSelectedGroupId();
         
         // If no group is selected but we have groups, try the first one
@@ -6766,52 +6795,44 @@ async function checkAuthAndInit() {
         }
       });
 
-      // Close panel when scrolling starts (only if scroll is outside the panel)
-      let isScrolling = false;
-      document.addEventListener('scroll', (e) => {
-        if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
-          return;
-        }
-        
-        // Check if the scroll event originated from within the panel
-        const target = e.target;
-        if (target && currentlyPlayingPanel.contains(target)) {
-          return; // Don't close if scrolling within the panel
-        }
-        
-        // Check if the scroll happened on the document/body (outside the panel)
-        if (target === document || target === document.body || target === document.documentElement) {
-          // Close immediately when scrolling starts outside the panel
-          if (!isScrolling) {
-            isScrolling = true;
-            currentlyPlayingPanel.classList.remove('expanded');
-          }
-        }
-      }, { passive: true, capture: true });
+      // Close panel when scrolling outside (only if scroll is definitely outside the panel)
+      let documentScrollYBefore = window.scrollY || document.documentElement.scrollTop;
+      
+      // Track scroll position before scroll events
+      currentlyPlayingPanel.addEventListener('scroll', () => {
+        // Update panel scroll position when it scrolls
+        panelScrollTopBefore = currentlyPlayingPanel.scrollTop;
+      }, { passive: true });
 
-      // Close panel on touchmove (mobile scrolling) - only if touch is outside the panel
-      document.addEventListener('touchmove', (e) => {
-        if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
-          return;
-        }
-        
-        // Check if the touch event originated from within the panel
-        const target = e.target;
-        if (target && currentlyPlayingPanel.contains(target)) {
-          return; // Don't close if touching/swiping within the panel
-        }
-        
-        // Only close if touch is outside the panel
-        currentlyPlayingPanel.classList.remove('expanded');
-      }, { passive: true, capture: true });
-
-      // Reset scrolling flag when scroll ends
-      let scrollEndTimeout = null;
+      // Check if scroll happened outside panel by comparing scroll positions
       document.addEventListener('scroll', () => {
-        clearTimeout(scrollEndTimeout);
-        scrollEndTimeout = setTimeout(() => {
-          isScrolling = false;
-        }, 150);
+        if (!currentlyPlayingPanel.classList.contains('visible') || !currentlyPlayingPanel.classList.contains('expanded')) {
+          documentScrollYBefore = window.scrollY || document.documentElement.scrollTop;
+          return;
+        }
+
+        // Don't close if user is actively interacting with panel
+        if (isInteractingWithPanel) {
+          documentScrollYBefore = window.scrollY || document.documentElement.scrollTop;
+          return;
+        }
+
+        const currentDocumentScrollY = window.scrollY || document.documentElement.scrollTop;
+        const currentPanelScrollTop = currentlyPlayingPanel.scrollTop;
+        
+        // Only close if:
+        // 1. Document scrolled (outside panel)
+        // 2. Panel scroll position didn't change (scroll wasn't inside panel)
+        // 3. User isn't interacting with panel
+        if (currentDocumentScrollY !== documentScrollYBefore && 
+            currentPanelScrollTop === panelScrollTopBefore) {
+          // Scroll happened outside panel - close it
+          currentlyPlayingPanel.classList.remove('expanded');
+        }
+        
+        // Update scroll position tracking
+        documentScrollYBefore = currentDocumentScrollY;
+        panelScrollTopBefore = currentPanelScrollTop;
       }, { passive: true });
 
 
