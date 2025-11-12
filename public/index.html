@@ -1379,14 +1379,24 @@
         padding: 20px;
         border-bottom: 1px solid var(--border-color);
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
+        gap: 12px;
+      }
+
+      .menu-header-content {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
       }
 
       .menu-title {
         font-size: 1.125rem;
         font-weight: 600;
         color: var(--text-primary);
+        line-height: 1.4;
       }
 
       .menu-close-btn {
@@ -1410,8 +1420,9 @@
 
       .menu-items {
         flex: 1;
-        padding: 12px 0;
+        padding: 8px 0;
         overflow-y: auto;
+        min-height: 0;
       }
 
       .menu-item {
@@ -1425,31 +1436,71 @@
         font-size: 0.9375rem;
         font-weight: 500;
         cursor: pointer;
-        transition: background 0.2s ease;
+        transition: background 0.2s ease, color 0.2s ease;
+        position: relative;
       }
 
+      .menu-item:hover {
+        background: var(--bg-secondary);
+      }
 
+      .menu-item.active {
+        background: var(--bg-secondary);
+        color: var(--accent);
+      }
 
-      .menu-signout {
+      .menu-item.active::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 3px;
+        height: 20px;
+        background: var(--accent);
+        border-radius: 0 2px 2px 0;
+      }
+
+      .menu-footer {
         margin-top: auto;
-        padding: 12px 0;
+        padding: 8px 0 12px 0;
         border-top: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
       }
 
-      .menu-signout .menu-item {
+      .menu-item-secondary {
+        color: var(--text-secondary);
+        font-weight: 400;
+      }
+
+      .menu-item-secondary:hover {
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+      }
+
+      .menu-item-destructive {
+        color: var(--error);
+      }
+
+      .menu-item-destructive:hover {
+        background: rgba(239, 68, 68, 0.1);
         color: var(--error);
       }
 
       .view-indicator {
-        padding: 4px 12px;
-        margin: 0 20px 12px 20px;
+        padding: 4px 10px;
         border-radius: 6px;
         background: var(--bg-tertiary);
         color: var(--text-secondary);
-        font-size: 0.75rem;
+        font-size: 0.6875rem;
         font-weight: 500;
         text-align: center;
-        border: 1px solid var(--border-color);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        align-self: flex-start;
+        white-space: nowrap;
       }
 
       .password-modal-backdrop {
@@ -2452,7 +2503,10 @@
       <div id="menu-backdrop" class="menu-backdrop"></div>
     <div id="menu-panel" class="menu-panel">
       <div class="menu-header">
-        <span class="menu-title">Menu</span>
+        <div class="menu-header-content">
+          <span class="menu-title">Menu</span>
+          <div id="view-indicator" class="view-indicator"></div>
+        </div>
         <button id="menu-close-btn" class="menu-close-btn" type="button" aria-label="Close menu">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
             <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -2460,15 +2514,14 @@
           </svg>
         </button>
       </div>
-      <div id="view-indicator" class="view-indicator"></div>
       <div class="menu-items">
         <button id="menu-item-controls" class="menu-item active" type="button">Controls</button>
         <button id="menu-item-playlist-management" class="menu-item" type="button">Playlist Management</button>
         <button id="menu-item-settings" class="menu-item" type="button">Settings</button>
-        <button id="menu-item-switch-view" class="menu-item" type="button" style="display: none;">Switch to Manager View</button>
       </div>
-      <div class="menu-signout">
-        <button id="menu-item-signout" class="menu-item" type="button">Sign out</button>
+      <div class="menu-footer">
+        <button id="menu-item-switch-view" class="menu-item menu-item-secondary" type="button" style="display: none;">Switch to Manager View</button>
+        <button id="menu-item-signout" class="menu-item menu-item-destructive" type="button">Sign out</button>
       </div>
     </div>
 
