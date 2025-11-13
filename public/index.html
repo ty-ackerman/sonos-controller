@@ -4525,17 +4525,19 @@ async function checkAuthAndInit() {
           emptyMsg.textContent = 'No day overrides. Add an override to customize specific days.';
           dayOverridesList.appendChild(emptyMsg);
         } else {
-          // Group overrides by day
+          // Group overrides by day (a rule can appear in multiple day groups if it applies to multiple days)
           const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
           const overridesByDay = {};
           
           overrideRules.forEach(rule => {
             if (rule.days && rule.days.length > 0) {
-              const day = rule.days[0];
-              if (!overridesByDay[day]) {
-                overridesByDay[day] = [];
-              }
-              overridesByDay[day].push(rule);
+              // Add this rule to each day group it applies to
+              rule.days.forEach(day => {
+                if (!overridesByDay[day]) {
+                  overridesByDay[day] = [];
+                }
+                overridesByDay[day].push(rule);
+              });
             }
           });
 
@@ -4715,7 +4717,7 @@ async function checkAuthAndInit() {
         });
       }
 
-      // Handle individual day checkboxes - for overrides, ensure only one is selected
+      // Handle individual day checkboxes - for overrides, allow multiple days
       for (let i = 0; i <= 6; i++) {
         const dayCheckbox = document.getElementById(`time-rule-day-${i}`);
         if (dayCheckbox) {
@@ -4723,15 +4725,6 @@ async function checkAuthAndInit() {
             if (dayCheckbox.checked) {
               if (everydayCheckbox) {
                 everydayCheckbox.checked = false;
-              }
-              // For override type, uncheck other days (only one day allowed)
-              const ruleTypeOverride = document.getElementById('time-rule-type-override');
-              if (ruleTypeOverride && ruleTypeOverride.checked) {
-                for (let j = 0; j <= 6; j++) {
-                  if (j !== i) {
-                    document.getElementById(`time-rule-day-${j}`).checked = false;
-                  }
-                }
               }
             }
           });
@@ -4782,26 +4775,29 @@ async function checkAuthAndInit() {
           return null; // Only validate overrides
         }
 
-        if (!days || days.length !== 1) {
-          return 'Override rules must specify exactly one day.';
+        if (!days || days.length === 0) {
+          return 'Override rules must specify at least one day.';
         }
 
-        const overrideDay = days[0];
+        const overrideDays = days;
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         
-        // Check existing overrides for the same day
+        // Check existing overrides that share any common days
         const existingOverrides = timeRules.filter(r => 
           r.rule_type === 'override' &&
           r.days && 
-          r.days.length === 1 && 
-          r.days[0] === overrideDay &&
-          (!currentRuleId || r.id !== currentRuleId)
+          r.days.length > 0 && 
+          (!currentRuleId || r.id !== currentRuleId) &&
+          r.days.some(day => overrideDays.includes(day))
         );
 
-        // Check for time overlaps
+        // Check for time overlaps on shared days
         for (const existing of existingOverrides) {
           if (timeRangesOverlap(startHour, endHour, existing.start_hour, existing.end_hour)) {
-            const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-            return `This override overlaps with an existing override for ${dayNames[overrideDay]}. Please adjust the time range.`;
+            // Find which days overlap
+            const sharedDays = existing.days.filter(day => overrideDays.includes(day));
+            const dayNamesList = sharedDays.map(day => dayNames[day]).join(', ');
+            return `This override overlaps with an existing override for ${dayNamesList}. Please adjust the time range.`;
           }
         }
 
@@ -4829,7 +4825,7 @@ async function checkAuthAndInit() {
         // Get selected days based on rule type
         let days = null;
         if (ruleType === 'override') {
-          // Override must have exactly one day
+          // Override must have at least one day
           days = [];
           for (let i = 0; i <= 6; i++) {
             const dayCheckbox = document.getElementById(`time-rule-day-${i}`);
@@ -4837,8 +4833,8 @@ async function checkAuthAndInit() {
               days.push(i);
             }
           }
-          if (days.length !== 1) {
-            alert('Day override rules must specify exactly one day.');
+          if (days.length === 0) {
+            alert('Day override rules must specify at least one day.');
             return;
           }
         } else {

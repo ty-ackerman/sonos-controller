@@ -41,7 +41,7 @@ export async function loadVibeTimeRules() {
           // Validate days array based on rule_type
           let validDays = null;
           if (ruleType === 'override') {
-            // Override rules must have exactly one day
+            // Override rules must have at least one day
             if (row.days !== null && row.days !== undefined && Array.isArray(row.days)) {
               const filteredDays = row.days.filter(
                 (day) => typeof day === 'number' && day >= 0 && day <= 6
@@ -104,23 +104,19 @@ function timeRangesOverlap(start1, end1, start2, end2) {
   return false;
 }
 
-// Validate that override rules don't overlap with existing overrides for the same day
+// Validate that override rules don't overlap with existing overrides for the same days
 async function validateOverrideOverlap(rule) {
   if (rule.rule_type !== 'override') {
     return; // Only validate overrides
   }
 
   if (!rule.days || !Array.isArray(rule.days) || rule.days.length === 0) {
-    throw new Error('Override rules must specify exactly one day');
+    throw new Error('Override rules must specify at least one day');
   }
 
-  if (rule.days.length !== 1) {
-    throw new Error('Override rules must specify exactly one day');
-  }
+  const overrideDays = rule.days;
 
-  const overrideDay = rule.days[0];
-
-  // Load all existing override rules for the same day
+  // Load all existing override rules
   const { data, error } = await supabase
     .from('vibe_time_rules')
     .select('id, start_hour, end_hour, days')
@@ -130,23 +126,28 @@ async function validateOverrideOverlap(rule) {
     throw new Error('Failed to validate override overlap');
   }
 
-  // Check for overlaps with existing overrides for the same day
+  // Check for overlaps with existing overrides that share any common days
   const existingOverrides = (data || []).filter((existing) => {
     // Skip the rule being updated (if updating)
     if (rule.id && existing.id === rule.id) {
       return false;
     }
-    // Check if it's for the same day
-    if (!existing.days || !Array.isArray(existing.days) || existing.days.length !== 1) {
+    // Check if it shares any common days
+    if (!existing.days || !Array.isArray(existing.days) || existing.days.length === 0) {
       return false;
     }
-    return existing.days[0] === overrideDay;
+    // Check if there's any day overlap
+    return existing.days.some(day => overrideDays.includes(day));
   });
 
-  // Check for time overlaps
+  // Check for time overlaps on shared days
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   for (const existing of existingOverrides) {
     if (timeRangesOverlap(rule.start_hour, rule.end_hour, existing.start_hour, existing.end_hour)) {
-      throw new Error(`This override overlaps with an existing override for the same day. Please adjust the time range.`);
+      // Find which days overlap
+      const sharedDays = existing.days.filter(day => overrideDays.includes(day));
+      const dayNamesList = sharedDays.map(day => dayNames[day]).join(', ');
+      throw new Error(`This override overlaps with an existing override for ${dayNamesList}. Please adjust the time range.`);
     }
   }
 }
@@ -182,17 +183,17 @@ export async function saveVibeTimeRule(rule) {
     // Validate and sanitize days based on rule_type
     let days = null;
     if (ruleType === 'override') {
-      // Override rules must have exactly one day
+      // Override rules must have at least one day
       if (rule.days === null || rule.days === undefined || !Array.isArray(rule.days) || rule.days.length === 0) {
-        throw new Error('Override rules must specify exactly one day');
+        throw new Error('Override rules must specify at least one day');
       }
       const validDays = rule.days.filter(
         (day) => typeof day === 'number' && day >= 0 && day <= 6
       );
       // Remove duplicates and sort
       days = [...new Set(validDays)].sort();
-      if (days.length !== 1) {
-        throw new Error('Override rules must specify exactly one day');
+      if (days.length === 0) {
+        throw new Error('Override rules must specify at least one day');
       }
     } else {
       // Base rules must have days = null

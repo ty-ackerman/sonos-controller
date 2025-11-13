@@ -1066,11 +1066,11 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
 
     // Find override rules for current day that match current time
     const matchingOverrideRules = overrideRules.filter(rule => {
-      // Override must be for current day (override rules have exactly one day)
-      if (!rule.days || !Array.isArray(rule.days) || rule.days.length !== 1) {
+      // Override must be for current day (override rules can have multiple days)
+      if (!rule.days || !Array.isArray(rule.days) || rule.days.length === 0) {
         return false;
       }
-      if (rule.days[0] !== currentDay) {
+      if (!rule.days.includes(currentDay)) {
         return false;
       }
       // Override must match current time
@@ -1119,7 +1119,7 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
           allOverrideRules: overrideRules.map(r => ({ 
             id: r.id, 
             time: `${r.start_hour}-${r.end_hour}`, 
-            day: r.days && r.days.length > 0 ? dayNames[r.days[0]] : 'unknown',
+            days: r.days && r.days.length > 0 ? r.days.map(d => dayNames[d]).join(', ') : 'unknown',
             vibes: r.allowed_vibes 
           }))
         }
