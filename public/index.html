@@ -3914,13 +3914,17 @@ async function checkAuthAndInit() {
         }
       }
 
-      async function fetchGroupsPlayers(householdId) {
+      async function fetchGroupsPlayers(householdId, deviceId) {
         if (!householdId) {
           return { groups: [], players: [] };
         }
 
+        if (!deviceId) {
+          throw new Error('Device ID is required');
+        }
+
         const response = await fetch(
-          `/api/households/${encodeURIComponent(householdId)}/groups-players`
+          `/api/households/${encodeURIComponent(householdId)}/groups-players?device_id=${encodeURIComponent(deviceId)}`
         );
 
         if (!response.ok) {
@@ -3968,7 +3972,7 @@ async function checkAuthAndInit() {
           // This ensures settings saved on other devices are immediately visible
           const deviceId = getDeviceId();
           const [snapshot, defaults] = await Promise.all([
-            fetchGroupsPlayers(householdId),
+            fetchGroupsPlayers(householdId, deviceId),
             fetch(`/api/settings/volumes?device_id=${encodeURIComponent(deviceId)}`, {
               cache: 'no-store',
               headers: {
