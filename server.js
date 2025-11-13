@@ -64,23 +64,41 @@ let initializationPromise = null;
 // OAuth state management functions
 async function saveOAuthState(deviceId, state) {
   try {
+    // Check if Supabase is configured
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+      throw new Error('Missing Supabase configuration: SUPABASE_URL and SUPABASE_KEY are required');
+    }
+    
     const { error } = await supabase
       .from('oauth_states')
       .upsert({ device_id: deviceId, state }, { onConflict: 'device_id' });
     
     if (error) {
       // Check if it's a table doesn't exist error
-      if (error.code === '42P01' || error.message?.includes('does not exist') || error.message?.includes('relation') && error.message?.includes('does not exist')) {
+      if (error.code === '42P01' || error.message?.includes('does not exist') || (error.message?.includes('relation') && error.message?.includes('does not exist'))) {
         console.error('oauth_states table does not exist. Please run the SQL migration in supabase-schema.sql');
         throw new Error('Database table missing: oauth_states. Please run the SQL migration.');
       }
-      throw error;
+      // Re-throw the error with code for better error handling
+      const enhancedError = new Error(error.message || 'Supabase error');
+      enhancedError.code = error.code;
+      enhancedError.details = error.details;
+      enhancedError.hint = error.hint;
+      throw enhancedError;
     }
   } catch (error) {
     console.error('Error saving OAuth state:', error);
     // Re-throw with more context if it's a known error
-    if (error.message?.includes('Database table missing')) {
+    if (error.message?.includes('Database table missing') || error.message?.includes('Missing Supabase configuration')) {
       throw error;
+    }
+    // Preserve error code and details if available
+    if (error.code) {
+      const enhancedError = new Error(`Failed to save OAuth state: ${error.message || error}`);
+      enhancedError.code = error.code;
+      enhancedError.details = error.details;
+      enhancedError.hint = error.hint;
+      throw enhancedError;
     }
     throw new Error(`Failed to save OAuth state: ${error.message || error}`);
   }
@@ -207,15 +225,47 @@ app.get('/auth/sonos/login', async (req, res) => {
     await saveOAuthState(deviceId, oauthState);
   } catch (error) {
     console.error('Failed to save OAuth state:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      stack: error.stack
+    });
+    
     // Provide more helpful error message
     const errorMessage = error.message || 'Failed to initialize login';
-    if (errorMessage.includes('Database table missing')) {
+    
+    // Check for common Supabase errors
+    if (errorMessage.includes('Database table missing') || error.code === '42P01') {
       return res.status(500).json({ 
         error: 'Database configuration error',
-        message: 'The oauth_states table does not exist. Please run the SQL migration in supabase-schema.sql in your Supabase SQL Editor.'
+        message: 'The oauth_states table does not exist. Please run the SQL migration in supabase-schema.sql in your Supabase SQL Editor.',
+        details: 'See LOCAL_DEVELOPMENT.md for setup instructions.'
       });
     }
-    return res.status(500).json({ error: 'Failed to initialize login', message: errorMessage });
+    
+    if (errorMessage.includes('Missing Supabase configuration') || !process.env.SUPABASE_URL || !process.env.SUPABASE_KEY) {
+      return res.status(500).json({ 
+        error: 'Configuration error',
+        message: 'Supabase is not configured. Please set SUPABASE_URL and SUPABASE_KEY in your .env file.',
+        details: 'See env.template and LOCAL_DEVELOPMENT.md for setup instructions.'
+      });
+    }
+    
+    if (error.code === 'PGRST301' || errorMessage.includes('JWT')) {
+      return res.status(500).json({ 
+        error: 'Supabase authentication error',
+        message: 'Invalid Supabase credentials. Please check your SUPABASE_KEY in .env file.',
+        details: 'Make sure you are using the service_role key, not the anon key.'
+      });
+    }
+    
+    return res.status(500).json({ 
+      error: 'Failed to initialize login', 
+      message: errorMessage,
+      code: error.code || 'UNKNOWN_ERROR'
+    });
   }
 
   // Include device_id in the state parameter so we can retrieve it in callback
