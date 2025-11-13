@@ -195,6 +195,17 @@
         letter-spacing: normal;
       }
 
+      @media (max-width: 400px) {
+        h1 {
+          font-size: 1.25rem;
+          gap: 6px;
+        }
+
+        h1 .sonos-logo-header {
+          height: 1rem;
+        }
+      }
+
       .household-title {
         font-size: 1.125rem;
         font-weight: 600;
@@ -3892,6 +3903,8 @@ function setAuthUI(loggedIn) {
   // Hide hamburger menu and now playing panel when not logged in
   hamburgerMenuBtn.classList.toggle('hidden', !loggedIn);
   currentlyPlayingPanel.classList.toggle('hidden', !loggedIn);
+  // Hide power button when not logged in
+  powerButton.classList.toggle('hidden', !loggedIn);
   if (!loggedIn) {
     showView('control');
     closeMenu();
