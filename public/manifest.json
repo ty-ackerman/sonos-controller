@@ -1,6 +1,6 @@
 {
-  "name": "Alter Music Controller",
-  "short_name": "Alter Music Controller",
+  "name": "Music Player",
+  "short_name": "Music Player",
   "description": "Control your Sonos speakers",
   "start_url": "/",
   "display": "standalone",
@@ -16,4 +16,3 @@
     }
   ]
 }
-
