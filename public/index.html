@@ -1280,6 +1280,26 @@
         stroke-linejoin: round;
       }
 
+      .power-button.pulsating {
+        color: #ef4444;
+        animation: powerPulse 1.5s ease-in-out infinite;
+      }
+
+      .power-button.pulsating svg {
+        stroke: #ef4444;
+      }
+
+      @keyframes powerPulse {
+        0%, 100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.7;
+          transform: scale(1.05);
+        }
+      }
+
       .skip-song-button {
         padding: 8px 16px;
         border-radius: 8px;
@@ -1598,15 +1618,17 @@
       }
 
       .view-indicator.manager {
-        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
-        color: #1f2937;
-        font-weight: 600;
+        background: linear-gradient(135deg, #ffd700 0%, #ffb347 25%, #daa520 50%, #b8860b 75%, #8b6914 100%);
+        color: #1a1a1a;
+        font-weight: 700;
         box-shadow: 
-          0 2px 8px rgba(217, 119, 6, 0.4),
-          0 0 20px rgba(251, 191, 36, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.3),
-          inset 0 -1px 0 rgba(0, 0, 0, 0.1);
-        text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3);
+          0 4px 12px rgba(184, 134, 11, 0.6),
+          0 0 30px rgba(255, 215, 0, 0.5),
+          inset 0 2px 4px rgba(255, 255, 255, 0.4),
+          inset 0 -2px 4px rgba(0, 0, 0, 0.2);
+        text-shadow: 0 1px 3px rgba(255, 255, 255, 0.5);
+        position: relative;
+        overflow: hidden;
       }
 
       .view-indicator.manager::before {
@@ -1618,11 +1640,11 @@
         height: 200%;
         background: linear-gradient(
           45deg,
-          transparent 30%,
-          rgba(255, 255, 255, 0.3) 50%,
-          transparent 70%
+          transparent 25%,
+          rgba(255, 255, 255, 0.5) 50%,
+          transparent 75%
         );
-        animation: shimmer 3s infinite;
+        animation: shimmer 2.5s infinite;
       }
 
       .view-indicator.front-desk {
@@ -1940,51 +1962,19 @@
 
 
 
-      .currently-playing-master-volume {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        margin-bottom: 12px;
-      }
-
-      .master-volume-label {
-        font-size: 0.875rem;
-        font-weight: 600;
-        color: var(--text-primary);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-
-      .master-volume-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-
-      .master-volume-slider {
-        flex: 1;
-        height: 4px;
-        accent-color: var(--accent);
-        cursor: pointer;
-      }
-
-      .master-volume-value {
-        min-width: 2.5rem;
-        text-align: right;
-        font-size: 0.875rem;
-        font-weight: 500;
-        color: var(--text-secondary);
-        font-variant-numeric: tabular-nums;
-      }
 
       .playlist-management-section {
         margin-bottom: 32px;
       }
 
       .time-rules-section {
-        margin-top: 32px;
-        padding-top: 32px;
-        border-top: 1px solid var(--border-color);
+        margin-top: 0;
+        padding-top: 0;
+      }
+
+      .time-rules-section .section-title {
+        margin-top: 0;
+        margin-bottom: 8px;
       }
 
       .base-schedule-section {
@@ -2883,7 +2873,6 @@
             </svg>
           </button>
           <button class="number-pad-key" data-value="0">0</button>
-          <button class="number-pad-key number-pad-submit" id="number-pad-submit" type="button">Submit</button>
         </div>
         <div class="password-modal-actions">
           <button id="password-modal-cancel" class="password-modal-button" type="button">Cancel</button>
@@ -2963,7 +2952,7 @@
             <div class="favorites-header">
               <div class="favorites-title-section">
                 <h2 class="favorites-main-title">All Playlists</h2>
-                <p class="favorites-description">Browse and play from our complete collection of playlists. Each playlist is curated to match different vibes and times of day.</p>
+                <p class="favorites-description">Browse and play from our complete collection of playlists. Each playlist is curated to match whatever vibe you need. 👌🏾</p>
               </div>
               <button id="favorites-toggle" class="favorites-toggle" type="button">
                 View All Playlists <span>▼</span>
@@ -2979,7 +2968,6 @@
 
         <section id="panel-playlist-management" class="hidden">
           <div class="playlist-management-section">
-            <h3 class="section-title">Playlists</h3>
             <p id="playlist-management-status" class="favorites-status">Sign in to load playlists.</p>
             <div id="playlist-management-grid" class="favorites-grid"></div>
           </div>
@@ -3200,13 +3188,6 @@
           </div>
         </div>
         <div class="currently-playing-volume" id="currently-playing-volume">
-          <div class="currently-playing-master-volume" id="currently-playing-master-volume">
-            <div class="master-volume-label">Master Volume</div>
-            <div class="master-volume-row">
-              <input id="master-volume-slider" type="range" class="master-volume-slider" min="0" max="100" step="1" value="0" />
-              <span id="master-volume-value" class="master-volume-value">0%</span>
-            </div>
-          </div>
           <div id="currently-playing-rooms-list"></div>
         </div>
       </div>
@@ -3270,7 +3251,6 @@
       const passwordDisplay = document.getElementById('password-display');
       const passwordModalError = document.getElementById('password-modal-error');
       const passwordModalCancel = document.getElementById('password-modal-cancel');
-      const numberPadSubmit = document.getElementById('number-pad-submit');
       const numberPadBackspace = document.getElementById('number-pad-backspace');
       
       const turnOffMusicModalBackdrop = document.getElementById('turn-off-music-modal-backdrop');
@@ -3283,13 +3263,6 @@
       const VIEW_FRONT_DESK = 'front-desk';
       const VIEW_MANAGER = 'manager';
       const PLAYBACK_STATE_STORAGE_KEY = 'sonos-controller-playback-state';
-      
-      // Master volume controls
-      const masterVolumeSlider = document.getElementById('master-volume-slider');
-      let isMasterVolumeDragging = false;
-      let masterVolumeExpectedValue = null; // Track expected volume after release
-      let masterVolumeUpdateTimeout = null;
-      const masterVolumeValue = document.getElementById('master-volume-value');
       
       // Track panel state to prevent flickering
       let panelShouldBeVisible = false;
@@ -3653,10 +3626,6 @@ function updatePasswordDisplay() {
       }, 10);
     }
   });
-  // Enable/disable submit button based on password length
-  if (numberPadSubmit) {
-    numberPadSubmit.disabled = enteredPassword.length !== 6;
-  }
 }
 
 function switchToManagerView() {
@@ -3675,6 +3644,7 @@ function switchToFrontDeskView() {
     showView('control');
   }
   closeMenu();
+  showToast('Switched to Front Desk View');
 }
 
 function showView(name) {
@@ -3787,23 +3757,27 @@ document.addEventListener('click', (e) => {
     if (enteredPassword.length < 6) {
       enteredPassword += value;
       updatePasswordDisplay();
+      
+      // Automatically submit when 6th digit is entered
+      if (enteredPassword.length === 6) {
+        if (enteredPassword === MANAGER_PASSWORD) {
+          setCurrentView(VIEW_MANAGER);
+          hidePasswordModal();
+          closeMenu();
+          // Show control tab and scroll to top
+          showView('control');
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          showToast('Switched to Manager View');
+        } else {
+          passwordModalError.classList.add('visible');
+          enteredPassword = '';
+          updatePasswordDisplay();
+        }
+      }
     }
   } else if (e.target.closest('#number-pad-backspace') || e.target.closest('#number-pad-backspace svg') || e.target.closest('#number-pad-backspace path') || e.target.closest('#number-pad-backspace line')) {
     enteredPassword = enteredPassword.slice(0, -1);
     updatePasswordDisplay();
-  } else if (e.target.closest('#number-pad-submit')) {
-    if (enteredPassword === MANAGER_PASSWORD) {
-      setCurrentView(VIEW_MANAGER);
-      hidePasswordModal();
-      closeMenu();
-      // Show control tab and scroll to top
-      showView('control');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      passwordModalError.classList.add('visible');
-      enteredPassword = '';
-      updatePasswordDisplay();
-    }
   }
 });
 
@@ -4022,6 +3996,9 @@ async function checkAuthAndInit() {
             throw new Error('Failed to turn off music');
           }
 
+          // Add pulsating red animation to power button
+          powerButton.classList.add('pulsating');
+
           // Set panelShouldBeVisible to false FIRST to prevent any race conditions
           panelShouldBeVisible = false;
           
@@ -4101,58 +4078,6 @@ async function checkAuthAndInit() {
         }
       });
 
-      // Master volume handler
-      masterVolumeSlider.addEventListener('input', (e) => {
-        const newValue = Number(e.target.value);
-        masterVolumeValue.textContent = `${newValue}%`;
-        
-        // Send update immediately while dragging (debounced to avoid too many requests)
-        if (isMasterVolumeDragging) {
-          clearTimeout(masterVolumeUpdateTimeout);
-          masterVolumeUpdateTimeout = setTimeout(() => {
-            setMasterVolume(newValue, false); // false = don't show feedback for intermediate updates
-          }, 50); // Debounce to 50ms
-        }
-      });
-
-      masterVolumeSlider.addEventListener('mousedown', () => {
-        isMasterVolumeDragging = true;
-        masterVolumeExpectedValue = null; // Clear expected value when starting to drag
-      });
-
-      masterVolumeSlider.addEventListener('touchstart', () => {
-        isMasterVolumeDragging = true;
-        masterVolumeExpectedValue = null; // Clear expected value when starting to drag
-      });
-
-      masterVolumeSlider.addEventListener('change', async (e) => {
-        e.stopPropagation();
-        const finalValue = Number(e.target.value);
-        masterVolumeExpectedValue = finalValue; // Set expected value on release
-        isMasterVolumeDragging = false;
-        clearTimeout(masterVolumeUpdateTimeout);
-        await setMasterVolume(finalValue, true); // true = show feedback for final update
-      });
-
-      masterVolumeSlider.addEventListener('mouseup', async (e) => {
-        if (isMasterVolumeDragging) {
-          const finalValue = Number(e.target.value);
-          masterVolumeExpectedValue = finalValue; // Set expected value on release
-          isMasterVolumeDragging = false;
-          clearTimeout(masterVolumeUpdateTimeout);
-          await setMasterVolume(finalValue, true); // true = show feedback for final update
-        }
-      });
-
-      masterVolumeSlider.addEventListener('touchend', async (e) => {
-        if (isMasterVolumeDragging) {
-          const finalValue = Number(e.target.value);
-          masterVolumeExpectedValue = finalValue; // Set expected value on release
-          isMasterVolumeDragging = false;
-          clearTimeout(masterVolumeUpdateTimeout);
-          await setMasterVolume(finalValue, true); // true = show feedback for final update
-        }
-      });
       const authMessages = {
         error: 'Authorization failed. Please try logging in again.',
         missing_code: 'Login response missing authorization code.',
@@ -6425,75 +6350,6 @@ async function checkAuthAndInit() {
       }
 
 
-      async function setMasterVolume(level, showFeedbackMessage = true) {
-        const groupId = getSelectedGroupId();
-        if (!groupId) {
-          // Auto-grouping is handled on load, but if we still don't have a group, try to create one
-          if (currentHouseholdId && latestPlayers.length > 0) {
-            try {
-              const deviceId = getDeviceId();
-              const groupResponse = await fetch(`/api/households/${encodeURIComponent(currentHouseholdId)}/create-all-group?device_id=${encodeURIComponent(deviceId)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ device_id: deviceId })
-              });
-              if (groupResponse.ok) {
-                const groupData = await groupResponse.json();
-                if (groupData.groupId) {
-                  setActiveGroup(groupData.groupId, groupData.groupName || 'All Rooms');
-                  // Retry setting volume
-                  setMasterVolume(level, showFeedbackMessage);
-                  return;
-                }
-              }
-            } catch (error) {
-              console.error('Failed to auto-create group:', error);
-            }
-          }
-          if (showFeedbackMessage) {
-            showFeedback('Unable to change volume. Please try again.', true);
-          }
-          return;
-        }
-
-        masterVolumeValue.textContent = `${level}%`;
-        // Update base volume when user manually adjusts volume
-        baseVolume = level;
-        const success = await sendCommand(
-          `/api/groups/${encodeURIComponent(groupId)}/volume`,
-          {
-            volume: level
-          },
-          null
-        );
-
-        if (!success) {
-          if (showFeedbackMessage) {
-            showFeedback('Unable to update volume. Please try again.', true);
-          }
-        } else {
-          // Update individual player volumes proportionally
-          updateIndividualVolumesFromMaster(level);
-          // Don't call updateCurrentlyPlaying after volume changes - it causes the panel to close/reopen
-          // The volume refresh trick will handle status updates when needed
-        }
-      }
-
-      function updateIndividualVolumesFromMaster(masterLevel) {
-        // Update all individual sliders to match master volume (only if not being dragged)
-        const roomRows = currentlyPlayingRoomsList.querySelectorAll('.currently-playing-room-volume');
-        roomRows.forEach((row) => {
-          const slider = row.querySelector('.currently-playing-room-slider');
-          const value = row.querySelector('.currently-playing-room-value');
-          if (slider && value) {
-            // Only update if user is not currently dragging this slider
-            if (slider.dataset.isDragging !== 'true') {
-              slider.value = masterLevel;
-            }
-            value.textContent = `${masterLevel}`;
-          }
-        });
-      }
 
       async function sendCommand(endpoint, body, successMessage = 'Command sent to Sonos.') {
         try {
@@ -6969,6 +6825,11 @@ async function checkAuthAndInit() {
           
           const isPlaying = playbackState === 'PLAYING';
           
+          // Remove pulsating red animation from power button when music starts playing
+          if (isPlaying) {
+            powerButton.classList.remove('pulsating');
+          }
+          
           const item = status.currentItem || status.item || status.playback?.currentItem || null;
           const track = item?.track || item?.container?.metadata || status.track || null;
           
@@ -7375,39 +7236,6 @@ async function checkAuthAndInit() {
             // When isPlaying is true, show pause icon (add .playing class)
             // When isPlaying is false, show play icon (remove .playing class)
 
-            // Update master volume from group volume (only if user is not dragging and volume matches expected)
-            if (!isMasterVolumeDragging) {
-              const groupVolume = status.volume || 0;
-              // If we have an expected value, only update if server matches it (prevents snap-back)
-              if (masterVolumeExpectedValue !== null) {
-                if (Math.abs(groupVolume - masterVolumeExpectedValue) <= 1) {
-                  // Server volume matches expected - clear expected value and update
-                  console.log('[Client] Master volume confirmed by server:', {
-                    expected: masterVolumeExpectedValue,
-                    received: groupVolume,
-                    match: true
-                  });
-                  masterVolumeExpectedValue = null;
-                  masterVolumeSlider.value = groupVolume;
-                  masterVolumeValue.textContent = `${groupVolume}%`;
-                } else {
-                  // Server hasn't caught up yet - keep slider at expected value to prevent snap-back
-                  console.log('[Client] Master volume update ignored (waiting for server):', {
-                    expected: masterVolumeExpectedValue,
-                    received: groupVolume,
-                    difference: Math.abs(groupVolume - masterVolumeExpectedValue)
-                  });
-                  // Force slider to stay at expected value
-                  masterVolumeSlider.value = masterVolumeExpectedValue;
-                  masterVolumeValue.textContent = `${masterVolumeExpectedValue}%`;
-                }
-              } else {
-                // No expected value - safe to update normally
-                masterVolumeSlider.value = groupVolume;
-                masterVolumeValue.textContent = `${groupVolume}%`;
-              }
-            }
-
             updateCurrentlyPlayingRooms(groupId);
 
             // Only show panel if panelShouldBeVisible is not explicitly false
@@ -7656,9 +7484,8 @@ async function checkAuthAndInit() {
         const roomVolume = e.target.closest('.currently-playing-room-volume');
         const roomSlider = e.target.closest('.currently-playing-room-slider');
         const rangeInput = e.target.closest('input[type="range"]');
-        const masterVolume = e.target.closest('.currently-playing-master-volume');
         
-        if (roomVolume || roomSlider || rangeInput || masterVolume) {
+        if (roomVolume || roomSlider || rangeInput) {
           return;
         }
         
