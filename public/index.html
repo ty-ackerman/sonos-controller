@@ -3536,7 +3536,8 @@ async function checkAuthAndInit() {
 
         try {
           skipSongButton.disabled = true;
-          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/next`, {
+          const deviceId = getDeviceId();
+          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/next?device_id=${encodeURIComponent(deviceId)}`, {
             method: 'POST'
           });
 
@@ -6118,9 +6119,10 @@ async function checkAuthAndInit() {
         }
 
         const numericLevel = Number(level);
+        const deviceId = getDeviceId();
 
         try {
-          const postResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume`, {
+          const postResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume?device_id=${encodeURIComponent(deviceId)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ level: numericLevel })
@@ -6136,7 +6138,7 @@ async function checkAuthAndInit() {
           const isDragging = slider && slider.dataset.isDragging === 'true';
           
           if (!isDragging) {
-            const getResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume`);
+            const getResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume?device_id=${encodeURIComponent(deviceId)}`);
             if (getResponse.ok) {
               const payload = await getResponse.json();
               const updatedLevel = Number(
