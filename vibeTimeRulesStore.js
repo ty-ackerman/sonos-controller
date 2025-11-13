@@ -85,23 +85,68 @@ export async function loadVibeTimeRules() {
   }
 }
 
+// Helper function to format hour for display
+function formatHour(hour) {
+  const h = hour % 12 || 12;
+  const ampm = hour < 12 ? 'AM' : 'PM';
+  return `${h}:00 ${ampm}`;
+}
+
 // Helper function to check if two time ranges overlap
+// Note: end hours are exclusive (e.g., 6-12 means 6:00 AM through 11:59 AM, NOT including 12:00 PM)
 function timeRangesOverlap(start1, end1, start2, end2) {
-  // Handle normal ranges
+  // Handle normal ranges (both non-wraparound)
   if (start1 <= end1 && start2 <= end2) {
-    return !(end1 < start2 || end2 < start1);
+    // Ranges overlap if: start1 < end2 && start2 < end1
+    // Since end hours are exclusive, adjacent ranges (e.g., 6-12 and 12-17) don't overlap
+    return start1 < end2 && start2 < end1;
   }
   // Handle wraparound ranges (e.g., 22-6)
-  // For simplicity, we'll check if either range contains the other's start or end
   if (start1 > end1) {
-    // First range wraps around
+    // First range wraps around - check both parts
     return timeRangesOverlap(0, end1, start2, end2) || timeRangesOverlap(start1, 23, start2, end2);
   }
   if (start2 > end2) {
-    // Second range wraps around
+    // Second range wraps around - check both parts
     return timeRangesOverlap(start1, end1, 0, end2) || timeRangesOverlap(start1, end1, start2, 23);
   }
   return false;
+}
+
+// Validate that base schedule rules don't overlap with existing base rules
+async function validateBaseScheduleOverlap(rule) {
+  if (rule.rule_type !== 'base') {
+    return; // Only validate base rules
+  }
+
+  // Load all existing base schedule rules
+  const { data, error } = await supabase
+    .from('vibe_time_rules')
+    .select('id, name, start_hour, end_hour')
+    .eq('rule_type', 'base');
+
+  if (error) {
+    throw new Error('Failed to validate base schedule overlap');
+  }
+
+  // Check for overlaps with existing base rules
+  const existingBaseRules = (data || []).filter((existing) => {
+    // Skip the rule being updated (if updating)
+    if (rule.id && existing.id === rule.id) {
+      return false;
+    }
+    return true;
+  });
+
+  // Check for time overlaps
+  for (const existing of existingBaseRules) {
+    if (timeRangesOverlap(rule.start_hour, rule.end_hour, existing.start_hour, existing.end_hour)) {
+      const existingTimeRange = `${formatHour(existing.start_hour)} - ${formatHour(existing.end_hour)}`;
+      const existingName = existing.name ? ` "${existing.name}"` : '';
+      const newTimeRange = `${formatHour(rule.start_hour)} - ${formatHour(rule.end_hour)}`;
+      throw new Error(`This base schedule rule (${newTimeRange}) overlaps with an existing base schedule rule${existingName} (${existingTimeRange}). Please adjust the time range.`);
+    }
+  }
 }
 
 // Validate that override rules don't overlap with existing overrides for the same days
@@ -119,7 +164,7 @@ async function validateOverrideOverlap(rule) {
   // Load all existing override rules
   const { data, error } = await supabase
     .from('vibe_time_rules')
-    .select('id, start_hour, end_hour, days')
+    .select('id, name, start_hour, end_hour, days')
     .eq('rule_type', 'override');
 
   if (error) {
@@ -147,7 +192,10 @@ async function validateOverrideOverlap(rule) {
       // Find which days overlap
       const sharedDays = existing.days.filter(day => overrideDays.includes(day));
       const dayNamesList = sharedDays.map(day => dayNames[day]).join(', ');
-      throw new Error(`This override overlaps with an existing override for ${dayNamesList}. Please adjust the time range.`);
+      const existingTimeRange = `${formatHour(existing.start_hour)} - ${formatHour(existing.end_hour)}`;
+      const existingName = existing.name ? ` "${existing.name}"` : '';
+      const newTimeRange = `${formatHour(rule.start_hour)} - ${formatHour(rule.end_hour)}`;
+      throw new Error(`This override (${newTimeRange}) overlaps with an existing override${existingName} (${existingTimeRange}) for ${dayNamesList}. Please adjust the time range.`);
     }
   }
 }
@@ -203,12 +251,20 @@ export async function saveVibeTimeRule(rule) {
       days = null;
     }
 
-    // Validate override overlaps before saving
-    await validateOverrideOverlap({
-      ...rule,
-      rule_type: ruleType,
-      days: days
-    });
+    // Validate overlaps before saving
+    if (ruleType === 'base') {
+      await validateBaseScheduleOverlap({
+        ...rule,
+        rule_type: ruleType,
+        days: days
+      });
+    } else {
+      await validateOverrideOverlap({
+        ...rule,
+        rule_type: ruleType,
+        days: days
+      });
+    }
 
     // Sanitize name (optional field)
     let name = rule.name && typeof rule.name === 'string' ? rule.name.trim() : null;
