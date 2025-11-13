@@ -293,9 +293,10 @@
         z-index: 40; /* Below header but above content */
         width: min(480px, 100vw);
         padding: 12px 20px;
-        background: var(--bg-primary);
+        background: #000000; /* Close to black in light mode */
         border: 1px solid var(--border-color);
-        border-radius: 8px;
+        border-top: none;
+        border-radius: 0 0 8px 8px; /* Only bottom corners rounded */
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
         transition: transform 0.3s ease;
       }
@@ -311,8 +312,18 @@
       .toast-content {
         text-align: center;
         font-size: 0.875rem;
-        font-weight: 500;
-        color: var(--text-primary);
+        font-weight: 600;
+        color: #ffffff; /* White text for contrast */
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .toast {
+          background: #ffffff; /* Close to white in dark mode */
+          border-color: var(--border-color);
+        }
+        .toast-content {
+          color: #000000; /* Black text for contrast */
+        }
       }
 
       section {
@@ -494,7 +505,7 @@
       .vibe-filter-btn.active.mid {
         background: #000000;
         color: #ffffff;
-        border-color: #000000;
+        border: none;
       }
 
 
@@ -541,9 +552,9 @@
         color: inherit;
         text-align: left;
         box-shadow: var(--shadow-sm);
+        position: relative;
         transition: all 0.2s ease;
         cursor: pointer;
-        position: relative;
       }
 
 
@@ -567,15 +578,20 @@
 
       .playlist-loading-indicator {
         display: none;
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
         align-items: center;
         gap: 6px;
-        padding: 4px 10px;
-        border-radius: 6px;
-        background: var(--bg-tertiary);
-        color: var(--text-secondary);
-        font-size: 0.75rem;
-        font-weight: 500;
-        margin-left: 8px;
+        padding: 3px 8px;
+        border-radius: 10px;
+        background: #808080;
+        color: #ffffff;
+        font-size: 0.625rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        z-index: 1;
       }
 
       .playlist-card.loading .playlist-loading-indicator {
@@ -671,6 +687,7 @@
       .playlist-vibe-badge-inline.mid {
         background: #000000;
         color: #ffffff;
+        border: none;
       }
 
       .playlist-status {
@@ -782,7 +799,7 @@
       #panel-playlist-management .playlist-vibe-select.mid {
         background-color: #000000;
         color: #ffffff;
-        border-color: #000000;
+        border: none;
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23fff' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
       }
 
@@ -1184,7 +1201,7 @@
 
       .currently-playing-vibe-badge.mid {
         background: var(--bg-primary);
-        border-color: var(--text-primary);
+        border: none;
         color: var(--text-primary);
       }
 
@@ -1206,6 +1223,39 @@
         align-items: center;
         gap: 12px;
         flex-shrink: 0;
+      }
+
+      .power-button {
+        width: 40px;
+        height: 40px;
+        border: none;
+        background: transparent;
+        color: var(--text-primary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px;
+        border-radius: 8px;
+        transition: background 0.2s ease;
+      }
+
+      .power-button:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .power-button:active {
+        transform: scale(0.98);
+      }
+
+      .power-button svg {
+        width: 20px;
+        height: 20px;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
       }
 
       .skip-song-button {
@@ -2346,6 +2396,8 @@
         opacity: 0.6;
         cursor: not-allowed;
         transform: none;
+        background: #808080 !important; /* Grey background when loading */
+        color: #ffffff !important;
       }
 
       .recommended-playlist-actions button.playing {
@@ -2363,22 +2415,6 @@
         pointer-events: none;
       }
 
-      .recommended-playlist-loading-indicator {
-        display: none;
-        align-items: center;
-        gap: 6px;
-        padding: 4px 10px;
-        border-radius: 6px;
-        background: var(--bg-tertiary);
-        color: var(--text-secondary);
-        font-size: 0.75rem;
-        font-weight: 500;
-        margin-top: 8px;
-      }
-
-      .recommended-playlist.loading .recommended-playlist-loading-indicator {
-        display: inline-flex;
-      }
 
       .alternatives-dropdown {
         margin-top: 20px;
@@ -2553,7 +2589,7 @@
 
       .alternative-playlist-vibe.mid {
         background: var(--bg-primary);
-        border-color: var(--text-primary);
+        border: none;
         color: var(--text-primary);
       }
     </style>
@@ -2596,6 +2632,17 @@
       </div>
     </div>
 
+    <div id="turn-off-music-modal-backdrop" class="password-modal-backdrop">
+      <div class="password-modal">
+        <h3 class="password-modal-title">Turn Off Music?</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 24px;">Are you sure you want to turn off music?</p>
+        <div class="password-modal-actions">
+          <button id="turn-off-music-cancel" class="password-modal-button" type="button">Cancel</button>
+          <button id="turn-off-music-confirm" class="password-modal-button primary" type="button">Turn Off</button>
+        </div>
+      </div>
+    </div>
+
     <main class="container">
       <div class="header-wrapper">
         <div class="header-container">
@@ -2605,6 +2652,11 @@
             <span></span>
           </button>
           <h1><img src="/images/sonos.svg" alt="Sonos" class="sonos-logo-header"> <span class="controller-text">Controller</span></h1>
+          <button id="power-button" class="power-button" type="button" aria-label="Turn off music">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 2v10M18 6a9 9 0 1 1-12 0" />
+            </svg>
+          </button>
         </div>
       </div>
       <p id="status" class="status disconnected">Checking connection…</p>
@@ -2954,6 +3006,10 @@
       const passwordModalError = document.getElementById('password-modal-error');
       const passwordModalCancel = document.getElementById('password-modal-cancel');
       const passwordModalSubmit = document.getElementById('password-modal-submit');
+      const turnOffMusicModalBackdrop = document.getElementById('turn-off-music-modal-backdrop');
+      const turnOffMusicCancel = document.getElementById('turn-off-music-cancel');
+      const turnOffMusicConfirm = document.getElementById('turn-off-music-confirm');
+      const powerButton = document.getElementById('power-button');
 
       const MANAGER_PASSWORD = 'y2WN43rzcTf93ZCs7BvUhCFsZPmubkgsT68aWUtjjaMQkRAvBq6nbknbnJX8AtTH';
       const VIEW_STORAGE_KEY = 'sonos-controller-view';
@@ -3511,6 +3567,55 @@ async function checkAuthAndInit() {
 
     if (loggedIn) {
       await refreshUI();
+      // Check for currently playing content after UI loads (works for both mobile and desktop)
+      // Reset panelShouldBeVisible to allow panel to appear if music is playing
+      panelShouldBeVisible = null;
+      setTimeout(async () => {
+        const groupId = getSelectedGroupId();
+        if (groupId) {
+          await updateCurrentlyPlaying(true);
+          startPlaybackRefresh();
+        } else if (latestGroups.length > 0) {
+          // If no group selected, check all groups to find which one is playing
+          for (const group of latestGroups) {
+            const groupId = group.id || group.groupId;
+            if (!groupId) continue;
+            
+            try {
+              const params = new URLSearchParams();
+              if (currentHouseholdId) {
+                params.set('householdId', currentHouseholdId);
+              }
+              const deviceId = getDeviceId();
+              params.set('device_id', deviceId);
+              const statusUrl = `/api/groups/${encodeURIComponent(groupId)}/playback/status${params.toString() ? '?' + params.toString() : ''}`;
+              const response = await fetch(statusUrl);
+              if (response.ok) {
+                const status = await response.json();
+                const playbackState = status.playbackState || status.state || 'STOPPED';
+                const isPlaying = playbackState === 'PLAYING' || playbackState === 'PLAYBACK_STATE_PLAYING';
+                const hasContent = !!(status.track || status.currentItem || status.item);
+                
+                if (isPlaying || hasContent || playbackState !== 'STOPPED') {
+                  // Found a group with playback - set it as active
+                  setActiveGroup(groupId, group.name || group.displayName || 'Group');
+                  await updateCurrentlyPlaying(true);
+                  startPlaybackRefresh();
+                  break;
+                }
+              }
+            } catch (error) {
+              // Continue to next group
+            }
+          }
+        } else {
+          // Try to restore cached state if no group selected
+          const cached = loadCachedPlaybackState();
+          if (cached) {
+            applyCachedPlaybackState(cached);
+          }
+        }
+      }, 1000);
     } else {
       // User needs to sign in, hide loading screen
       hideLoadingOverlay();
@@ -3523,6 +3628,85 @@ async function checkAuthAndInit() {
 }
 
       // Playback control handlers for now-playing section
+
+      // Power button handler - show confirmation dialog
+      powerButton.addEventListener('click', () => {
+        turnOffMusicModalBackdrop.classList.add('visible');
+      });
+
+      // Turn off music modal handlers
+      turnOffMusicCancel.addEventListener('click', () => {
+        turnOffMusicModalBackdrop.classList.remove('visible');
+      });
+
+      turnOffMusicModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === turnOffMusicModalBackdrop) {
+          turnOffMusicModalBackdrop.classList.remove('visible');
+        }
+      });
+
+      turnOffMusicConfirm.addEventListener('click', async () => {
+        const groupId = getSelectedGroupId();
+        if (!groupId) {
+          showToast('Please select a group first');
+          turnOffMusicModalBackdrop.classList.remove('visible');
+          return;
+        }
+
+        try {
+          turnOffMusicConfirm.disabled = true;
+          const deviceId = getDeviceId();
+          const response = await fetch(`/api/groups/${encodeURIComponent(groupId)}/playpause?device_id=${encodeURIComponent(deviceId)}`, {
+            method: 'POST'
+          });
+
+          if (!response.ok) {
+            throw new Error('Failed to turn off music');
+          }
+
+          // Set panelShouldBeVisible to false FIRST to prevent any race conditions
+          panelShouldBeVisible = false;
+          
+          // Stop the playback refresh interval FIRST to prevent any pending updates
+          stopPlaybackRefresh();
+          
+          // Close the modal
+          turnOffMusicModalBackdrop.classList.remove('visible');
+          
+          // Close the now playing panel immediately and prevent it from reopening
+          clearTimeout(hidePanelTimeout);
+          currentlyPlayingPanel.classList.remove('visible');
+          currentlyPlayingPanel.classList.remove('expanded');
+          unlockBodyScroll();
+          
+          // Clear cached playback state to prevent it from reapplying
+          try {
+            localStorage.removeItem(PLAYBACK_STATE_STORAGE_KEY);
+          } catch (e) {
+            // Ignore localStorage errors
+          }
+          
+          // Reset all playlist states (clear "playing" indicators)
+          markActiveFavoriteByName(null);
+          updateRecommendationCardButtonsByName(null);
+          
+          showToast('Music turned off');
+          
+          // Don't call updateCurrentlyPlaying - it would reopen the panel
+          // The playback state will be updated when user interacts with the app again
+          
+          // Add a small delay to ensure any pending updateCurrentlyPlaying calls complete
+          // before allowing panel to show again (this prevents race conditions)
+          setTimeout(() => {
+            // Keep panelShouldBeVisible as false - it will be reset when user plays music again
+          }, 100);
+        } catch (error) {
+          console.error('Failed to turn off music:', error);
+          showToast('Failed to turn off music');
+        } finally {
+          turnOffMusicConfirm.disabled = false;
+        }
+      });
 
       // Skip song button handler
       skipSongButton.addEventListener('click', async () => {
@@ -5217,19 +5401,6 @@ async function checkAuthAndInit() {
             playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Loading...';
             card.classList.add('loading');
             
-            // Add loading indicator to recommended playlist
-            let loadingIndicator = card.querySelector('.recommended-playlist-loading-indicator');
-            if (!loadingIndicator) {
-              loadingIndicator = document.createElement('span');
-              loadingIndicator.className = 'recommended-playlist-loading-indicator';
-              loadingIndicator.textContent = 'Loading...';
-              const meta = card.querySelector('.recommended-playlist-meta');
-              if (meta) {
-                meta.appendChild(loadingIndicator);
-              }
-            }
-            loadingIndicator.style.display = 'inline-flex';
-            
             try {
               const entry = favoritesRegistry.get(favorite.id);
               if (entry) {
@@ -5245,9 +5416,6 @@ async function checkAuthAndInit() {
               // Button state will be updated by updateRecommendationCardButtons
               updateRecommendationCardButtons(null); // Will be updated from status
               card.classList.remove('loading');
-              if (loadingIndicator) {
-                loadingIndicator.style.display = 'none';
-              }
             }
           });
 
@@ -5265,19 +5433,6 @@ async function checkAuthAndInit() {
             playBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Loading...';
             card.classList.add('loading');
             
-            // Add loading indicator to recommended playlist
-            let loadingIndicator = card.querySelector('.recommended-playlist-loading-indicator');
-            if (!loadingIndicator) {
-              loadingIndicator = document.createElement('span');
-              loadingIndicator.className = 'recommended-playlist-loading-indicator';
-              loadingIndicator.textContent = 'Loading...';
-              const meta = card.querySelector('.recommended-playlist-meta');
-              if (meta) {
-                meta.appendChild(loadingIndicator);
-              }
-            }
-            loadingIndicator.style.display = 'inline-flex';
-            
             try {
               const entry = favoritesRegistry.get(favorite.id);
               if (entry) {
@@ -5292,9 +5447,6 @@ async function checkAuthAndInit() {
               playBtn.disabled = false;
               updateRecommendationCardButtons(null); // Will be updated from status
               card.classList.remove('loading');
-              if (loadingIndicator) {
-                loadingIndicator.style.display = 'none';
-              }
             }
           });
         } else {
@@ -5660,10 +5812,15 @@ async function checkAuthAndInit() {
               repeat: true,
               crossfade: true
             },
-            FAVORITE_SUCCESS_TOAST
+            '' // Don't show feedback message, we'll show toast instead
           );
 
           const [success] = await Promise.all([commandPromise, delay(2000)]);
+          
+          // Show toast message after successful playback
+          if (success) {
+            showToast(FAVORITE_SUCCESS_TOAST);
+          }
           setFavoriteLoading(entry, false);
 
           if (success) {
@@ -5676,8 +5833,16 @@ async function checkAuthAndInit() {
               setActiveGroup(savedGroupId, groupData.groupName || 'All Rooms');
             }
             
+            // Reset panelShouldBeVisible to allow panel to show again (return to "on" state)
+            // This handles the case where user turned off music but then plays a new playlist
+            panelShouldBeVisible = null;
+            
+            // Ensure playback refresh is started (it might have been stopped when music was turned off)
+            startPlaybackRefresh();
+            
             // Update now playing - server will find the correct favorite on-demand
-            updateCurrentlyPlaying();
+            // This will show the panel and highlight the currently playing playlist
+            updateCurrentlyPlaying(true);
           } else {
             // Playback failed, clear active favorite highlighting
             markActiveFavorite(null);
@@ -5703,17 +5868,9 @@ async function checkAuthAndInit() {
             if (!loadingIndicator) {
               loadingIndicator = document.createElement('span');
               loadingIndicator.className = 'playlist-loading-indicator';
-              loadingIndicator.textContent = 'Loading...';
-              // Add it to the name row if it exists, otherwise to the meta
-              const nameRow = entry.button.querySelector('.playlist-name-row');
-              if (nameRow) {
-                nameRow.appendChild(loadingIndicator);
-              } else {
-                const meta = entry.button.querySelector('.playlist-meta');
-                if (meta) {
-                  meta.appendChild(loadingIndicator);
-                }
-              }
+              loadingIndicator.textContent = 'Loading';
+              // Append directly to the button (playlist card) for absolute positioning
+              entry.button.appendChild(loadingIndicator);
             }
             loadingIndicator.style.display = 'inline-flex';
           } else {
@@ -6318,8 +6475,8 @@ async function checkAuthAndInit() {
             updateRecommendationCardButtonsByName(cacheData.playlistName);
           }
 
-          // Show panel if we have content
-          if (cacheData.title || cacheData.playlistName) {
+          // Show panel if we have content, but only if panelShouldBeVisible is not explicitly false
+          if ((cacheData.title || cacheData.playlistName) && panelShouldBeVisible !== false) {
             currentlyPlayingPanel.classList.add('visible');
             // Don't lock scroll here - only lock when expanded
             panelShouldBeVisible = true;
@@ -6330,6 +6487,11 @@ async function checkAuthAndInit() {
       }
 
       async function updateCurrentlyPlaying(shouldAutoShow = true) {
+        // If panelShouldBeVisible is explicitly false (user turned off music), don't update
+        if (panelShouldBeVisible === false) {
+          return;
+        }
+        
         let groupId = getSelectedGroupId();
         
         // If no group is selected but we have groups, try the first one
@@ -6362,9 +6524,12 @@ async function checkAuthAndInit() {
         }
 
         // Load cached state immediately to prevent flicker
-        const cached = loadCachedPlaybackState();
-        if (cached) {
-          applyCachedPlaybackState(cached);
+        // But only if panelShouldBeVisible is not explicitly false
+        if (panelShouldBeVisible !== false) {
+          const cached = loadCachedPlaybackState();
+          if (cached) {
+            applyCachedPlaybackState(cached);
+          }
         }
 
         try {
@@ -6874,9 +7039,12 @@ async function checkAuthAndInit() {
 
             updateCurrentlyPlayingRooms(groupId);
 
-            currentlyPlayingPanel.classList.add('visible');
-            // Update scroll lock based on expanded state (only lock if expanded)
-            updateBodyScrollLock();
+            // Only show panel if panelShouldBeVisible is not explicitly false
+            if (panelShouldBeVisible !== false) {
+              currentlyPlayingPanel.classList.add('visible');
+              // Update scroll lock based on expanded state (only lock if expanded)
+              updateBodyScrollLock();
+            }
 
             // Save playback state to cache
             savePlaybackStateToCache({
@@ -7093,12 +7261,14 @@ async function checkAuthAndInit() {
       function startPlaybackRefresh() {
         clearInterval(playbackRefreshTimer);
         playbackRefreshTimer = setInterval(() => {
-          if (isSonosConnected && getSelectedGroupId()) {
+          if (isSonosConnected && getSelectedGroupId() && panelShouldBeVisible !== false) {
             updateCurrentlyPlaying();
           }
         }, 3000);
-        // Update immediately
-        updateCurrentlyPlaying();
+        // Update immediately, but only if panel should be visible
+        if (panelShouldBeVisible !== false) {
+          updateCurrentlyPlaying();
+        }
       }
       
       function stopPlaybackRefresh() {
@@ -7205,7 +7375,7 @@ async function checkAuthAndInit() {
             console.error('Failed to refresh favorites', error);
           });
         }
-        if (groupId) {
+        if (groupId && panelShouldBeVisible !== false) {
           startPlaybackRefresh();
         } else {
           stopPlaybackRefresh();
@@ -7218,17 +7388,45 @@ async function checkAuthAndInit() {
         checkAuthAndInit();
       });
 
-      // Restore cached playback state when tab becomes visible
+      // Refresh playback state when app becomes visible (works for tab switching)
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden && isSonosConnected) {
-          // Tab became visible - restore cached state immediately
-          const cached = loadCachedPlaybackState();
-          if (cached) {
-            applyCachedPlaybackState(cached);
+          // App became visible - refresh playback state to show now playing section again
+          // Reset panelShouldBeVisible so panel can reappear if music is playing
+          panelShouldBeVisible = null;
+          
+          const groupId = getSelectedGroupId();
+          if (groupId) {
+            // Refresh playback state - this will show the panel if music is playing
+            updateCurrentlyPlaying(true);
+            // Restart playback refresh to keep panel updated
+            startPlaybackRefresh();
+          } else {
+            // Try to restore cached state if no group selected
+            const cached = loadCachedPlaybackState();
+            if (cached) {
+              applyCachedPlaybackState(cached);
+            }
           }
-          // Then fetch fresh data
-          if (getSelectedGroupId()) {
-            updateCurrentlyPlaying();
+        }
+      });
+
+      // Also handle pageshow event for mobile (fires when page is loaded from cache or restored)
+      window.addEventListener('pageshow', (event) => {
+        // event.persisted is true if page was loaded from cache (back/forward navigation or mobile app restore)
+        if (isSonosConnected) {
+          // Reset panelShouldBeVisible so panel can reappear if music is playing
+          panelShouldBeVisible = null;
+          
+          const groupId = getSelectedGroupId();
+          if (groupId) {
+            updateCurrentlyPlaying(true);
+            startPlaybackRefresh();
+          } else {
+            const cached = loadCachedPlaybackState();
+            if (cached) {
+              applyCachedPlaybackState(cached);
+            }
           }
         }
       });
