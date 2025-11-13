@@ -81,6 +81,7 @@
       .container {
         width: min(480px, 100vw);
         padding: 12px 20px 20px 20px;
+        padding-top: 76px; /* Account for fixed header (12px top + 12px bottom padding + 40px button height + 12px spacing) */
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
@@ -88,14 +89,29 @@
       }
 
       .header-wrapper {
-        position: sticky;
-        top: 0;
-        z-index: 50;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
+        z-index: 50 !important;
         background: var(--bg-secondary);
-        margin: -20px -20px 0 -20px;
+        margin: 0 !important;
         padding: 12px 20px;
         border-bottom: 1px solid var(--border-color);
         box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+        /* Prevent any transforms or transitions that might hide/show on scroll */
+        transform: none !important;
+        -webkit-transform: none !important;
+        transition: none !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        display: block !important;
+      }
+      
+      .header-wrapper .header-container {
+        max-width: min(480px, 100vw);
+        margin: 0 auto;
       }
 
       .header-container {
@@ -1069,6 +1085,7 @@
         bottom: 0 !important;
         left: 0 !important;
         right: 0 !important;
+        width: 100% !important;
         background: var(--bg-primary);
         border-top: 1px solid var(--border-color);
         padding: 12px 16px 24px 16px;
@@ -1089,6 +1106,11 @@
 
       .currently-playing.visible {
         display: block;
+        position: fixed !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        width: 100% !important;
       }
 
       /* Prevent scroll chaining and disable scrolling when now playing panel is visible */
@@ -1570,6 +1592,74 @@
         letter-spacing: 0.05em;
         align-self: flex-start;
         white-space: nowrap;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.3s ease;
+      }
+
+      .view-indicator.manager {
+        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+        color: #1f2937;
+        font-weight: 600;
+        box-shadow: 
+          0 2px 8px rgba(217, 119, 6, 0.4),
+          0 0 20px rgba(251, 191, 36, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.3),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+        text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3);
+      }
+
+      .view-indicator.manager::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(
+          45deg,
+          transparent 30%,
+          rgba(255, 255, 255, 0.3) 50%,
+          transparent 70%
+        );
+        animation: shimmer 3s infinite;
+      }
+
+      .view-indicator.front-desk {
+        background: linear-gradient(135deg, #f8b4b9 0%, #f472b6 50%, #ec4899 100%);
+        color: #1f2937;
+        font-weight: 600;
+        box-shadow: 
+          0 2px 8px rgba(236, 72, 153, 0.4),
+          0 0 20px rgba(248, 180, 185, 0.3),
+          inset 0 1px 0 rgba(255, 255, 255, 0.3),
+          inset 0 -1px 0 rgba(0, 0, 0, 0.1);
+        text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3);
+      }
+
+      .view-indicator.front-desk::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(
+          45deg,
+          transparent 30%,
+          rgba(255, 255, 255, 0.3) 50%,
+          transparent 70%
+        );
+        animation: shimmer 3s infinite;
+      }
+
+      @keyframes shimmer {
+        0% {
+          transform: translateX(-100%) translateY(-100%) rotate(45deg);
+        }
+        100% {
+          transform: translateX(100%) translateY(100%) rotate(45deg);
+        }
       }
 
       .password-modal-backdrop {
@@ -1612,27 +1702,169 @@
       }
 
       .password-modal-title {
-        font-size: 1.125rem;
+        font-size: 1.25rem;
         font-weight: 600;
         color: var(--text-primary);
-        margin-bottom: 16px;
+        margin-bottom: 8px;
+        text-align: center;
       }
 
-      .password-modal-input {
-        width: 100%;
-        padding: 12px;
-        border-radius: 8px;
+      .password-modal-error {
+        text-align: center;
+        margin-bottom: 20px;
+        min-height: 20px;
+      }
+
+      .password-display {
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        margin-bottom: 32px;
+        padding: 20px 16px;
+        background: var(--bg-secondary);
+        border-radius: 12px;
         border: 1px solid var(--border-color);
+      }
+
+      .password-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        border: 2px solid var(--border-color);
+        background: transparent;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+      }
+
+      .password-dot[data-filled="true"] {
+        background: var(--accent);
+        border-color: var(--accent);
+        transform: scale(1.1);
+        box-shadow: 0 0 0 4px rgba(var(--accent-rgb, 0, 0, 0), 0.1);
+      }
+
+      .password-dot[data-filled="true"]::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--bg-primary);
+      }
+
+      .number-pad {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+
+      .number-pad-key {
+        aspect-ratio: 1;
+        border: none;
+        border-radius: 12px;
         background: var(--bg-secondary);
         color: var(--text-primary);
-        font-size: 0.9375rem;
-        margin-bottom: 16px;
-        box-sizing: border-box;
+        font-size: 1.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        min-height: 64px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        position: relative;
+        overflow: hidden;
       }
 
-      .password-modal-input:focus {
-        outline: none;
-        border-color: var(--accent);
+      .number-pad-key::before {
+        content: '';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 0;
+        height: 0;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        transform: translate(-50%, -50%);
+        transition: width 0.3s ease, height 0.3s ease;
+      }
+
+      .number-pad-key:hover {
+        background: var(--bg-tertiary);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+      }
+
+      .number-pad-key:active {
+        transform: translateY(0) scale(0.96);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+      }
+
+      .number-pad-key:active::before {
+        width: 200px;
+        height: 200px;
+      }
+
+      .number-pad-backspace {
+        font-size: 1.25rem;
+        background: var(--bg-tertiary);
+      }
+
+      .number-pad-backspace:hover {
+        background: var(--bg-secondary);
+      }
+
+      .number-pad-backspace:active {
+        background: var(--error);
+        color: var(--bg-primary);
+      }
+
+      .number-pad-submit {
+        grid-column: span 2;
+        aspect-ratio: auto;
+        background: var(--accent);
+        color: var(--bg-primary);
+        border: none;
+        font-size: 1rem;
+        font-weight: 600;
+        min-height: 64px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+
+      .number-pad-submit:hover:not(:disabled) {
+        background: var(--accent-hover);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      }
+
+      .number-pad-submit:active:not(:disabled) {
+        transform: translateY(0) scale(0.98);
+      }
+
+      .number-pad-submit:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        box-shadow: none;
+      }
+
+      @keyframes pulse {
+        0% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.2);
+        }
+        100% {
+          transform: scale(1.1);
+        }
       }
 
       .password-modal-actions {
@@ -1996,7 +2228,7 @@
         border: 1px solid var(--border-color);
         background: var(--bg-primary);
         color: var(--text-primary);
-        font-size: 0.875rem;
+        font-size: 16px; /* Minimum 16px to prevent zoom on mobile focus */
         font-family: inherit;
       }
 
@@ -2610,9 +2842,10 @@
         </button>
       </div>
       <div class="menu-items">
-        <button id="menu-item-controls" class="menu-item active" type="button">Controls</button>
+        <button id="menu-item-controls" class="menu-item active" type="button">Music Player</button>
         <button id="menu-item-playlist-management" class="menu-item" type="button">Playlist Management</button>
-        <button id="menu-item-settings" class="menu-item" type="button">Settings</button>
+        <button id="menu-item-schedule-rules" class="menu-item" type="button">Schedule Rules</button>
+        <button id="menu-item-settings" class="menu-item" type="button">Volume Control</button>
       </div>
       <div class="menu-footer">
         <button id="menu-item-switch-view" class="menu-item menu-item-secondary" type="button" style="display: none;">Switch to Manager View</button>
@@ -2624,10 +2857,36 @@
       <div class="password-modal">
         <h3 class="password-modal-title">Enter Manager Password</h3>
         <p class="password-modal-error" id="password-modal-error">Incorrect password. Please try again.</p>
-        <input type="password" id="password-modal-input" class="password-modal-input" placeholder="Password" autocomplete="off">
+        <div class="password-display" id="password-display">
+          <span class="password-dot" data-filled="false"></span>
+          <span class="password-dot" data-filled="false"></span>
+          <span class="password-dot" data-filled="false"></span>
+          <span class="password-dot" data-filled="false"></span>
+          <span class="password-dot" data-filled="false"></span>
+          <span class="password-dot" data-filled="false"></span>
+        </div>
+        <div class="number-pad">
+          <button class="number-pad-key" data-value="1">1</button>
+          <button class="number-pad-key" data-value="2">2</button>
+          <button class="number-pad-key" data-value="3">3</button>
+          <button class="number-pad-key" data-value="4">4</button>
+          <button class="number-pad-key" data-value="5">5</button>
+          <button class="number-pad-key" data-value="6">6</button>
+          <button class="number-pad-key" data-value="7">7</button>
+          <button class="number-pad-key" data-value="8">8</button>
+          <button class="number-pad-key" data-value="9">9</button>
+          <button class="number-pad-key number-pad-backspace" id="number-pad-backspace" aria-label="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+              <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path>
+              <line x1="18" y1="9" x2="12" y2="15"></line>
+              <line x1="12" y1="9" x2="18" y2="15"></line>
+            </svg>
+          </button>
+          <button class="number-pad-key" data-value="0">0</button>
+          <button class="number-pad-key number-pad-submit" id="number-pad-submit" type="button">Submit</button>
+        </div>
         <div class="password-modal-actions">
           <button id="password-modal-cancel" class="password-modal-button" type="button">Cancel</button>
-          <button id="password-modal-submit" class="password-modal-button primary" type="button">Submit</button>
         </div>
       </div>
     </div>
@@ -2643,22 +2902,23 @@
       </div>
     </div>
 
-    <main class="container">
-      <div class="header-wrapper">
-        <div class="header-container">
-          <button id="hamburger-menu-btn" class="hamburger-menu-btn" type="button" aria-label="Open menu">
-            <span></span>
-            <span></span>
-            <span></span>
-          </button>
-          <h1><img src="/images/sonos.svg" alt="Sonos" class="sonos-logo-header"> <span class="controller-text">Controller</span></h1>
-          <button id="power-button" class="power-button" type="button" aria-label="Turn off music">
-            <svg viewBox="0 0 24 24">
-              <path d="M12 2v10M18 6a9 9 0 1 1-12 0" />
-            </svg>
-          </button>
-        </div>
+    <div class="header-wrapper">
+      <div class="header-container">
+        <button id="hamburger-menu-btn" class="hamburger-menu-btn" type="button" aria-label="Open menu">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <h1><img src="/images/sonos.svg" alt="Sonos" class="sonos-logo-header"> <span class="controller-text">Controller</span></h1>
+        <button id="power-button" class="power-button" type="button" aria-label="Turn off music">
+          <svg viewBox="0 0 24 24">
+            <path d="M12 2v10M18 6a9 9 0 1 1-12 0" />
+          </svg>
+        </button>
       </div>
+    </div>
+
+    <main class="container">
       <p id="status" class="status disconnected">Checking connection…</p>
       <div id="feedback" class="feedback"></div>
 
@@ -2723,8 +2983,11 @@
             <p id="playlist-management-status" class="favorites-status">Sign in to load playlists.</p>
             <div id="playlist-management-grid" class="favorites-grid"></div>
           </div>
+        </section>
+
+        <section id="panel-schedule-rules" class="hidden">
           <div class="time-rules-section">
-            <h3 class="section-title">Time-Based Rules</h3>
+            <h3 class="section-title">Schedule Rules</h3>
             <p class="favorites-status">Configure which vibes are allowed at different times of day.</p>
             
             <div class="base-schedule-section">
@@ -2968,6 +3231,7 @@
       const panelControl = document.getElementById('panel-control');
       const panelSettings = document.getElementById('panel-settings');
       const panelPlaylistManagement = document.getElementById('panel-playlist-management');
+      const panelScheduleRules = document.getElementById('panel-schedule-rules');
       const householdTitle = document.getElementById('household-title');
       const favoritesGrid = document.getElementById('favorites-grid');
       const favoritesStatus = document.getElementById('favorites-status');
@@ -2997,21 +3261,24 @@
       const menuCloseBtn = document.getElementById('menu-close-btn');
       const menuItemControls = document.getElementById('menu-item-controls');
       const menuItemPlaylistManagement = document.getElementById('menu-item-playlist-management');
+      const menuItemScheduleRules = document.getElementById('menu-item-schedule-rules');
       const menuItemSettings = document.getElementById('menu-item-settings');
       const menuItemSignout = document.getElementById('menu-item-signout');
       const menuItemSwitchView = document.getElementById('menu-item-switch-view');
       const viewIndicator = document.getElementById('view-indicator');
       const passwordModalBackdrop = document.getElementById('password-modal-backdrop');
-      const passwordModalInput = document.getElementById('password-modal-input');
+      const passwordDisplay = document.getElementById('password-display');
       const passwordModalError = document.getElementById('password-modal-error');
       const passwordModalCancel = document.getElementById('password-modal-cancel');
-      const passwordModalSubmit = document.getElementById('password-modal-submit');
+      const numberPadSubmit = document.getElementById('number-pad-submit');
+      const numberPadBackspace = document.getElementById('number-pad-backspace');
+      
       const turnOffMusicModalBackdrop = document.getElementById('turn-off-music-modal-backdrop');
       const turnOffMusicCancel = document.getElementById('turn-off-music-cancel');
       const turnOffMusicConfirm = document.getElementById('turn-off-music-confirm');
       const powerButton = document.getElementById('power-button');
 
-      const MANAGER_PASSWORD = 'y2WN43rzcTf93ZCs7BvUhCFsZPmubkgsT68aWUtjjaMQkRAvBq6nbknbnJX8AtTH';
+      const MANAGER_PASSWORD = '123456';
       const VIEW_STORAGE_KEY = 'sonos-controller-view';
       const VIEW_FRONT_DESK = 'front-desk';
       const VIEW_MANAGER = 'manager';
@@ -3322,6 +3589,7 @@ document.addEventListener('touchend', handleTouchEnd, { passive: true });
 
 // View management functions
 function getCurrentView() {
+  // Always default to front desk view - manager view only persists during session
   const stored = localStorage.getItem(VIEW_STORAGE_KEY);
   return stored === VIEW_MANAGER ? VIEW_MANAGER : VIEW_FRONT_DESK;
 }
@@ -3336,16 +3604,20 @@ function updateMenuForView() {
   const isManager = currentView === VIEW_MANAGER;
   
   // Update view indicator
-  viewIndicator.textContent = isManager ? 'Manager View' : 'Front Desk View';
+  viewIndicator.textContent = isManager ? 'Manager' : 'Front Desk';
+  viewIndicator.className = 'view-indicator';
+  viewIndicator.classList.add(isManager ? 'manager' : 'front-desk');
   
   // Show/hide menu items based on view
   if (isManager) {
     menuItemPlaylistManagement.style.display = 'block';
+    menuItemScheduleRules.style.display = 'block';
     menuItemSettings.style.display = 'block';
     menuItemSwitchView.style.display = 'block';
     menuItemSwitchView.textContent = 'Switch to Front Desk View';
   } else {
     menuItemPlaylistManagement.style.display = 'none';
+    menuItemScheduleRules.style.display = 'none';
     menuItemSettings.style.display = 'none';
     menuItemSwitchView.style.display = 'block';
     menuItemSwitchView.textContent = 'Switch to Manager View';
@@ -3353,16 +3625,38 @@ function updateMenuForView() {
 }
 
 function showPasswordModal() {
-  passwordModalInput.value = '';
+  enteredPassword = '';
+  updatePasswordDisplay();
   passwordModalError.classList.remove('visible');
   passwordModalBackdrop.classList.add('visible');
-  passwordModalInput.focus();
 }
 
 function hidePasswordModal() {
   passwordModalBackdrop.classList.remove('visible');
-  passwordModalInput.value = '';
+  enteredPassword = '';
+  updatePasswordDisplay();
   passwordModalError.classList.remove('visible');
+}
+
+function updatePasswordDisplay() {
+  const dots = passwordDisplay.querySelectorAll('.password-dot');
+  dots.forEach((dot, index) => {
+    const wasFilled = dot.getAttribute('data-filled') === 'true';
+    const isFilled = index < enteredPassword.length;
+    dot.setAttribute('data-filled', isFilled ? 'true' : 'false');
+    
+    // Add a subtle animation when a dot is filled
+    if (isFilled && !wasFilled) {
+      dot.style.animation = 'none';
+      setTimeout(() => {
+        dot.style.animation = 'pulse 0.3s ease';
+      }, 10);
+    }
+  });
+  // Enable/disable submit button based on password length
+  if (numberPadSubmit) {
+    numberPadSubmit.disabled = enteredPassword.length !== 6;
+  }
 }
 
 function switchToManagerView() {
@@ -3372,6 +3666,9 @@ function switchToManagerView() {
 function switchToFrontDeskView() {
   setCurrentView(VIEW_FRONT_DESK);
   if (panelPlaylistManagement && !panelPlaylistManagement.classList.contains('hidden')) {
+    showView('control');
+  }
+  if (panelScheduleRules && !panelScheduleRules.classList.contains('hidden')) {
     showView('control');
   }
   if (panelSettings && !panelSettings.classList.contains('hidden')) {
@@ -3385,28 +3682,33 @@ function showView(name) {
   const isManager = currentView === VIEW_MANAGER;
   
   // In Front Desk view, only allow control panel
-  if (!isManager && (name === 'playlist-management' || name === 'settings')) {
+  if (!isManager && (name === 'playlist-management' || name === 'schedule-rules' || name === 'settings')) {
     switchToManagerView();
     return;
   }
   
   const isControl = name === 'control';
   const isPlaylistManagement = name === 'playlist-management';
+  const isScheduleRules = name === 'schedule-rules';
   const isSettings = name === 'settings';
   
   menuItemControls.classList.toggle('active', isControl);
   menuItemPlaylistManagement.classList.toggle('active', isPlaylistManagement);
+  menuItemScheduleRules.classList.toggle('active', isScheduleRules);
   menuItemSettings.classList.toggle('active', isSettings);
   
   panelControl.classList.toggle('hidden', !isControl);
   panelPlaylistManagement.classList.toggle('hidden', !isPlaylistManagement);
+  panelScheduleRules.classList.toggle('hidden', !isScheduleRules);
   panelSettings.classList.toggle('hidden', !isSettings);
   
   // Update household title based on view
   if (isPlaylistManagement) {
     householdTitle.textContent = 'Playlist Management';
+  } else if (isScheduleRules) {
+    householdTitle.textContent = 'Schedule Rules';
   } else if (isSettings) {
-    householdTitle.textContent = 'Settings';
+    householdTitle.textContent = 'Volume Control';
   } else {
     // For control view, show the household/group name
     if (currentHouseholdName) {
@@ -3422,6 +3724,8 @@ function showView(name) {
     renderSettings();
   } else if (isPlaylistManagement) {
     renderPlaylistManagement();
+  } else if (isScheduleRules) {
+    renderScheduleRules();
   } else if (isControl) {
     // Update recommendations when control panel is shown
     updatePlaylistRecommendations();
@@ -3449,6 +3753,10 @@ menuItemPlaylistManagement.addEventListener('click', () => {
   showView('playlist-management');
 });
 
+menuItemScheduleRules.addEventListener('click', () => {
+  showView('schedule-rules');
+});
+
 menuItemSettings.addEventListener('click', () => {
   showView('settings');
 });
@@ -3471,32 +3779,75 @@ passwordModalCancel.addEventListener('click', () => {
   hidePasswordModal();
 });
 
-passwordModalSubmit.addEventListener('click', () => {
-  const password = passwordModalInput.value;
-  if (password === MANAGER_PASSWORD) {
-    setCurrentView(VIEW_MANAGER);
-    hidePasswordModal();
-    closeMenu();
-  } else {
-    passwordModalError.classList.add('visible');
-    passwordModalInput.value = '';
-    passwordModalInput.focus();
+// Number pad event handlers
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.number-pad-key[data-value]')) {
+    const key = e.target.closest('.number-pad-key');
+    const value = key.getAttribute('data-value');
+    if (enteredPassword.length < 6) {
+      enteredPassword += value;
+      updatePasswordDisplay();
+    }
+  } else if (e.target.closest('#number-pad-backspace') || e.target.closest('#number-pad-backspace svg') || e.target.closest('#number-pad-backspace path') || e.target.closest('#number-pad-backspace line')) {
+    enteredPassword = enteredPassword.slice(0, -1);
+    updatePasswordDisplay();
+  } else if (e.target.closest('#number-pad-submit')) {
+    if (enteredPassword === MANAGER_PASSWORD) {
+      setCurrentView(VIEW_MANAGER);
+      hidePasswordModal();
+      closeMenu();
+      // Show control tab and scroll to top
+      showView('control');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      passwordModalError.classList.add('visible');
+      enteredPassword = '';
+      updatePasswordDisplay();
+    }
   }
 });
 
-passwordModalInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    passwordModalSubmit.click();
-  } else if (e.key === 'Escape') {
-    hidePasswordModal();
+// Function to reset zoom and ensure header stays fixed
+function resetZoomAndFixHeader() {
+  // Reset zoom by manipulating viewport meta tag
+  const viewport = document.querySelector('meta[name="viewport"]');
+  if (viewport) {
+    const originalContent = viewport.getAttribute('content');
+    // Temporarily change viewport to reset zoom
+    viewport.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
+    // Force a reflow
+    void document.body.offsetHeight;
+    // Restore original (should be the same, but ensures consistency)
+    viewport.setAttribute('content', originalContent || 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no');
   }
-});
+  // Ensure header stays fixed after zoom reset
+  setTimeout(() => {
+    if (typeof ensureHeaderFixed === 'function') {
+      ensureHeaderFixed();
+    }
+    // Also reset scroll position if needed
+    window.scrollTo(window.scrollX, window.scrollY);
+  }, 100);
+}
+
+// No need for blur handler since we're using buttons instead of input field
+
+// Reset zoom when time rule name input loses focus (using event delegation for dynamically created inputs)
+document.addEventListener('blur', (e) => {
+  // Check if the blurred element is a text input in a time rule field
+  if (e.target.matches('.time-rule-field input[type="text"]') || e.target.id === 'time-rule-name') {
+    resetZoomAndFixHeader();
+  }
+}, true); // Use capture phase to catch the event
 
 passwordModalBackdrop.addEventListener('click', (e) => {
   if (e.target === passwordModalBackdrop) {
     hidePasswordModal();
   }
 });
+
+// Track entered password (global scope)
+let enteredPassword = '';
 
 // Initialize view on page load
 updateMenuForView();
@@ -3554,6 +3905,13 @@ function setAuthUI(loggedIn) {
 
 async function checkAuthAndInit() {
   try {
+    // Force front desk view on page load/refresh - clear manager view if stored
+    const stored = localStorage.getItem(VIEW_STORAGE_KEY);
+    if (stored === VIEW_MANAGER) {
+      localStorage.removeItem(VIEW_STORAGE_KEY);
+      setCurrentView(VIEW_FRONT_DESK);
+    }
+    
     const deviceId = getDeviceId();
     const response = await fetch(`/auth/status?device_id=${encodeURIComponent(deviceId)}`);
     if (!response.ok) {
@@ -4305,8 +4663,6 @@ async function checkAuthAndInit() {
         if (!isSonosConnected || !currentHouseholdId) {
           playlistManagementStatus.textContent = 'Sign in to load playlists.';
           playlistManagementGrid.innerHTML = '';
-          baseScheduleList.innerHTML = '';
-          dayOverridesList.innerHTML = '';
           return;
         }
 
@@ -4315,7 +4671,6 @@ async function checkAuthAndInit() {
 
         try {
           await loadPlaylistVibes();
-          await loadTimeRules();
 
           // Load favorites for playlist management (include hidden ones)
           const deviceId = getDeviceId();
@@ -4338,7 +4693,6 @@ async function checkAuthAndInit() {
           if (!items.length) {
             playlistManagementStatus.textContent = 'No playlists found.';
             playlistManagementGrid.innerHTML = '';
-            renderTimeRules();
             return;
           }
 
@@ -4351,12 +4705,29 @@ async function checkAuthAndInit() {
             return entry;
           });
           await Promise.all(cardPromises);
-
-          renderTimeRules();
         } catch (error) {
           console.error('Failed to load playlists:', error);
           playlistManagementStatus.textContent = 'Could not load playlists. Please try again.';
           playlistManagementGrid.innerHTML = '';
+        }
+      }
+
+      async function renderScheduleRules() {
+        if (panelScheduleRules.classList.contains('hidden')) {
+          return;
+        }
+
+        if (!isSonosConnected || !currentHouseholdId) {
+          baseScheduleList.innerHTML = '';
+          dayOverridesList.innerHTML = '';
+          return;
+        }
+
+        try {
+          await loadTimeRules();
+          renderTimeRules();
+        } catch (error) {
+          console.error('Failed to load schedule rules:', error);
           baseScheduleList.innerHTML = '';
           dayOverridesList.innerHTML = '';
         }
@@ -7382,7 +7753,63 @@ async function checkAuthAndInit() {
         }
       }
 
+      // Ensure header stays fixed on scroll - prevent infinite loops
+      let scrollRaf = null;
+      let isFixingHeader = false; // Prevent infinite loops
+      
+      function ensureHeaderFixed() {
+        if (isFixingHeader) return; // Prevent recursion
+        isFixingHeader = true;
+        
+        const headerWrapper = document.querySelector('.header-wrapper');
+        if (headerWrapper) {
+          // Only update if needed to avoid triggering observers
+          const currentPosition = headerWrapper.style.position;
+          const currentTop = headerWrapper.style.top;
+          
+          if (currentPosition !== 'fixed' || currentTop !== '0px') {
+            // Use setProperty to avoid triggering mutation observer loops
+            headerWrapper.style.setProperty('position', 'fixed', 'important');
+            headerWrapper.style.setProperty('top', '0', 'important');
+            headerWrapper.style.setProperty('left', '0', 'important');
+            headerWrapper.style.setProperty('right', '0', 'important');
+            headerWrapper.style.setProperty('width', '100%', 'important');
+            headerWrapper.style.setProperty('z-index', '50', 'important');
+            headerWrapper.style.setProperty('transform', 'none', 'important');
+            headerWrapper.style.setProperty('-webkit-transform', 'none', 'important');
+            headerWrapper.style.setProperty('transition', 'none', 'important');
+            headerWrapper.style.setProperty('opacity', '1', 'important');
+            headerWrapper.style.setProperty('visibility', 'visible', 'important');
+            headerWrapper.style.setProperty('display', 'block', 'important');
+            headerWrapper.style.setProperty('margin', '0', 'important');
+          }
+        }
+        
+        isFixingHeader = false;
+      }
+
+      // Throttled scroll handler
+      function handleScroll() {
+        if (scrollRaf) return;
+        scrollRaf = requestAnimationFrame(() => {
+          ensureHeaderFixed();
+          scrollRaf = null;
+        });
+      }
+
+      // Ensure header is fixed immediately
+      ensureHeaderFixed();
+      
+      // Use scroll handler with throttling
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      window.addEventListener('touchmove', handleScroll, { passive: true });
+      
+      // Check periodically but less frequently to avoid crashes
+      setInterval(ensureHeaderFixed, 1000); // Reduced from 200ms to 1000ms
+
       window.addEventListener('load', () => {
+        // Ensure header is fixed on load
+        ensureHeaderFixed();
         // Loading screen is already visible by default
         applyAuthFeedback();
         checkAuthAndInit();
@@ -7429,6 +7856,20 @@ async function checkAuthAndInit() {
             }
           }
         }
+      });
+
+      // Simple resize handler to ensure header and panel stay fixed
+      // Use throttling to avoid excessive calls
+      let resizeTimeout = null;
+      window.addEventListener('resize', () => {
+        if (resizeTimeout) clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(() => {
+          ensureHeaderFixed();
+          if (currentlyPlayingPanel && currentlyPlayingPanel.classList.contains('visible')) {
+            // Trigger reflow to ensure fixed positioning is maintained
+            void currentlyPlayingPanel.offsetHeight;
+          }
+        }, 100);
       });
     </script>
 
