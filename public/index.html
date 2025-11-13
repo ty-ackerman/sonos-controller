@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <title>Sonos Controller</title>
     
     <!-- Favicon -->
@@ -21,7 +21,7 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Sonos Controller" />
+    <meta name="apple-mobile-web-app-title" content="Music Player" />
     
     <!-- Google Fonts - Montserrat -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -98,6 +98,7 @@
         background: var(--bg-secondary);
         margin: 0 !important;
         padding: 12px 20px;
+        padding-top: max(12px, env(safe-area-inset-top));
         border-bottom: 1px solid var(--border-color);
         box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         /* Prevent any transforms or transitions that might hide/show on scroll */
@@ -107,6 +108,20 @@
         opacity: 1 !important;
         visibility: visible !important;
         display: block !important;
+        -webkit-backface-visibility: hidden;
+        backface-visibility: hidden;
+        will-change: transform;
+      }
+      
+      /* Ensure html and body don't interfere with fixed positioning on iOS */
+      html {
+        -webkit-overflow-scrolling: touch;
+        overflow-x: hidden;
+      }
+      
+      body {
+        -webkit-overflow-scrolling: touch;
+        position: relative;
       }
       
       .header-wrapper .header-container {
@@ -251,6 +266,8 @@
       .loading-text .alter-logo {
         height: 4rem;
         width: 8rem;
+        max-width: 8rem;
+        min-width: 8rem;
         display: block;
         object-fit: contain;
       }
@@ -271,6 +288,8 @@
       .loading-text .sonos-logo {
         height: 2rem;
         width: 8rem;
+        max-width: 8rem;
+        min-width: 8rem;
         display: block;
         filter: brightness(0);
         object-fit: contain;
@@ -305,7 +324,7 @@
       /* Toast Notification */
       .toast {
         position: fixed;
-        top: 64px; /* Position below header (40px button + 12px top padding + 12px bottom padding) */
+        top: calc(max(12px, env(safe-area-inset-top)) + 52px); /* Position below header (40px button + 12px bottom padding + safe area) */
         left: 50%;
         transform: translateX(-50%) translateY(-100%);
         z-index: 40; /* Below header but above content */
@@ -967,7 +986,7 @@
       .favorites-content {
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 8px;
         padding: 20px;
         background: var(--bg-secondary);
         border-radius: 16px;
@@ -1123,6 +1142,8 @@
 
       .currently-playing.expanded {
         transform: translateY(0);
+        max-height: 80vh;
+        background: var(--bg-secondary);
       }
 
       .currently-playing-content {
@@ -1390,7 +1411,7 @@
         padding-top: 16px;
         padding-bottom: 8px;
         border-top: 1px solid var(--border-color);
-        max-height: 500px;
+        max-height: 60vh;
         opacity: 1;
       }
 
@@ -1510,6 +1531,8 @@
         font-weight: 600;
         color: var(--text-primary);
         line-height: 1.4;
+        padding-top: max(0px, env(safe-area-inset-top));
+        margin-top: 8px;
       }
 
       .menu-close-btn {
@@ -7490,6 +7513,9 @@ async function checkAuthAndInit() {
           return;
         }
         
+        // Stop event propagation to prevent document click handler from firing
+        e.stopPropagation();
+        
         // Toggle expanded state
         currentlyPlayingPanel.classList.toggle('expanded');
         
@@ -7507,8 +7533,8 @@ async function checkAuthAndInit() {
 
       // Close panel when clicking outside of it
       document.addEventListener('click', (e) => {
-        // Don't interfere with dropdown toggles
-        if (e.target.closest('.favorites-toggle, .alternatives-toggle')) {
+        // Don't interfere with dropdown toggles or panel content clicks
+        if (e.target.closest('.favorites-toggle, .alternatives-toggle, .currently-playing')) {
           return;
         }
         
@@ -7516,7 +7542,7 @@ async function checkAuthAndInit() {
           return;
         }
         
-        // If click is outside the panel, close it
+        // If click is outside the panel, close it (only collapse, don't hide)
         if (!currentlyPlayingPanel.contains(e.target)) {
           currentlyPlayingPanel.classList.remove('expanded');
           updateBodyScrollLock();
@@ -7635,6 +7661,11 @@ async function checkAuthAndInit() {
       // Check periodically but less frequently to avoid crashes
       setInterval(ensureHeaderFixed, 1000); // Reduced from 200ms to 1000ms
 
+      // Ensure header is fixed as early as possible
+      document.addEventListener('DOMContentLoaded', () => {
+        ensureHeaderFixed();
+      });
+      
       window.addEventListener('load', () => {
         // Ensure header is fixed on load
         ensureHeaderFixed();
@@ -7642,7 +7673,7 @@ async function checkAuthAndInit() {
         applyAuthFeedback();
         checkAuthAndInit();
       });
-
+      
       // Refresh playback state when app becomes visible (works for tab switching)
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden && isSonosConnected) {
@@ -7668,6 +7699,8 @@ async function checkAuthAndInit() {
 
       // Also handle pageshow event for mobile (fires when page is loaded from cache or restored)
       window.addEventListener('pageshow', (event) => {
+        // Ensure header is fixed on pageshow (important for iOS)
+        ensureHeaderFixed();
         // event.persisted is true if page was loaded from cache (back/forward navigation or mobile app restore)
         if (isSonosConnected) {
           // Reset panelShouldBeVisible so panel can reappear if music is playing
