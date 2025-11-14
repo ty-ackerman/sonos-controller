@@ -6558,6 +6558,15 @@ async function checkAuthAndInit() {
       }
 
 
+      // Helper function to check if any slider is currently being dragged
+      function isAnySliderDragging() {
+        const existingRows = currentlyPlayingRoomsList.querySelectorAll('.currently-playing-room-volume');
+        return Array.from(existingRows).some(row => {
+          const slider = row.querySelector('.currently-playing-room-slider');
+          return slider && slider.dataset.isDragging === 'true';
+        });
+      }
+
       async function setPlayerVolume(playerId, level, showFeedbackMessage = true) {
         if (!playerId) {
           return;
@@ -6577,12 +6586,28 @@ async function checkAuthAndInit() {
             throw new Error(await postResponse.text());
           }
 
-          // Only fetch and update if not dragging (to avoid conflicts during drag)
+          // Track user action timestamp
           const roomRow = document.querySelector(`[data-player-id="${playerId}"]`);
           const slider = roomRow?.querySelector('.currently-playing-room-slider');
           const isDragging = slider && slider.dataset.isDragging === 'true';
           
-          if (!isDragging) {
+          if (slider) {
+            // Update last user set volume and timestamp
+            slider.dataset.lastUserSetVolume = numericLevel.toString();
+            slider.dataset.lastUserSetTimestamp = Date.now().toString();
+          }
+
+          // Only fetch and update if not dragging (to avoid conflicts during drag)
+          // Also check if ANY slider is dragging to prevent loadPlayers() from triggering
+          const anyDragging = isAnySliderDragging();
+          
+          // Check if there's a very recent expected value (just set, within last 100ms)
+          // If so, skip the immediate fetch to prevent race conditions
+          const expectedTimestamp = slider?.dataset.expectedTimestamp ? Number(slider.dataset.expectedTimestamp) : null;
+          const timeSinceExpected = expectedTimestamp ? Date.now() - expectedTimestamp : Infinity;
+          const veryRecentExpectedValue = timeSinceExpected < 100; // Skip fetch if expected value was just set
+          
+          if (!isDragging && !anyDragging && !veryRecentExpectedValue) {
             const getResponse = await fetch(`/api/players/${encodeURIComponent(playerId)}/volume?device_id=${encodeURIComponent(deviceId)}`);
             if (getResponse.ok) {
               const payload = await getResponse.json();
@@ -6593,31 +6618,45 @@ async function checkAuthAndInit() {
               if (roomRow && slider) {
                 const value = roomRow.querySelector('.currently-playing-room-value');
                 const expectedValue = slider.dataset.expectedValue ? Number(slider.dataset.expectedValue) : null;
+                const gracePeriodMs = 2500; // 2.5 second grace period
+                const now = Date.now();
                 
-                // If we have an expected value, only update if server matches it (prevents snap-back)
-                if (expectedValue !== null && expectedValue !== '') {
-                  if (Math.abs(updatedLevel - expectedValue) <= 1) {
-                    // Server volume matches expected - clear expected value and update
-                    console.log('[Client] Player volume confirmed by server:', {
-                      playerId,
-                      expected: expectedValue,
-                      received: updatedLevel,
-                      match: true
-                    });
+                // If we have an expected value, check grace period before accepting updates
+                if (expectedValue !== null && expectedValue !== '' && expectedTimestamp !== null) {
+                  const timeSinceExpected = now - expectedTimestamp;
+                  
+                  if (timeSinceExpected < gracePeriodMs) {
+                    // Still within grace period - only accept if server matches expected value
+                    if (Math.abs(updatedLevel - expectedValue) <= 1) {
+                      // Server volume matches expected - clear expected value and update
+                      console.log('[Client] Player volume confirmed by server:', {
+                        playerId,
+                        expected: expectedValue,
+                        received: updatedLevel,
+                        match: true
+                      });
+                      slider.dataset.expectedValue = '';
+                      slider.dataset.expectedTimestamp = '';
+                      slider.value = updatedLevel;
+                      if (value) value.textContent = updatedLevel;
+                    } else {
+                      // Server hasn't caught up yet - keep slider at expected value to prevent snap-back
+                      console.log('[Client] Player volume update ignored (within grace period):', {
+                        playerId,
+                        expected: expectedValue,
+                        received: updatedLevel,
+                        timeRemaining: gracePeriodMs - timeSinceExpected
+                      });
+                      // Force slider to stay at expected value
+                      slider.value = expectedValue;
+                      if (value) value.textContent = expectedValue;
+                    }
+                  } else {
+                    // Grace period expired - safe to update
                     slider.dataset.expectedValue = '';
+                    slider.dataset.expectedTimestamp = '';
                     slider.value = updatedLevel;
                     if (value) value.textContent = updatedLevel;
-                  } else {
-                    // Server hasn't caught up yet - keep slider at expected value to prevent snap-back
-                    console.log('[Client] Player volume update ignored (waiting for server):', {
-                      playerId,
-                      expected: expectedValue,
-                      received: updatedLevel,
-                      difference: Math.abs(updatedLevel - expectedValue)
-                    });
-                    // Force slider to stay at expected value
-                    slider.value = expectedValue;
-                    if (value) value.textContent = expectedValue;
                   }
                 } else {
                   // No expected value - safe to update normally
@@ -6628,8 +6667,16 @@ async function checkAuthAndInit() {
             }
           }
 
-          if (currentHouseholdId && !isDragging) {
+          // Don't trigger loadPlayers() if any slider is dragging or if this slider just had an expected value set
+          // Check if this slider has a recent expected value (within grace period)
+          const hasRecentExpectedValue = slider && slider.dataset.expectedTimestamp ? 
+            (Date.now() - Number(slider.dataset.expectedTimestamp)) < 2500 : false;
+          
+          if (currentHouseholdId && !anyDragging && !hasRecentExpectedValue) {
             setTimeout(() => loadPlayers(currentHouseholdId), 500);
+          } else if (currentHouseholdId && !anyDragging && hasRecentExpectedValue) {
+            // Delay loadPlayers longer if there's a recent expected value to allow grace period to work
+            setTimeout(() => loadPlayers(currentHouseholdId), 3000);
           }
         } catch (error) {
           console.error('Failed to update player volume:', error);
@@ -7326,11 +7373,7 @@ async function checkAuthAndInit() {
         const groupPlayers = latestPlayers;
         
         // Check if any sliders are currently being dragged
-        const existingRows = currentlyPlayingRoomsList.querySelectorAll('.currently-playing-room-volume');
-        const anyDragging = Array.from(existingRows).some(row => {
-          const slider = row.querySelector('.currently-playing-room-slider');
-          return slider && slider.dataset.isDragging === 'true';
-        });
+        const anyDragging = isAnySliderDragging();
         
         // If any slider is being dragged, don't recreate the DOM - just update values
         if (anyDragging) {
@@ -7341,15 +7384,27 @@ async function checkAuthAndInit() {
               const value = existingRow.querySelector('.currently-playing-room-value');
               const playerVolume = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
               
-              // Only update if not being dragged
-              if (slider && slider.dataset.isDragging !== 'true') {
-                const expectedValue = slider.dataset.expectedValue ? Number(slider.dataset.expectedValue) : null;
+              // Skip ALL updates for players being dragged
+              if (slider && slider.dataset.isDragging === 'true') {
+                return; // Don't update this slider at all while dragging
+              }
+              
+              // For non-dragging sliders, check grace period
+              const expectedValue = slider.dataset.expectedValue ? Number(slider.dataset.expectedValue) : null;
+              const expectedTimestamp = slider.dataset.expectedTimestamp ? Number(slider.dataset.expectedTimestamp) : null;
+              const gracePeriodMs = 2500; // 2.5 second grace period
+              const now = Date.now();
+              
+              // If we have an expected value, check grace period before accepting updates
+              if (expectedValue !== null && expectedValue !== '' && expectedTimestamp !== null) {
+                const timeSinceExpected = now - expectedTimestamp;
                 
-                // If we have an expected value, only update if server matches it (prevents snap-back)
-                if (expectedValue !== null && expectedValue !== '') {
+                if (timeSinceExpected < gracePeriodMs) {
+                  // Still within grace period - only accept if server matches expected value
                   if (Math.abs(playerVolume - expectedValue) <= 1) {
                     // Server volume matches expected - clear expected value and update
                     slider.dataset.expectedValue = '';
+                    slider.dataset.expectedTimestamp = '';
                     slider.value = playerVolume;
                     if (value) value.textContent = playerVolume;
                   } else {
@@ -7358,10 +7413,16 @@ async function checkAuthAndInit() {
                     if (value) value.textContent = expectedValue;
                   }
                 } else {
-                  // No expected value - safe to update normally
+                  // Grace period expired - safe to update
+                  slider.dataset.expectedValue = '';
+                  slider.dataset.expectedTimestamp = '';
                   slider.value = playerVolume;
                   if (value) value.textContent = playerVolume;
                 }
+              } else {
+                // No expected value - safe to update normally
+                slider.value = playerVolume;
+                if (value) value.textContent = playerVolume;
               }
             } else {
               // Player doesn't exist yet, create it
@@ -7372,7 +7433,63 @@ async function checkAuthAndInit() {
           return;
         }
         
-        // No sliders being dragged - safe to recreate
+        // No sliders being dragged - safe to recreate, but still check grace periods for recently released sliders
+        const existingRows = currentlyPlayingRoomsList.querySelectorAll('.currently-playing-room-volume');
+        const hasRecentRelease = Array.from(existingRows).some(row => {
+          const slider = row.querySelector('.currently-playing-room-slider');
+          if (!slider) return false;
+          const expectedTimestamp = slider.dataset.expectedTimestamp ? Number(slider.dataset.expectedTimestamp) : null;
+          if (expectedTimestamp === null) return false;
+          const gracePeriodMs = 2500;
+          return (Date.now() - expectedTimestamp) < gracePeriodMs;
+        });
+        
+        if (hasRecentRelease) {
+          // Some slider was recently released - update values but don't recreate DOM
+          groupPlayers.forEach((player) => {
+            const existingRow = currentlyPlayingRoomsList.querySelector(`[data-player-id="${player.id}"]`);
+            if (existingRow) {
+              const slider = existingRow.querySelector('.currently-playing-room-slider');
+              const value = existingRow.querySelector('.currently-playing-room-value');
+              const playerVolume = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
+              
+              const expectedValue = slider.dataset.expectedValue ? Number(slider.dataset.expectedValue) : null;
+              const expectedTimestamp = slider.dataset.expectedTimestamp ? Number(slider.dataset.expectedTimestamp) : null;
+              const gracePeriodMs = 2500;
+              const now = Date.now();
+              
+              if (expectedValue !== null && expectedValue !== '' && expectedTimestamp !== null) {
+                const timeSinceExpected = now - expectedTimestamp;
+                
+                if (timeSinceExpected < gracePeriodMs) {
+                  if (Math.abs(playerVolume - expectedValue) <= 1) {
+                    slider.dataset.expectedValue = '';
+                    slider.dataset.expectedTimestamp = '';
+                    slider.value = playerVolume;
+                    if (value) value.textContent = playerVolume;
+                  } else {
+                    slider.value = expectedValue;
+                    if (value) value.textContent = expectedValue;
+                  }
+                } else {
+                  slider.dataset.expectedValue = '';
+                  slider.dataset.expectedTimestamp = '';
+                  slider.value = playerVolume;
+                  if (value) value.textContent = playerVolume;
+                }
+              } else {
+                slider.value = playerVolume;
+                if (value) value.textContent = playerVolume;
+              }
+            } else {
+              const roomRow = createRoomVolumeRow(player);
+              currentlyPlayingRoomsList.appendChild(roomRow);
+            }
+          });
+          return;
+        }
+        
+        // No sliders being dragged and no recent releases - safe to recreate
         currentlyPlayingRoomsList.innerHTML = '';
 
         groupPlayers.forEach((player) => {
@@ -7398,6 +7515,9 @@ async function checkAuthAndInit() {
         slider.value = Number.isFinite(Number(player.volume)) ? Number(player.volume) : 0;
         slider.dataset.isDragging = 'false';
         slider.dataset.expectedValue = ''; // Track expected volume after release
+        slider.dataset.expectedTimestamp = ''; // Track when expected value was set
+        slider.dataset.lastUserSetVolume = ''; // Track last user-set volume
+        slider.dataset.lastUserSetTimestamp = ''; // Track when user last set volume
 
         const value = document.createElement('span');
         value.className = 'currently-playing-room-value';
@@ -7409,6 +7529,10 @@ async function checkAuthAndInit() {
           e.stopPropagation();
           const newValue = Number(e.target.value);
           value.textContent = newValue;
+          
+          // Update last user set volume and timestamp on each input
+          slider.dataset.lastUserSetVolume = newValue.toString();
+          slider.dataset.lastUserSetTimestamp = Date.now().toString();
           
           // Send update immediately while dragging (debounced to avoid too many requests)
           if (slider.dataset.isDragging === 'true') {
@@ -7425,17 +7549,35 @@ async function checkAuthAndInit() {
         slider.addEventListener('mousedown', () => {
           slider.dataset.isDragging = 'true';
           slider.dataset.expectedValue = ''; // Clear expected value when starting to drag
+          slider.dataset.expectedTimestamp = ''; // Clear expected timestamp
+          // Set initial user action tracking
+          const currentValue = Number(slider.value);
+          slider.dataset.lastUserSetVolume = currentValue.toString();
+          slider.dataset.lastUserSetTimestamp = Date.now().toString();
         });
 
         slider.addEventListener('touchstart', () => {
           slider.dataset.isDragging = 'true';
           slider.dataset.expectedValue = ''; // Clear expected value when starting to drag
+          slider.dataset.expectedTimestamp = ''; // Clear expected timestamp
+          // Set initial user action tracking
+          const currentValue = Number(slider.value);
+          slider.dataset.lastUserSetVolume = currentValue.toString();
+          slider.dataset.lastUserSetTimestamp = Date.now().toString();
         });
 
         slider.addEventListener('change', async (e) => {
           e.stopPropagation();
           const finalValue = Number(e.target.value);
-          slider.dataset.expectedValue = finalValue.toString(); // Set expected value on release
+          const now = Date.now();
+          // Set expected value and timestamp BEFORE setting isDragging to false
+          // This ensures grace period protection is active immediately
+          slider.dataset.expectedValue = finalValue.toString();
+          slider.dataset.expectedTimestamp = now.toString();
+          slider.dataset.lastUserSetVolume = finalValue.toString();
+          slider.dataset.lastUserSetTimestamp = now.toString();
+          // Small delay to ensure expected value is set before any updates can come in
+          await new Promise(resolve => setTimeout(resolve, 10));
           slider.dataset.isDragging = 'false';
           clearTimeout(playerVolumeUpdateTimeout);
           const playerId = roomRow.dataset.playerId;
@@ -7447,7 +7589,15 @@ async function checkAuthAndInit() {
         slider.addEventListener('mouseup', async () => {
           if (slider.dataset.isDragging === 'true') {
             const finalValue = Number(slider.value);
-            slider.dataset.expectedValue = finalValue.toString(); // Set expected value on release
+            const now = Date.now();
+            // Set expected value and timestamp BEFORE setting isDragging to false
+            // This ensures grace period protection is active immediately
+            slider.dataset.expectedValue = finalValue.toString();
+            slider.dataset.expectedTimestamp = now.toString();
+            slider.dataset.lastUserSetVolume = finalValue.toString();
+            slider.dataset.lastUserSetTimestamp = now.toString();
+            // Small delay to ensure expected value is set before any updates can come in
+            await new Promise(resolve => setTimeout(resolve, 10));
             slider.dataset.isDragging = 'false';
             clearTimeout(playerVolumeUpdateTimeout);
             const playerId = roomRow.dataset.playerId;
@@ -7460,7 +7610,15 @@ async function checkAuthAndInit() {
         slider.addEventListener('touchend', async () => {
           if (slider.dataset.isDragging === 'true') {
             const finalValue = Number(slider.value);
-            slider.dataset.expectedValue = finalValue.toString(); // Set expected value on release
+            const now = Date.now();
+            // Set expected value and timestamp BEFORE setting isDragging to false
+            // This ensures grace period protection is active immediately
+            slider.dataset.expectedValue = finalValue.toString();
+            slider.dataset.expectedTimestamp = now.toString();
+            slider.dataset.lastUserSetVolume = finalValue.toString();
+            slider.dataset.lastUserSetTimestamp = now.toString();
+            // Small delay to ensure expected value is set before any updates can come in
+            await new Promise(resolve => setTimeout(resolve, 10));
             slider.dataset.isDragging = 'false';
             clearTimeout(playerVolumeUpdateTimeout);
             const playerId = roomRow.dataset.playerId;
@@ -7498,11 +7656,14 @@ async function checkAuthAndInit() {
         clearInterval(playbackRefreshTimer);
         playbackRefreshTimer = setInterval(() => {
           if (isSonosConnected && getSelectedGroupId() && panelShouldBeVisible !== false) {
-            updateCurrentlyPlaying();
+            // Skip refresh if any slider is being dragged
+            if (!isAnySliderDragging()) {
+              updateCurrentlyPlaying();
+            }
           }
         }, 3000);
-        // Update immediately, but only if panel should be visible
-        if (panelShouldBeVisible !== false) {
+        // Update immediately, but only if panel should be visible and no sliders are dragging
+        if (panelShouldBeVisible !== false && !isAnySliderDragging()) {
           updateCurrentlyPlaying();
         }
       }
