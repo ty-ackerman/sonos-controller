@@ -2926,6 +2926,17 @@
       </div>
     </div>
 
+    <div id="change-playlist-modal-backdrop" class="password-modal-backdrop">
+      <div class="password-modal">
+        <h3 class="password-modal-title">Change Playlist?</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 24px;">Are you sure you want to change the playlist?</p>
+        <div class="password-modal-actions">
+          <button id="change-playlist-cancel" class="password-modal-button" type="button">Cancel</button>
+          <button id="change-playlist-confirm" class="password-modal-button primary" type="button">Change Playlist</button>
+        </div>
+      </div>
+    </div>
+
     <div class="header-wrapper">
       <div class="header-container">
         <button id="hamburger-menu-btn" class="hamburger-menu-btn" type="button" aria-label="Open menu">
@@ -3292,6 +3303,10 @@
       const turnOffMusicCancel = document.getElementById('turn-off-music-cancel');
       const turnOffMusicConfirm = document.getElementById('turn-off-music-confirm');
       const powerButton = document.getElementById('power-button');
+      
+      const changePlaylistModalBackdrop = document.getElementById('change-playlist-modal-backdrop');
+      const changePlaylistCancel = document.getElementById('change-playlist-cancel');
+      const changePlaylistConfirm = document.getElementById('change-playlist-confirm');
 
       const MANAGER_PASSWORD = '123456';
       const VIEW_STORAGE_KEY = 'sonos-controller-view';
@@ -4077,6 +4092,30 @@ async function checkAuthAndInit() {
           showToast('Failed to turn off music');
         } finally {
           turnOffMusicConfirm.disabled = false;
+        }
+      });
+
+      // Change playlist modal handlers
+      let pendingPlaylistEntry = null;
+      
+      changePlaylistCancel.addEventListener('click', () => {
+        changePlaylistModalBackdrop.classList.remove('visible');
+        pendingPlaylistEntry = null;
+      });
+
+      changePlaylistModalBackdrop.addEventListener('click', (e) => {
+        if (e.target === changePlaylistModalBackdrop) {
+          changePlaylistModalBackdrop.classList.remove('visible');
+          pendingPlaylistEntry = null;
+        }
+      });
+
+      changePlaylistConfirm.addEventListener('click', async () => {
+        if (pendingPlaylistEntry) {
+          changePlaylistModalBackdrop.classList.remove('visible');
+          const entry = pendingPlaylistEntry;
+          pendingPlaylistEntry = null;
+          await playFavoriteConfirmed(entry);
         }
       });
 
@@ -6108,6 +6147,17 @@ async function checkAuthAndInit() {
       }
 
       async function playFavorite(entry) {
+        if (!currentHouseholdId) {
+          showFeedback('Select a household first.', true);
+          return;
+        }
+
+        // Show confirmation dialog
+        pendingPlaylistEntry = entry;
+        changePlaylistModalBackdrop.classList.add('visible');
+      }
+
+      async function playFavoriteConfirmed(entry) {
         if (!currentHouseholdId) {
           showFeedback('Select a household first.', true);
           return;
