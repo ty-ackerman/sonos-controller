@@ -3,34 +3,35 @@ import { supabase } from './supabase.js';
 export async function loadTokens(deviceId) {
   if (!deviceId) {
     console.error('Device ID is required to load tokens');
-    return { access_token: null, refresh_token: null, expires_at: 0 };
+    return { access_token: null, refresh_token: null, expires_at: 0, created_at: null };
   }
 
   try {
     const { data, error } = await supabase
       .from('tokens')
-      .select('access_token, refresh_token, expires_at')
+      .select('access_token, refresh_token, expires_at, created_at')
       .eq('device_id', deviceId)
       .single();
 
     if (error) {
       // If row doesn't exist (PGRST116) or no rows found, return empty tokens
       if (error.code === 'PGRST116' || error.message?.includes('No rows')) {
-        return { access_token: null, refresh_token: null, expires_at: 0 };
+        return { access_token: null, refresh_token: null, expires_at: 0, created_at: null };
       }
       // For other errors, log and return empty tokens (don't throw to prevent app crash)
       console.error('Error loading tokens from Supabase:', error);
-      return { access_token: null, refresh_token: null, expires_at: 0 };
+      return { access_token: null, refresh_token: null, expires_at: 0, created_at: null };
     }
 
     return {
       access_token: data?.access_token || null,
       refresh_token: data?.refresh_token || null,
-      expires_at: Number(data?.expires_at || 0)
+      expires_at: Number(data?.expires_at || 0),
+      created_at: data?.created_at || null
     };
   } catch (error) {
     console.error('Error loading tokens:', error);
-    return { access_token: null, refresh_token: null, expires_at: 0 };
+    return { access_token: null, refresh_token: null, expires_at: 0, created_at: null };
   }
 }
 
@@ -86,5 +87,34 @@ export async function clearTokens(deviceId) {
   } catch (error) {
     console.error('Error clearing tokens:', error);
     return { access_token: null, refresh_token: null, expires_at: 0 };
+  }
+}
+
+export async function getAllActiveTokens() {
+  try {
+    const { data, error } = await supabase
+      .from('tokens')
+      .select('device_id, access_token, refresh_token, expires_at, created_at')
+      .not('refresh_token', 'is', null);
+
+    if (error) {
+      console.error('Error loading all active tokens from Supabase:', error);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    return data.map(row => ({
+      device_id: row.device_id,
+      access_token: row.access_token || null,
+      refresh_token: row.refresh_token || null,
+      expires_at: Number(row.expires_at || 0),
+      created_at: row.created_at || null
+    }));
+  } catch (error) {
+    console.error('Error loading all active tokens:', error);
+    return [];
   }
 }

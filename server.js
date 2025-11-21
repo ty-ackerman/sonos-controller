@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { loadTokens, saveTokens, clearTokens } from './tokenStore.js';
+import { loadTokens, saveTokens, clearTokens, getAllActiveTokens } from './tokenStore.js';
 import { loadSpeakerVolumes, saveSpeakerVolumes } from './settingsStore.js';
 import { loadPlaylistVibes, savePlaylistVibes } from './playlistVibesStore.js';
 import {
@@ -333,6 +333,13 @@ app.get('/auth/status', async (req, res) => {
     }
 
     const tokens = await loadTokens(deviceId);
+    
+    // Check if token is older than 14 days - require re-authentication
+    if (isTokenExpiredByAge(tokens.created_at)) {
+      await clearTokens(deviceId);
+      return res.json({ loggedIn: false });
+    }
+
     let loggedIn = Boolean(tokens.access_token) && Date.now() < (tokens.expires_at || 0);
 
     if (loggedIn) {
@@ -370,6 +377,83 @@ app.post('/auth/signout', async (req, res) => {
   } catch (error) {
     console.error('Sign out failed:', error);
     res.status(500).json({ error: 'Sign out failed' });
+  }
+});
+
+async function refreshAllTokens() {
+  const results = {
+    total: 0,
+    refreshed: 0,
+    skipped: 0,
+    failed: 0,
+    errors: []
+  };
+
+  try {
+    const allTokens = await getAllActiveTokens();
+    results.total = allTokens.length;
+
+    if (allTokens.length === 0) {
+      return results;
+    }
+
+    // Process each device's tokens
+    for (const tokenData of allTokens) {
+      const { device_id, expires_at, created_at } = tokenData;
+
+      try {
+        // Check if token is older than 14 days - require re-authentication
+        if (isTokenExpiredByAge(created_at)) {
+          await clearTokens(device_id);
+          results.skipped++;
+          continue; // Skip refreshing, user needs to re-authenticate
+        }
+
+        // Check if token needs refreshing
+        if (!shouldRefreshToken(expires_at)) {
+          results.skipped++;
+          continue;
+        }
+
+        // Refresh the token
+        await refreshAccessToken(tokenData, device_id);
+        results.refreshed++;
+      } catch (error) {
+        results.failed++;
+        results.errors.push({
+          device_id,
+          error: error.message || 'Unknown error'
+        });
+        // Log error but continue processing other devices
+        console.error(`Failed to refresh token for device ${device_id}:`, error.message || error);
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Error in refreshAllTokens:', error);
+    results.errors.push({
+      device_id: null,
+      error: error.message || 'Unknown error'
+    });
+    return results;
+  }
+}
+
+app.post('/auth/refresh-all-tokens', async (req, res) => {
+  try {
+    const results = await refreshAllTokens();
+    res.json({
+      ok: true,
+      ...results
+    });
+  } catch (error) {
+    console.error('Token refresh endpoint failed:', error);
+    res.status(500).json({
+      ok: false,
+      error: 'Token refresh job failed',
+      message: error.message || 'Unknown error'
+    });
   }
 });
 
@@ -2079,6 +2163,25 @@ function storeTokens(tokenResponse) {
   return tokens;
 }
 
+function shouldRefreshToken(expiresAt) {
+  if (!expiresAt || expiresAt === 0) {
+    return true; // Token is invalid, should refresh
+  }
+  const now = Date.now();
+  const bufferMs = 5 * 60 * 1000; // 5 minutes buffer
+  return now >= (expiresAt - bufferMs);
+}
+
+function isTokenExpiredByAge(createdAt) {
+  if (!createdAt) {
+    return false; // No creation date, can't determine age
+  }
+  const now = Date.now();
+  const createdAtMs = new Date(createdAt).getTime();
+  const fourteenDaysMs = 14 * 24 * 60 * 60 * 1000; // 14 days in milliseconds
+  return (now - createdAtMs) >= fourteenDaysMs;
+}
+
 async function refreshAccessToken(tokens, deviceId) {
   if (!deviceId) {
     throw Object.assign(new Error('Device ID is required to refresh token'), { status: 401 });
@@ -2127,6 +2230,12 @@ async function ensureValidAccessToken(deviceId) {
   
   if (!tokens || !tokens.access_token) {
     throw Object.assign(new Error('Not authenticated with Sonos'), { status: 401 });
+  }
+
+  // Check if token is older than 14 days - require re-authentication
+  if (isTokenExpiredByAge(tokens.created_at)) {
+    await clearTokens(deviceId);
+    throw Object.assign(new Error('Authentication expired - please log in again'), { status: 401 });
   }
 
   if (Date.now() >= tokens.expires_at) {
