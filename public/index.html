@@ -5091,6 +5091,8 @@ async function checkAuthAndInit() {
             } else if (savedVibe === 'Mid') {
               vibeSelect.classList.add('mid');
             }
+            // Update the vibe badge in the all playlists section after reloading vibes
+            updatePlaylistCardVibeBadge(favorite.id);
           } catch (error) {
             // Revert on error
             vibeSelect.value = oldValue;
@@ -5162,9 +5164,26 @@ async function checkAuthAndInit() {
             toggleBtn.className = isHidden ? 'show' : 'hide';
             toggleBtn.setAttribute('aria-label', isHidden ? 'Show in Controls' : 'Hide from Controls');
 
-            // Refresh the favorites view if it's open (to reflect the change)
-            if (!panelControl.classList.contains('hidden')) {
+            console.log('[Show/Hide] Toggle clicked:', {
+              playlistId: favorite.id,
+              playlistName: favorite.name,
+              newHiddenState: isHidden,
+              panelControlHidden: panelControl.classList.contains('hidden'),
+              currentHouseholdId: currentHouseholdId
+            });
+
+            // Always update both sections, regardless of which panel is visible
+            // User will see changes when they navigate back to control panel
+            if (currentHouseholdId) {
+              // Update the All Playlists section - reload completely like recommendations do
+              console.log('[Show/Hide] Reloading favorites for All Playlists section');
               await loadFavorites(currentHouseholdId);
+              
+              // Update recommendations section (same logic as recommendations)
+              console.log('[Show/Hide] Updating recommendations');
+              await updatePlaylistRecommendations();
+            } else {
+              console.warn('[Show/Hide] No household ID, skipping updates');
             }
           } catch (error) {
             console.error('Failed to update favorite visibility:', error);
@@ -5771,6 +5790,10 @@ async function checkAuthAndInit() {
           if (!panelControl.classList.contains('hidden')) {
             updatePlaylistRecommendations();
           }
+          // Update the currently playing display to reflect vibe changes
+          updateCurrentlyPlaying(false);
+          // Update the vibe badge in the all playlists section
+          updatePlaylistCardVibeBadge(playlistId);
         } catch (error) {
           console.error('Failed to save playlist vibe:', error);
           // Revert the change on error
@@ -5784,6 +5807,7 @@ async function checkAuthAndInit() {
       }
 
       async function updatePlaylistRecommendations() {
+        console.log('[updatePlaylistRecommendations] Starting update');
         if (!isSonosConnected || !currentHouseholdId) {
           recommendedPlaylistContainer.innerHTML = '';
           alternativesDropdown.innerHTML = '';
@@ -6240,6 +6264,7 @@ async function checkAuthAndInit() {
       }
 
       async function loadFavorites(householdId) {
+        console.log('[loadFavorites] Starting load:', { householdId, registrySize: favoritesRegistry.size });
         favoritesRegistry.clear();
         favoritesGrid.innerHTML = '';
 
@@ -6264,7 +6289,9 @@ async function checkAuthAndInit() {
             params.set('groupId', activeGroupId);
           }
 
-          const response = await fetch(`/api/favorites?${params.toString()}`);
+          const url = `/api/favorites?${params.toString()}`;
+          console.log('[loadFavorites] Fetching:', url);
+          const response = await fetch(url);
 
           if (response.status === 401) {
             setAuthUI(false);
@@ -6278,6 +6305,7 @@ async function checkAuthAndInit() {
 
           const data = await response.json();
           const items = Array.isArray(data.items) ? data.items : [];
+          console.log('[loadFavorites] Received items:', items.length);
 
           if (!items.length) {
             favoritesStatus.textContent = 'No playlists found.';
@@ -6294,6 +6322,7 @@ async function checkAuthAndInit() {
             favoritesGrid.appendChild(entry.button);
           });
 
+          console.log('[loadFavorites] Loaded', favoritesRegistry.size, 'playlists into registry');
           renderVibeFilters();
           applyVibeFilter();
           evaluateFavoritesAvailability();
@@ -6397,6 +6426,63 @@ async function checkAuthAndInit() {
 
         return entry;
       }
+
+      function updatePlaylistCardVibeBadge(playlistId) {
+        // Try both string and number versions of the ID to handle type mismatches
+        let entry = favoritesRegistry.get(playlistId);
+        if (!entry) {
+          entry = favoritesRegistry.get(String(playlistId));
+        }
+        if (!entry) {
+          entry = favoritesRegistry.get(Number(playlistId));
+        }
+        
+        if (!entry || !entry.button) {
+          return;
+        }
+
+        // Find the nameRow element that contains the vibe badge
+        const nameRow = entry.button.querySelector('.playlist-name-row');
+        if (!nameRow) {
+          return;
+        }
+
+        // Remove the old vibe badge if it exists
+        if (entry.vibeBadge && entry.vibeBadge.parentNode) {
+          entry.vibeBadge.parentNode.removeChild(entry.vibeBadge);
+        }
+
+        // Get the current vibe - try both string and number versions of the ID
+        let vibe = playlistVibes[playlistId] || '';
+        if (!vibe) {
+          vibe = playlistVibes[String(playlistId)] || '';
+        }
+        if (!vibe) {
+          vibe = playlistVibes[Number(playlistId)] || '';
+        }
+        
+        // Create and add new vibe badge if vibe exists
+        let vibeBadge = null;
+        if (vibe) {
+          vibeBadge = document.createElement('span');
+          vibeBadge.className = 'playlist-vibe-badge-inline';
+          if (vibe === 'Down') {
+            vibeBadge.className += ' down';
+            vibeBadge.textContent = 'Down';
+          } else if (vibe === 'Down/Mid') {
+            vibeBadge.className += ' down-mid';
+            vibeBadge.textContent = 'Down/Mid';
+          } else if (vibe === 'Mid') {
+            vibeBadge.className += ' mid';
+            vibeBadge.textContent = 'Mid';
+          }
+          nameRow.appendChild(vibeBadge);
+        }
+
+        // Update the entry's vibeBadge property
+        entry.vibeBadge = vibeBadge;
+      }
+
 
       async function playFavorite(entry) {
         if (!currentHouseholdId) {
