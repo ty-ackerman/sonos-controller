@@ -1204,6 +1204,14 @@
         display: flex;
         align-items: center;
         gap: 4px;
+        overflow: hidden;
+      }
+
+      .currently-playing-location span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
       }
 
       .currently-playing-title {
@@ -1224,59 +1232,6 @@
         display: flex;
         align-items: center;
         gap: 6px;
-      }
-
-      /* Scrolling ticker styles */
-      .scrolling-container {
-        overflow: hidden;
-        position: relative;
-        width: 100%;
-      }
-
-      .scrolling-content {
-        display: inline-block;
-        white-space: nowrap;
-        will-change: transform;
-      }
-
-      .scrolling-content.scrolling {
-        animation: scrollText var(--scroll-duration, 15s) linear infinite;
-      }
-
-      .scrolling-content.scrolling:hover {
-        animation-play-state: paused;
-      }
-
-      @keyframes scrollText {
-        from {
-          transform: translateX(0);
-        }
-        to {
-          transform: translateX(var(--scroll-distance, 0px));
-        }
-      }
-
-      /* For flex containers like artist */
-      .scrolling-flex-container {
-        overflow: hidden;
-        position: relative;
-        width: 100%;
-      }
-
-      .scrolling-flex-content {
-        display: inline-flex;
-        align-items: center;
-        white-space: nowrap;
-        will-change: transform;
-        gap: inherit;
-      }
-
-      .scrolling-flex-content.scrolling {
-        animation: scrollText var(--scroll-duration, 15s) linear infinite;
-      }
-
-      .scrolling-flex-content.scrolling:hover {
-        animation-play-state: paused;
       }
 
       .currently-playing-vibe {
@@ -3334,204 +3289,10 @@
       const alternativesDropdown = document.getElementById('alternatives-dropdown');
       const recommendationRuleInfo = document.getElementById('recommendation-rule-info');
       
-      // Track last known values to prevent unnecessary ticker updates
+      // Track last known values to prevent unnecessary updates
       let lastTitle = '';
       let lastArtistAlbum = '';
       let lastLocation = '';
-      
-      // Function to enable scrolling ticker for overflowing text
-      function enableScrollingTicker(element, isFlex = false) {
-        if (!element) return;
-        
-        // Remove any existing scrolling setup
-        const existingContainer = element.querySelector('.scrolling-container, .scrolling-flex-container');
-        const existingContent = element.querySelector('.scrolling-content, .scrolling-flex-content');
-        
-        if (existingContainer && existingContent) {
-          // Restore original content
-          element.innerHTML = '';
-          if (isFlex) {
-            // For flex elements, restore the structure (get first copy before separator)
-            const children = Array.from(existingContent.children);
-            const separatorIndex = children.findIndex((child) => {
-              return child.nodeType === Node.TEXT_NODE && child.textContent && child.textContent.includes('•');
-            });
-            if (separatorIndex > 0) {
-              children.slice(0, separatorIndex).forEach(child => {
-                element.appendChild(child.cloneNode(true));
-              });
-            } else {
-              // Fallback: take first half of children
-              const halfPoint = Math.ceil(children.length / 2);
-              children.slice(0, halfPoint).forEach(child => {
-                element.appendChild(child.cloneNode(true));
-              });
-            }
-          } else {
-            // For simple text elements, restore the text content (first copy before separator)
-            const fullText = existingContent.textContent || '';
-            const separatorIndex = fullText.indexOf('    •    ');
-            if (separatorIndex > 0) {
-              element.textContent = fullText.substring(0, separatorIndex);
-            } else {
-              // Fallback: take first half
-              const halfPoint = Math.ceil(fullText.length / 2);
-              element.textContent = fullText.substring(0, halfPoint);
-            }
-          }
-        }
-        
-        // Use requestAnimationFrame to ensure DOM is updated
-        requestAnimationFrame(() => {
-          const containerWidth = element.offsetWidth;
-          if (containerWidth === 0) return;
-          
-          let originalContentWidth = 0;
-          let children = [];
-          
-          if (isFlex) {
-            // For flex elements, measure the total width of children
-            children = Array.from(element.children);
-            if (children.length === 0) return;
-            
-            // Create a temporary wrapper to measure original content width
-            const tempWrapper = document.createElement('div');
-            tempWrapper.style.position = 'absolute';
-            tempWrapper.style.visibility = 'hidden';
-            tempWrapper.style.whiteSpace = 'nowrap';
-            tempWrapper.style.display = 'inline-flex';
-            tempWrapper.style.alignItems = 'center';
-            tempWrapper.style.gap = getComputedStyle(element).gap;
-            tempWrapper.style.fontSize = getComputedStyle(element).fontSize;
-            tempWrapper.style.fontFamily = getComputedStyle(element).fontFamily;
-            
-            children.forEach(child => {
-              tempWrapper.appendChild(child.cloneNode(true));
-            });
-            
-            document.body.appendChild(tempWrapper);
-            originalContentWidth = tempWrapper.offsetWidth;
-            document.body.removeChild(tempWrapper);
-          } else {
-            // For simple text elements
-            const text = element.textContent || element.innerText;
-            if (!text.trim()) return;
-            
-            // Create temporary element to measure text width
-            const temp = document.createElement('span');
-            temp.style.position = 'absolute';
-            temp.style.visibility = 'hidden';
-            temp.style.whiteSpace = 'nowrap';
-            temp.style.fontSize = getComputedStyle(element).fontSize;
-            temp.style.fontWeight = getComputedStyle(element).fontWeight;
-            temp.style.fontFamily = getComputedStyle(element).fontFamily;
-            temp.textContent = text;
-            document.body.appendChild(temp);
-            originalContentWidth = temp.offsetWidth;
-            document.body.removeChild(temp);
-          }
-          
-          // Only enable scrolling if content overflows
-          if (originalContentWidth > containerWidth) {
-            const separator = '    •    '; // Larger spacing
-            const scrollDuration = Math.max(10, Math.min(20, (originalContentWidth / 50)));
-            
-            if (isFlex) {
-              // Create container and content wrapper
-              const container = document.createElement('div');
-              container.className = 'scrolling-flex-container';
-              
-              const content = document.createElement('div');
-              content.className = 'scrolling-flex-content';
-              content.style.gap = getComputedStyle(element).gap;
-              
-              // Build duplicated content: [Original] [Separator] [Original]
-              children.forEach(child => {
-                content.appendChild(child.cloneNode(true));
-              });
-              
-              const separatorNode = document.createTextNode(separator);
-              content.appendChild(separatorNode);
-              
-              children.forEach(child => {
-                content.appendChild(child.cloneNode(true));
-              });
-              
-              // Measure the width of content + separator to get the reset point
-              // We'll scroll by this amount so when it loops, the duplicate is already visible
-              const tempMeasure = document.createElement('div');
-              tempMeasure.style.position = 'absolute';
-              tempMeasure.style.visibility = 'hidden';
-              tempMeasure.style.whiteSpace = 'nowrap';
-              tempMeasure.style.display = 'inline-flex';
-              tempMeasure.style.alignItems = 'center';
-              tempMeasure.style.gap = getComputedStyle(element).gap;
-              tempMeasure.style.fontSize = getComputedStyle(element).fontSize;
-              tempMeasure.style.fontFamily = getComputedStyle(element).fontFamily;
-              
-              children.forEach(child => {
-                tempMeasure.appendChild(child.cloneNode(true));
-              });
-              tempMeasure.appendChild(separatorNode.cloneNode(true));
-              
-              document.body.appendChild(tempMeasure);
-              const scrollDistance = tempMeasure.offsetWidth;
-              document.body.removeChild(tempMeasure);
-              
-              // Scroll by content + separator width so duplicate appears seamlessly
-              content.style.setProperty('--scroll-distance', `-${scrollDistance}px`);
-              content.style.setProperty('--scroll-duration', `${scrollDuration}s`);
-              
-              container.appendChild(content);
-              element.innerHTML = '';
-              element.appendChild(container);
-              
-              // Start CSS animation
-              requestAnimationFrame(() => {
-                content.classList.add('scrolling');
-              });
-            } else {
-              // Create container and content wrapper
-              const container = document.createElement('div');
-              container.className = 'scrolling-container';
-              
-              const content = document.createElement('div');
-              content.className = 'scrolling-content';
-              const text = element.textContent || element.innerText;
-              
-              // Build duplicated content: [Original] [Separator] [Original]
-              content.textContent = text + separator + text;
-              
-              // Measure the width of content + separator to get the reset point
-              const tempMeasure = document.createElement('span');
-              tempMeasure.style.position = 'absolute';
-              tempMeasure.style.visibility = 'hidden';
-              tempMeasure.style.whiteSpace = 'nowrap';
-              tempMeasure.style.fontSize = getComputedStyle(element).fontSize;
-              tempMeasure.style.fontWeight = getComputedStyle(element).fontWeight;
-              tempMeasure.style.fontFamily = getComputedStyle(element).fontFamily;
-              tempMeasure.textContent = text + separator;
-              
-              document.body.appendChild(tempMeasure);
-              const scrollDistance = tempMeasure.offsetWidth;
-              document.body.removeChild(tempMeasure);
-              
-              // Scroll by content + separator width so duplicate appears seamlessly
-              content.style.setProperty('--scroll-distance', `-${scrollDistance}px`);
-              content.style.setProperty('--scroll-duration', `${scrollDuration}s`);
-              
-              container.appendChild(content);
-              element.innerHTML = '';
-              element.appendChild(container);
-              
-              // Start CSS animation
-              requestAnimationFrame(() => {
-                content.classList.add('scrolling');
-              });
-            }
-          }
-        });
-      }
       
       // Hamburger menu elements
       const hamburgerMenuBtn = document.getElementById('hamburger-menu-btn');
@@ -7129,9 +6890,9 @@ async function checkAuthAndInit() {
         try {
           // Update title and artist
           const cachedTitle = cacheData.title || '';
-          if (cachedTitle !== lastTitle && cachedTitle) {
+          const titleChanged = cachedTitle !== lastTitle && cachedTitle;
+          if (titleChanged) {
             currentlyPlayingTitle.textContent = cachedTitle;
-            enableScrollingTicker(currentlyPlayingTitle, false);
             lastTitle = cachedTitle;
           }
           
@@ -7147,7 +6908,8 @@ async function checkAuthAndInit() {
             cachedArtistAlbumStr = 'Sonos';
           }
           
-          if (cachedArtistAlbumStr !== lastArtistAlbum) {
+          const artistChanged = cachedArtistAlbumStr !== lastArtistAlbum;
+          if (artistChanged) {
             currentlyPlayingArtist.innerHTML = '';
             if (cacheData.artist) {
               const artistSpan = document.createElement('span');
@@ -7164,15 +6926,14 @@ async function checkAuthAndInit() {
             if (!cacheData.artist && !cacheData.album) {
               currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
             }
-            enableScrollingTicker(currentlyPlayingArtist, true);
             lastArtistAlbum = cachedArtistAlbumStr;
           }
 
           // Update playlist name/location
           const cachedLocation = cacheData.playlistName || cacheData.groupName || '';
-          if (cachedLocation !== lastLocation && cachedLocation) {
+          const locationChanged = cachedLocation !== lastLocation && cachedLocation;
+          if (locationChanged) {
             currentlyPlayingLocation.innerHTML = `<span>${cachedLocation}</span>`;
-            enableScrollingTicker(currentlyPlayingLocation, false);
             lastLocation = cachedLocation;
           }
 
@@ -7580,9 +7341,9 @@ async function checkAuthAndInit() {
             // Update all DOM elements together synchronously
             // Update title and artist
             const newTitle = title || '';
-            if (newTitle !== lastTitle) {
+            const titleChanged = newTitle !== lastTitle;
+            if (titleChanged) {
               currentlyPlayingTitle.textContent = newTitle;
-              enableScrollingTicker(currentlyPlayingTitle, false);
               lastTitle = newTitle;
             }
             
@@ -7598,7 +7359,8 @@ async function checkAuthAndInit() {
               artistAlbumStr = 'Sonos';
             }
             
-            if (artistAlbumStr !== lastArtistAlbum) {
+            const artistChanged = artistAlbumStr !== lastArtistAlbum;
+            if (artistChanged) {
               currentlyPlayingArtist.innerHTML = '';
               if (artist) {
                 const artistSpan = document.createElement('span');
@@ -7615,7 +7377,6 @@ async function checkAuthAndInit() {
               if (!artist && !album) {
                 currentlyPlayingArtist.innerHTML = '<span>Sonos</span>';
               }
-              enableScrollingTicker(currentlyPlayingArtist, true);
               lastArtistAlbum = artistAlbumStr;
             }
 
@@ -7645,9 +7406,9 @@ async function checkAuthAndInit() {
 
             // Update playlist name/location
             const newLocation = playlistName || groupName || '';
-            if (newLocation !== lastLocation) {
+            const locationChanged = newLocation !== lastLocation;
+            if (locationChanged) {
               currentlyPlayingLocation.innerHTML = `<span>${newLocation}</span>`;
-              enableScrollingTicker(currentlyPlayingLocation, false);
               lastLocation = newLocation;
             }
 
@@ -8115,6 +7876,11 @@ async function checkAuthAndInit() {
       const currentlyPlayingContent = document.querySelector('.currently-playing-content');
       
       currentlyPlayingContent.addEventListener('click', (e) => {
+        // Don't toggle if clicking on skip song button
+        if (e.target.closest('#skip-song-button') || e.target.closest('.skip-song-button')) {
+          return;
+        }
+        
         // Don't toggle if clicking on interactive elements
         const roomVolume = e.target.closest('.currently-playing-room-volume');
         const roomSlider = e.target.closest('.currently-playing-room-slider');
