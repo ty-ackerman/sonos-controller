@@ -3984,8 +3984,25 @@ async function checkAuthAndInit() {
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Status response data:`, {
       loggedIn: state.loggedIn,
       expiresAt: state.expiresAt,
-      expiresAtDate: state.expiresAt ? new Date(state.expiresAt).toISOString() : null
+      expiresAtDate: state.expiresAt ? new Date(state.expiresAt).toISOString() : null,
+      debug: state.debug
     });
+    
+    // Log detailed debug info if available
+    if (state.debug) {
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Debug details:`, {
+        hasAccessToken: state.debug.hasAccessToken,
+        hasRefreshToken: state.debug.hasRefreshToken,
+        expiresAt: state.debug.expiresAt,
+        expiresAtDate: state.debug.expiresAtDate,
+        currentTimeDate: state.debug.currentTimeDate,
+        isExpired: state.debug.isExpired,
+        created_at: state.debug.created_at,
+        created_atDate: state.debug.created_atDate,
+        timeSinceCreation: state.debug.timeSinceCreation,
+        timeSinceCreationSeconds: state.debug.timeSinceCreation ? (state.debug.timeSinceCreation / 1000).toFixed(2) : null
+      });
+    }
     
     const loggedIn = Boolean(state.loggedIn);
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Setting auth UI with loggedIn:`, loggedIn);

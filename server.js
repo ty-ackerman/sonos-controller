@@ -360,7 +360,10 @@ app.get('/auth/status', async (req, res) => {
     
     if (!deviceId) {
       console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] No deviceId, returning loggedIn: false`);
-      return res.json({ loggedIn: false });
+      return res.json({ 
+        loggedIn: false,
+        debug: { reason: 'no_device_id' }
+      });
     }
 
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Loading tokens from database...`);
@@ -382,7 +385,14 @@ app.get('/auth/status', async (req, res) => {
     if (isTokenExpiredByAge(tokens.created_at)) {
       console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token expired by age (14 days), clearing tokens`);
       await clearTokens(deviceId);
-      return res.json({ loggedIn: false });
+      return res.json({ 
+        loggedIn: false,
+        debug: {
+          reason: 'token_expired_by_age',
+          created_at: tokens.created_at,
+          created_atDate: tokens.created_at ? new Date(tokens.created_at).toISOString() : null
+        }
+      });
     }
 
     let loggedIn = Boolean(tokens.access_token) && Date.now() < (tokens.expires_at || 0);
@@ -452,19 +462,42 @@ app.get('/auth/status', async (req, res) => {
       console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Not logged in (no valid tokens)`);
     }
 
-    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Returning auth status:`, {
+    const responseData = {
       loggedIn,
-      expiresAt: loggedIn ? tokens.expires_at || 0 : 0
-    });
+      expiresAt: loggedIn ? tokens.expires_at || 0 : 0,
+      // Add debug info to help diagnose issues
+      debug: {
+        hasAccessToken: !!tokens.access_token,
+        hasRefreshToken: !!tokens.refresh_token,
+        expiresAt: tokens.expires_at,
+        expiresAtDate: tokens.expires_at ? new Date(tokens.expires_at).toISOString() : null,
+        currentTime: Date.now(),
+        currentTimeDate: new Date().toISOString(),
+        isExpired: tokens.expires_at ? Date.now() >= tokens.expires_at : null,
+        created_at: tokens.created_at,
+        created_atDate: tokens.created_at ? new Date(tokens.created_at).toISOString() : null,
+        timeSinceCreation: tokens.created_at ? Date.now() - new Date(tokens.created_at).getTime() : null,
+        deviceIdPreview: deviceId.substring(0, 8) + '...'
+      }
+    };
     
-    res.json({ loggedIn, expiresAt: loggedIn ? tokens.expires_at || 0 : 0 });
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Returning auth status:`, responseData);
+    
+    res.json(responseData);
   } catch (error) {
     console.error(`[AUTH DEBUG ${timestamp}] [${requestId}] Auth status check failed:`, {
       errorMessage: error?.message ?? error,
       errorStack: error?.stack,
       errorType: error.constructor.name
     });
-    res.json({ loggedIn: false });
+    res.json({ 
+      loggedIn: false,
+      debug: {
+        reason: 'exception',
+        errorMessage: error?.message ?? String(error),
+        errorType: error.constructor.name
+      }
+    });
   }
 });
 
