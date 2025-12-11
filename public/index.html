@@ -8048,7 +8048,19 @@ async function checkAuthAndInit() {
         ensureHeaderFixed();
         // Loading screen is already visible by default
         applyAuthFeedback();
-        checkAuthAndInit();
+        
+        // Check if we just completed OAuth - add delay to ensure tokens are persisted
+        const params = new URLSearchParams(window.location.search);
+        const authState = params.get('auth');
+        if (authState === 'success') {
+          // Add delay after OAuth success to ensure tokens are fully persisted to database
+          // before checking auth status
+          setTimeout(() => {
+            checkAuthAndInit();
+          }, 1000);
+        } else {
+          checkAuthAndInit();
+        }
       });
       
       // Refresh playback state when app becomes visible (works for tab switching)

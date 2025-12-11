@@ -343,17 +343,37 @@ app.get('/auth/status', async (req, res) => {
     let loggedIn = Boolean(tokens.access_token) && Date.now() < (tokens.expires_at || 0);
 
     if (loggedIn) {
-      try {
-        // Create a temporary tokens object for sonosRequest
-        const tempTokens = { ...tokens };
-        await sonosRequestWithTokens('/households', tempTokens, deviceId);
-      } catch (error) {
-        if (error.status === 401) {
-          await clearTokens(deviceId);
-          loggedIn = false;
-        } else {
-          console.warn('Failed to verify token during status check:', error?.message ?? error);
+      // Check if tokens are very fresh (created within last 5 seconds)
+      // Skip verification for fresh tokens to avoid race conditions after OAuth
+      const isFreshToken = tokens.created_at && 
+        (Date.now() - new Date(tokens.created_at).getTime()) < 5000 &&
+        (Date.now() - new Date(tokens.created_at).getTime()) >= 0;
+      
+      if (!isFreshToken) {
+        try {
+          // Create a temporary tokens object for sonosRequest
+          const tempTokens = { ...tokens };
+          await sonosRequestWithTokens('/households', tempTokens, deviceId);
+        } catch (error) {
+          // Only clear tokens on actual authentication failures (401), not network errors
+          if (error.status === 401) {
+            // Double-check: only clear if it's a confirmed auth failure, not a transient error
+            await clearTokens(deviceId);
+            loggedIn = false;
+          } else {
+            // Network errors, timeouts, or other transient failures should not clear tokens
+            // Log for debugging but keep tokens intact
+            console.warn('Failed to verify token during status check (non-auth error):', {
+              status: error.status,
+              message: error?.message ?? error,
+              deviceId: deviceId.substring(0, 8) + '...'
+            });
+            // Don't change loggedIn status on transient errors - tokens are still valid
+          }
         }
+      } else {
+        // Fresh tokens - skip verification to avoid race conditions
+        // Trust that tokens are valid if they were just created
       }
     }
 
