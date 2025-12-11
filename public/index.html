@@ -3981,6 +3981,7 @@ async function checkAuthAndInit() {
     }
 
     const state = await response.json();
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Status response data (full):`, JSON.stringify(state, null, 2));
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Status response data:`, {
       loggedIn: state.loggedIn,
       expiresAt: state.expiresAt,
@@ -3990,6 +3991,7 @@ async function checkAuthAndInit() {
     
     // Log detailed debug info if available
     if (state.debug) {
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Debug details (full):`, JSON.stringify(state.debug, null, 2));
       console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Debug details:`, {
         hasAccessToken: state.debug.hasAccessToken,
         hasRefreshToken: state.debug.hasRefreshToken,
@@ -4000,8 +4002,11 @@ async function checkAuthAndInit() {
         created_at: state.debug.created_at,
         created_atDate: state.debug.created_atDate,
         timeSinceCreation: state.debug.timeSinceCreation,
-        timeSinceCreationSeconds: state.debug.timeSinceCreation ? (state.debug.timeSinceCreation / 1000).toFixed(2) : null
+        timeSinceCreationSeconds: state.debug.timeSinceCreation ? (state.debug.timeSinceCreation / 1000).toFixed(2) : null,
+        reason: state.debug.reason
       });
+    } else {
+      console.warn(`[AUTH DEBUG ${timestamp}] [${requestId}] No debug object in response!`);
     }
     
     const loggedIn = Boolean(state.loggedIn);

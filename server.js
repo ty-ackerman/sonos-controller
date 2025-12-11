@@ -367,10 +367,14 @@ app.get('/auth/status', async (req, res) => {
     }
 
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Loading tokens from database...`);
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Device ID being used:`, deviceId);
     const tokens = await loadTokens(deviceId);
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Raw tokens object:`, JSON.stringify(tokens, null, 2));
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Tokens loaded:`, {
       hasAccessToken: !!tokens.access_token,
       hasRefreshToken: !!tokens.refresh_token,
+      accessTokenPreview: tokens.access_token ? `${tokens.access_token.substring(0, 20)}...` : null,
+      refreshTokenPreview: tokens.refresh_token ? `${tokens.refresh_token.substring(0, 20)}...` : null,
       expiresAt: tokens.expires_at,
       expiresAtDate: tokens.expires_at ? new Date(tokens.expires_at).toISOString() : null,
       expiresAtMs: tokens.expires_at,
@@ -378,7 +382,8 @@ app.get('/auth/status', async (req, res) => {
       isExpired: tokens.expires_at ? Date.now() >= tokens.expires_at : true,
       created_at: tokens.created_at,
       created_atTimestamp: tokens.created_at ? new Date(tokens.created_at).getTime() : null,
-      timeSinceCreation: tokens.created_at ? Date.now() - new Date(tokens.created_at).getTime() : null
+      timeSinceCreation: tokens.created_at ? Date.now() - new Date(tokens.created_at).getTime() : null,
+      tokenKeys: Object.keys(tokens)
     });
     
     // Check if token is older than 14 days - require re-authentication
@@ -462,26 +467,32 @@ app.get('/auth/status', async (req, res) => {
       console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Not logged in (no valid tokens)`);
     }
 
-    const responseData = {
-      loggedIn,
-      expiresAt: loggedIn ? tokens.expires_at || 0 : 0,
-      // Add debug info to help diagnose issues
-      debug: {
-        hasAccessToken: !!tokens.access_token,
-        hasRefreshToken: !!tokens.refresh_token,
-        expiresAt: tokens.expires_at,
-        expiresAtDate: tokens.expires_at ? new Date(tokens.expires_at).toISOString() : null,
-        currentTime: Date.now(),
-        currentTimeDate: new Date().toISOString(),
-        isExpired: tokens.expires_at ? Date.now() >= tokens.expires_at : null,
-        created_at: tokens.created_at,
-        created_atDate: tokens.created_at ? new Date(tokens.created_at).toISOString() : null,
-        timeSinceCreation: tokens.created_at ? Date.now() - new Date(tokens.created_at).getTime() : null,
-        deviceIdPreview: deviceId.substring(0, 8) + '...'
-      }
+    // Build debug object with explicit checks
+    const debugInfo = {
+      hasAccessToken: tokens && typeof tokens.access_token !== 'undefined' ? !!tokens.access_token : false,
+      hasRefreshToken: tokens && typeof tokens.refresh_token !== 'undefined' ? !!tokens.refresh_token : false,
+      expiresAt: tokens?.expires_at || null,
+      expiresAtDate: tokens?.expires_at ? new Date(tokens.expires_at).toISOString() : null,
+      currentTime: Date.now(),
+      currentTimeDate: new Date().toISOString(),
+      isExpired: tokens?.expires_at ? Date.now() >= tokens.expires_at : null,
+      created_at: tokens?.created_at || null,
+      created_atDate: tokens?.created_at ? new Date(tokens.created_at).toISOString() : null,
+      timeSinceCreation: tokens?.created_at ? Date.now() - new Date(tokens.created_at).getTime() : null,
+      deviceIdPreview: deviceId ? deviceId.substring(0, 8) + '...' : 'none',
+      tokensObjectKeys: tokens ? Object.keys(tokens) : [],
+      tokensObjectType: tokens ? typeof tokens : 'undefined',
+      tokensIsNull: tokens === null,
+      tokensIsUndefined: tokens === undefined
     };
     
-    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Returning auth status:`, responseData);
+    const responseData = {
+      loggedIn,
+      expiresAt: loggedIn ? tokens?.expires_at || 0 : 0,
+      debug: debugInfo
+    };
+    
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Returning auth status:`, JSON.stringify(responseData, null, 2));
     
     res.json(responseData);
   } catch (error) {
