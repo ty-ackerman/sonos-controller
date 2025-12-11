@@ -285,85 +285,157 @@ app.get('/auth/sonos/login', async (req, res) => {
 
 app.get('/auth/sonos/callback', async (req, res) => {
   const { code, state, error } = req.query;
+  const timestamp = new Date().toISOString();
+
+  console.log(`[AUTH DEBUG ${timestamp}] OAuth callback received:`, {
+    hasCode: !!code,
+    hasState: !!state,
+    hasError: !!error,
+    statePreview: state ? `${state.substring(0, 20)}...` : null
+  });
 
   if (error) {
-    console.error('Sonos OAuth error:', error);
+    console.error(`[AUTH DEBUG ${timestamp}] Sonos OAuth error:`, error);
     return res.redirect('/?auth=error');
   }
 
   if (!code) {
+    console.log(`[AUTH DEBUG ${timestamp}] Missing code, redirecting to missing_code`);
     return res.redirect('/?auth=missing_code');
   }
 
   if (!state) {
+    console.log(`[AUTH DEBUG ${timestamp}] Missing state, redirecting to invalid_state`);
     return res.redirect('/?auth=invalid_state');
   }
 
   // Extract device_id from state (format: {oauthState}:{deviceId})
   const stateParts = state.split(':');
   if (stateParts.length !== 2) {
+    console.log(`[AUTH DEBUG ${timestamp}] Invalid state format, redirecting to invalid_state`);
     return res.redirect('/?auth=invalid_state');
   }
 
   const [oauthState, deviceId] = stateParts;
+  console.log(`[AUTH DEBUG ${timestamp}] Extracted deviceId:`, deviceId.substring(0, 8) + '...');
 
   // Validate OAuth state from database
   const storedState = await getOAuthState(deviceId);
+  console.log(`[AUTH DEBUG ${timestamp}] OAuth state validation:`, {
+    storedStateExists: !!storedState,
+    storedStatePreview: storedState ? `${storedState.substring(0, 10)}...` : null,
+    receivedStatePreview: `${oauthState.substring(0, 10)}...`,
+    match: storedState === oauthState
+  });
+  
   if (!storedState || storedState !== oauthState) {
+    console.log(`[AUTH DEBUG ${timestamp}] OAuth state mismatch, redirecting to invalid_state`);
     return res.redirect('/?auth=invalid_state');
   }
 
   try {
+    console.log(`[AUTH DEBUG ${timestamp}] Starting token exchange for deviceId:`, deviceId.substring(0, 8) + '...');
     await exchangeCodeForTokens(code, deviceId);
+    console.log(`[AUTH DEBUG ${timestamp}] Token exchange successful, deleting OAuth state`);
     await deleteOAuthState(deviceId);
+    console.log(`[AUTH DEBUG ${timestamp}] Redirecting to /?auth=success`);
     res.redirect('/?auth=success');
   } catch (err) {
-    console.error('Failed to exchange code for tokens', err);
+    console.error(`[AUTH DEBUG ${timestamp}] Failed to exchange code for tokens:`, err);
     await deleteOAuthState(deviceId);
     res.redirect('/?auth=error');
   }
 });
 
 app.get('/auth/status', async (req, res) => {
+  const timestamp = new Date().toISOString();
+  const requestId = Math.random().toString(36).substring(7);
+  
   try {
     const deviceId = req.query.device_id;
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] /auth/status called:`, {
+      deviceId: deviceId ? deviceId.substring(0, 8) + '...' : null,
+      hasDeviceId: !!deviceId
+    });
     
     if (!deviceId) {
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] No deviceId, returning loggedIn: false`);
       return res.json({ loggedIn: false });
     }
 
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Loading tokens from database...`);
     const tokens = await loadTokens(deviceId);
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Tokens loaded:`, {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      expiresAt: tokens.expires_at,
+      expiresAtDate: tokens.expires_at ? new Date(tokens.expires_at).toISOString() : null,
+      expiresAtMs: tokens.expires_at,
+      currentTimeMs: Date.now(),
+      isExpired: tokens.expires_at ? Date.now() >= tokens.expires_at : true,
+      created_at: tokens.created_at,
+      created_atTimestamp: tokens.created_at ? new Date(tokens.created_at).getTime() : null,
+      timeSinceCreation: tokens.created_at ? Date.now() - new Date(tokens.created_at).getTime() : null
+    });
     
     // Check if token is older than 14 days - require re-authentication
     if (isTokenExpiredByAge(tokens.created_at)) {
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token expired by age (14 days), clearing tokens`);
       await clearTokens(deviceId);
       return res.json({ loggedIn: false });
     }
 
     let loggedIn = Boolean(tokens.access_token) && Date.now() < (tokens.expires_at || 0);
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Initial loggedIn check:`, {
+      hasAccessToken: !!tokens.access_token,
+      expiresAtValid: tokens.expires_at ? Date.now() < tokens.expires_at : false,
+      loggedIn
+    });
 
     if (loggedIn) {
       // Check if tokens are very fresh (created within last 5 seconds)
       // Skip verification for fresh tokens to avoid race conditions after OAuth
+      const createdTime = tokens.created_at ? new Date(tokens.created_at).getTime() : null;
+      const timeSinceCreation = createdTime ? Date.now() - createdTime : null;
       const isFreshToken = tokens.created_at && 
-        (Date.now() - new Date(tokens.created_at).getTime()) < 5000 &&
-        (Date.now() - new Date(tokens.created_at).getTime()) >= 0;
+        timeSinceCreation !== null &&
+        timeSinceCreation < 5000 &&
+        timeSinceCreation >= 0;
+      
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token freshness check:`, {
+        created_at: tokens.created_at,
+        createdTime,
+        currentTime: Date.now(),
+        timeSinceCreation,
+        isFreshToken,
+        willSkipVerification: isFreshToken
+      });
       
       if (!isFreshToken) {
+        console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token not fresh, verifying with Sonos API...`);
         try {
           // Create a temporary tokens object for sonosRequest
           const tempTokens = { ...tokens };
           await sonosRequestWithTokens('/households', tempTokens, deviceId);
+          console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token verification successful`);
         } catch (error) {
+          console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token verification failed:`, {
+            errorStatus: error.status,
+            errorMessage: error?.message ?? error,
+            errorType: error.constructor.name,
+            willClearTokens: error.status === 401
+          });
+          
           // Only clear tokens on actual authentication failures (401), not network errors
           if (error.status === 401) {
             // Double-check: only clear if it's a confirmed auth failure, not a transient error
+            console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Clearing tokens due to 401 error`);
             await clearTokens(deviceId);
             loggedIn = false;
           } else {
             // Network errors, timeouts, or other transient failures should not clear tokens
             // Log for debugging but keep tokens intact
-            console.warn('Failed to verify token during status check (non-auth error):', {
+            console.warn(`[AUTH DEBUG ${timestamp}] [${requestId}] Failed to verify token during status check (non-auth error):`, {
               status: error.status,
               message: error?.message ?? error,
               deviceId: deviceId.substring(0, 8) + '...'
@@ -374,12 +446,24 @@ app.get('/auth/status', async (req, res) => {
       } else {
         // Fresh tokens - skip verification to avoid race conditions
         // Trust that tokens are valid if they were just created
+        console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Skipping verification for fresh token`);
       }
+    } else {
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Not logged in (no valid tokens)`);
     }
 
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Returning auth status:`, {
+      loggedIn,
+      expiresAt: loggedIn ? tokens.expires_at || 0 : 0
+    });
+    
     res.json({ loggedIn, expiresAt: loggedIn ? tokens.expires_at || 0 : 0 });
   } catch (error) {
-    console.error('Auth status check failed:', error?.message ?? error);
+    console.error(`[AUTH DEBUG ${timestamp}] [${requestId}] Auth status check failed:`, {
+      errorMessage: error?.message ?? error,
+      errorStack: error?.stack,
+      errorType: error.constructor.name
+    });
     res.json({ loggedIn: false });
   }
 });
@@ -2142,6 +2226,9 @@ async function clearGroupQueue(groupId, deviceId) {
 }
 
 async function exchangeCodeForTokens(code, deviceId) {
+  const timestamp = new Date().toISOString();
+  console.log(`[AUTH DEBUG ${timestamp}] exchangeCodeForTokens called for deviceId:`, deviceId.substring(0, 8) + '...');
+  
   if (!deviceId) {
     throw new Error('Device ID is required to exchange tokens');
   }
@@ -2152,6 +2239,7 @@ async function exchangeCodeForTokens(code, deviceId) {
     redirect_uri: REDIRECT_URI
   });
 
+  console.log(`[AUTH DEBUG ${timestamp}] Calling Sonos token endpoint...`);
   const response = await fetch(`${SONOS_AUTH_BASE}/login/v3/oauth/access`, {
     method: 'POST',
     headers: {
@@ -2163,12 +2251,41 @@ async function exchangeCodeForTokens(code, deviceId) {
 
   if (!response.ok) {
     const text = await response.text();
+    console.error(`[AUTH DEBUG ${timestamp}] Token exchange failed with status ${response.status}:`, text);
     throw new Error(`OAuth token exchange failed: ${text}`);
   }
 
   const payload = await response.json();
+  console.log(`[AUTH DEBUG ${timestamp}] Token exchange response received:`, {
+    hasAccessToken: !!payload.access_token,
+    hasRefreshToken: !!payload.refresh_token,
+    expiresIn: payload.expires_in
+  });
+  
   const tokens = storeTokens(payload);
-  await saveTokens(tokens, deviceId);
+  console.log(`[AUTH DEBUG ${timestamp}] Tokens processed:`, {
+    hasAccessToken: !!tokens.access_token,
+    hasRefreshToken: !!tokens.refresh_token,
+    expiresAt: tokens.expires_at,
+    expiresAtDate: new Date(tokens.expires_at).toISOString()
+  });
+  
+  console.log(`[AUTH DEBUG ${timestamp}] Saving tokens to database...`);
+  const savedTokens = await saveTokens(tokens, deviceId);
+  console.log(`[AUTH DEBUG ${timestamp}] Tokens saved successfully. Checking if they can be loaded...`);
+  
+  // Verify tokens were saved by loading them back
+  const loadedTokens = await loadTokens(deviceId);
+  console.log(`[AUTH DEBUG ${timestamp}] Tokens loaded back from DB:`, {
+    hasAccessToken: !!loadedTokens.access_token,
+    hasRefreshToken: !!loadedTokens.refresh_token,
+    expiresAt: loadedTokens.expires_at,
+    created_at: loadedTokens.created_at,
+    created_atTimestamp: loadedTokens.created_at ? new Date(loadedTokens.created_at).getTime() : null,
+    timeSinceCreation: loadedTokens.created_at ? Date.now() - new Date(loadedTokens.created_at).getTime() : null
+  });
+  
+  return tokens;
 }
 
 function storeTokens(tokenResponse) {

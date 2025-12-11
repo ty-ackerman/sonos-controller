@@ -3404,7 +3404,11 @@ settingsStatusLabel.textContent = '';
       }
 
       function login() {
+        const timestamp = new Date().toISOString();
         const deviceId = getDeviceId();
+        console.log(`[AUTH DEBUG ${timestamp}] login() called, redirecting to OAuth`);
+        console.log(`[AUTH DEBUG ${timestamp}] Device ID:`, deviceId);
+        console.log(`[AUTH DEBUG ${timestamp}] Current URL:`, window.location.href);
         window.location.href = `/auth/sonos/login?device_id=${encodeURIComponent(deviceId)}`;
       }
 
@@ -3943,6 +3947,13 @@ function setAuthUI(loggedIn) {
 }
 
 async function checkAuthAndInit() {
+  const timestamp = new Date().toISOString();
+  const requestId = Math.random().toString(36).substring(7);
+  
+  console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] checkAuthAndInit called`);
+  console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Current URL:`, window.location.href);
+  console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] URL params:`, new URLSearchParams(window.location.search).toString());
+  
   try {
     // Force front desk view on page load/refresh - clear manager view if stored
     const stored = localStorage.getItem(VIEW_STORAGE_KEY);
@@ -3952,13 +3963,32 @@ async function checkAuthAndInit() {
     }
     
     const deviceId = getDeviceId();
-    const response = await fetch(`/auth/status?device_id=${encodeURIComponent(deviceId)}`);
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Device ID:`, deviceId);
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Calling /auth/status...`);
+    
+    const statusUrl = `/auth/status?device_id=${encodeURIComponent(deviceId)}`;
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Status URL:`, statusUrl);
+    
+    const response = await fetch(statusUrl);
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Status response:`, {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText
+    });
+    
     if (!response.ok) {
       throw new Error('Failed to check auth status');
     }
 
     const state = await response.json();
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Status response data:`, {
+      loggedIn: state.loggedIn,
+      expiresAt: state.expiresAt,
+      expiresAtDate: state.expiresAt ? new Date(state.expiresAt).toISOString() : null
+    });
+    
     const loggedIn = Boolean(state.loggedIn);
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Setting auth UI with loggedIn:`, loggedIn);
     setAuthUI(loggedIn);
     showView('control');
 
@@ -8044,6 +8074,10 @@ async function checkAuthAndInit() {
       });
       
       window.addEventListener('load', () => {
+        const timestamp = new Date().toISOString();
+        console.log(`[AUTH DEBUG ${timestamp}] Window load event fired`);
+        console.log(`[AUTH DEBUG ${timestamp}] Current URL:`, window.location.href);
+        
         // Ensure header is fixed on load
         ensureHeaderFixed();
         // Loading screen is already visible by default
@@ -8052,13 +8086,20 @@ async function checkAuthAndInit() {
         // Check if we just completed OAuth - add delay to ensure tokens are persisted
         const params = new URLSearchParams(window.location.search);
         const authState = params.get('auth');
+        console.log(`[AUTH DEBUG ${timestamp}] Auth state from URL:`, authState);
+        console.log(`[AUTH DEBUG ${timestamp}] All URL params:`, Object.fromEntries(params.entries()));
+        
         if (authState === 'success') {
+          console.log(`[AUTH DEBUG ${timestamp}] OAuth success detected, waiting 1000ms before checkAuthAndInit...`);
           // Add delay after OAuth success to ensure tokens are fully persisted to database
           // before checking auth status
           setTimeout(() => {
+            const delayTimestamp = new Date().toISOString();
+            console.log(`[AUTH DEBUG ${delayTimestamp}] Delay completed, calling checkAuthAndInit`);
             checkAuthAndInit();
           }, 1000);
         } else {
+          console.log(`[AUTH DEBUG ${timestamp}] No OAuth success state, calling checkAuthAndInit immediately`);
           checkAuthAndInit();
         }
       });
