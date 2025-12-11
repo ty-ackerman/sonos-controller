@@ -387,15 +387,24 @@ app.get('/auth/status', async (req, res) => {
     });
     
     // Check if token is older than 14 days - require re-authentication
-    if (isTokenExpiredByAge(tokens.created_at)) {
-      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token expired by age (14 days), clearing tokens`);
+    // Use updated_at if available (gets updated on every save), otherwise fall back to created_at
+    const ageCheckDate = tokens.updated_at || tokens.created_at;
+    if (isTokenExpiredByAge(ageCheckDate)) {
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token expired by age (14 days), clearing tokens`, {
+        ageCheckDate,
+        ageCheckDateISO: ageCheckDate ? new Date(ageCheckDate).toISOString() : null,
+        created_at: tokens.created_at,
+        updated_at: tokens.updated_at
+      });
       await clearTokens(deviceId);
       return res.json({ 
         loggedIn: false,
         debug: {
           reason: 'token_expired_by_age',
+          ageCheckDate: ageCheckDate,
+          ageCheckDateISO: ageCheckDate ? new Date(ageCheckDate).toISOString() : null,
           created_at: tokens.created_at,
-          created_atDate: tokens.created_at ? new Date(tokens.created_at).toISOString() : null
+          updated_at: tokens.updated_at
         }
       });
     }
@@ -408,20 +417,24 @@ app.get('/auth/status', async (req, res) => {
     });
 
     if (loggedIn) {
-      // Check if tokens are very fresh (created within last 5 seconds)
+      // Check if tokens are very fresh (updated within last 5 seconds)
       // Skip verification for fresh tokens to avoid race conditions after OAuth
-      const createdTime = tokens.created_at ? new Date(tokens.created_at).getTime() : null;
-      const timeSinceCreation = createdTime ? Date.now() - createdTime : null;
-      const isFreshToken = tokens.created_at && 
-        timeSinceCreation !== null &&
-        timeSinceCreation < 5000 &&
-        timeSinceCreation >= 0;
+      // Use updated_at if available (more reliable), otherwise created_at
+      const ageCheckDate = tokens.updated_at || tokens.created_at;
+      const ageCheckTime = ageCheckDate ? new Date(ageCheckDate).getTime() : null;
+      const timeSinceUpdate = ageCheckTime ? Date.now() - ageCheckTime : null;
+      const isFreshToken = ageCheckDate && 
+        timeSinceUpdate !== null &&
+        timeSinceUpdate < 5000 &&
+        timeSinceUpdate >= 0;
       
       console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token freshness check:`, {
         created_at: tokens.created_at,
-        createdTime,
+        updated_at: tokens.updated_at,
+        ageCheckDate,
+        ageCheckTime,
         currentTime: Date.now(),
-        timeSinceCreation,
+        timeSinceUpdate,
         isFreshToken,
         willSkipVerification: isFreshToken
       });
@@ -478,7 +491,10 @@ app.get('/auth/status', async (req, res) => {
       isExpired: tokens?.expires_at ? Date.now() >= tokens.expires_at : null,
       created_at: tokens?.created_at || null,
       created_atDate: tokens?.created_at ? new Date(tokens.created_at).toISOString() : null,
-      timeSinceCreation: tokens?.created_at ? Date.now() - new Date(tokens.created_at).getTime() : null,
+      updated_at: tokens?.updated_at || null,
+      updated_atDate: tokens?.updated_at ? new Date(tokens.updated_at).toISOString() : null,
+      ageCheckDate: tokens?.updated_at || tokens?.created_at || null,
+      timeSinceUpdate: tokens?.updated_at || tokens?.created_at ? Date.now() - new Date(tokens?.updated_at || tokens?.created_at).getTime() : null,
       deviceIdPreview: deviceId ? deviceId.substring(0, 8) + '...' : 'none',
       tokensObjectKeys: tokens ? Object.keys(tokens) : [],
       tokensObjectType: tokens ? typeof tokens : 'undefined',
