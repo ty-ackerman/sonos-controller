@@ -2319,32 +2319,54 @@ async function exchangeCodeForTokens(code, deviceId) {
   console.log(`[AUTH DEBUG ${timestamp}] Token exchange response received:`, {
     hasAccessToken: !!payload.access_token,
     hasRefreshToken: !!payload.refresh_token,
-    expiresIn: payload.expires_in
+    expiresIn: payload.expires_in,
+    payloadKeys: Object.keys(payload),
+    payloadPreview: JSON.stringify(payload, null, 2).substring(0, 500)
   });
   
   const tokens = storeTokens(payload);
-  console.log(`[AUTH DEBUG ${timestamp}] Tokens processed:`, {
+  console.log(`[AUTH DEBUG ${timestamp}] Tokens processed by storeTokens:`, {
     hasAccessToken: !!tokens.access_token,
     hasRefreshToken: !!tokens.refresh_token,
     expiresAt: tokens.expires_at,
-    expiresAtDate: new Date(tokens.expires_at).toISOString()
+    expiresAtDate: new Date(tokens.expires_at).toISOString(),
+    tokensObject: JSON.stringify(tokens, null, 2)
   });
+  
+  // Validate tokens before saving
+  if (!tokens.access_token || !tokens.refresh_token) {
+    const errorMsg = `storeTokens returned invalid tokens! access_token: ${!!tokens.access_token}, refresh_token: ${!!tokens.refresh_token}`;
+    console.error(`[AUTH DEBUG ${timestamp}] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
   
   console.log(`[AUTH DEBUG ${timestamp}] Saving tokens to database...`);
   const savedTokens = await saveTokens(tokens, deviceId);
   console.log(`[AUTH DEBUG ${timestamp}] Tokens saved successfully. Checking if they can be loaded...`);
   
+  // Wait a moment for database to commit
+  await new Promise(resolve => setTimeout(resolve, 200));
+  
   // Verify tokens were saved by loading them back
   const loadedTokens = await loadTokens(deviceId);
-  console.log(`[AUTH DEBUG ${timestamp}] Tokens loaded back from DB:`, {
+  console.log(`[AUTH DEBUG ${timestamp}] Tokens loaded back from DB for verification:`, {
     hasAccessToken: !!loadedTokens.access_token,
     hasRefreshToken: !!loadedTokens.refresh_token,
     expiresAt: loadedTokens.expires_at,
     created_at: loadedTokens.created_at,
+    updated_at: loadedTokens.updated_at,
     created_atTimestamp: loadedTokens.created_at ? new Date(loadedTokens.created_at).getTime() : null,
     timeSinceCreation: loadedTokens.created_at ? Date.now() - new Date(loadedTokens.created_at).getTime() : null
   });
   
+  // Final verification - if tokens are NULL, something went wrong
+  if (!loadedTokens.access_token || !loadedTokens.refresh_token) {
+    const errorMsg = `CRITICAL: Tokens were saved but verification shows NULL values! This is the root cause of the auth loop.`;
+    console.error(`[AUTH DEBUG ${timestamp}] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  
+  console.log(`[AUTH DEBUG ${timestamp}] Token exchange and save completed successfully`);
   return tokens;
 }
 
@@ -2415,6 +2437,9 @@ async function refreshAccessToken(tokens, deviceId) {
 }
 
 async function ensureValidAccessToken(deviceId) {
+  const timestamp = new Date().toISOString();
+  const requestId = Math.random().toString(36).substring(7);
+  
   if (!deviceId) {
     throw Object.assign(new Error('Device ID is required'), { status: 401 });
   }
@@ -2425,20 +2450,35 @@ async function ensureValidAccessToken(deviceId) {
   // Load tokens for this device
   let tokens = await loadTokens(deviceId);
   
+  console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] ensureValidAccessToken:`, {
+    deviceId: deviceId.substring(0, 8) + '...',
+    hasAccessToken: !!tokens?.access_token,
+    hasRefreshToken: !!tokens?.refresh_token,
+    expiresAt: tokens?.expires_at,
+    created_at: tokens?.created_at,
+    updated_at: tokens?.updated_at
+  });
+  
   if (!tokens || !tokens.access_token) {
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] No tokens found, throwing 401`);
     throw Object.assign(new Error('Not authenticated with Sonos'), { status: 401 });
   }
 
   // Check if token is older than 14 days - require re-authentication
-  if (isTokenExpiredByAge(tokens.created_at)) {
+  // Use updated_at if available (gets updated on every save), otherwise fall back to created_at
+  const ageCheckDate = tokens.updated_at || tokens.created_at;
+  if (isTokenExpiredByAge(ageCheckDate)) {
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token expired by age, clearing tokens`);
     await clearTokens(deviceId);
     throw Object.assign(new Error('Authentication expired - please log in again'), { status: 401 });
   }
 
   if (Date.now() >= tokens.expires_at) {
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token expired, refreshing...`);
     tokens = await refreshAccessToken(tokens, deviceId);
   }
 
+  console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Returning valid tokens`);
   return tokens;
 }
 

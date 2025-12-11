@@ -4459,13 +4459,34 @@ async function checkAuthAndInit() {
           showLoadingOverlay();
           
           const deviceId = getDeviceId();
+          const timestamp = new Date().toISOString();
+          console.log(`[AUTH DEBUG ${timestamp}] loadHouseholds called with deviceId:`, deviceId);
+          
           const response = await fetch(`/api/households?device_id=${encodeURIComponent(deviceId)}`);
+          
+          console.log(`[AUTH DEBUG ${timestamp}] loadHouseholds response:`, {
+            status: response.status,
+            ok: response.ok,
+            statusText: response.statusText
+          });
 
           if (response.status === 401) {
+            console.error(`[AUTH DEBUG ${timestamp}] 401 Unauthorized - tokens may be invalid or expired`);
             hideLoadingOverlay();
             setAuthUI(false);
-            showFeedback('Login required to load Sonos households.', true);
+            showFeedback('Session expired. Please login again.', true);
             favoritesStatus.textContent = 'Login required to load playlists.';
+            
+            // Clear tokens on client side since they're invalid
+            try {
+              await fetch('/auth/signout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ device_id: deviceId })
+              });
+            } catch (err) {
+              console.error('Failed to clear tokens on 401:', err);
+            }
             return;
           }
 
