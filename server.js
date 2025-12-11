@@ -623,14 +623,16 @@ app.post('/auth/refresh-all-tokens', async (req, res) => {
 
 app.get('/api/households', async (req, res) => {
   try {
-    if (!req.deviceId) {
+    // Try to get deviceId from multiple sources
+    const deviceId = req.deviceId || req.query.device_id || req.body?.device_id || req.headers['x-device-id'];
+    if (!deviceId) {
       return res.status(401).json({ error: 'Device ID is required' });
     }
-    const response = await sonosRequest('/households', {}, req.deviceId);
+    const response = await sonosRequest('/households', {}, deviceId);
     const payload = await response.json();
     res.json(payload);
   } catch (error) {
-    handleProxyError(res, error, req.deviceId);
+    handleProxyError(res, error, req.deviceId || req.query.device_id);
   }
 });
 
@@ -1202,9 +1204,13 @@ app.put('/api/playlist-vibes', async (req, res) => {
 });
 
 // Vibe time rules endpoints
-app.get('/api/vibe-time-rules', async (_req, res) => {
+app.get('/api/vibe-time-rules', async (req, res) => {
   try {
-    const rules = await loadVibeTimeRules();
+    const householdName = req.query.household_name;
+    if (!householdName) {
+      return res.status(400).json({ error: 'Household name is required' });
+    }
+    const rules = await loadVibeTimeRules(householdName);
     res.json(rules);
   } catch (error) {
     console.error('Error loading vibe time rules:', error);
@@ -1214,8 +1220,12 @@ app.get('/api/vibe-time-rules', async (_req, res) => {
 
 app.post('/api/vibe-time-rules', async (req, res) => {
   try {
+    const householdName = req.query.household_name || req.body?.household_name;
+    if (!householdName) {
+      return res.status(400).json({ error: 'Household name is required' });
+    }
     const rule = req.body ?? {};
-    const saved = await saveVibeTimeRule(rule);
+    const saved = await saveVibeTimeRule(rule, householdName);
     res.json(saved);
   } catch (error) {
     res
@@ -1226,12 +1236,16 @@ app.post('/api/vibe-time-rules', async (req, res) => {
 
 app.put('/api/vibe-time-rules/:id', async (req, res) => {
   try {
+    const householdName = req.query.household_name || req.body?.household_name;
+    if (!householdName) {
+      return res.status(400).json({ error: 'Household name is required' });
+    }
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       return res.status(400).json({ error: 'Invalid rule ID' });
     }
     const rule = { ...req.body, id };
-    const saved = await saveVibeTimeRule(rule);
+    const saved = await saveVibeTimeRule(rule, householdName);
     res.json(saved);
   } catch (error) {
     res
@@ -1242,11 +1256,15 @@ app.put('/api/vibe-time-rules/:id', async (req, res) => {
 
 app.delete('/api/vibe-time-rules/:id', async (req, res) => {
   try {
+    const householdName = req.query.household_name;
+    if (!householdName) {
+      return res.status(400).json({ error: 'Household name is required' });
+    }
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       return res.status(400).json({ error: 'Invalid rule ID' });
     }
-    await deleteVibeTimeRule(id);
+    await deleteVibeTimeRule(id, householdName);
     res.json({ success: true });
   } catch (error) {
     res
@@ -1279,11 +1297,21 @@ function timeRangeContainsHour(startHour, endHour, hour) {
 }
 
 // Helper function to get recommended playlists based on current time
-async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset, deviceId) {
+async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset, deviceId, householdName) {
   if (!deviceId) {
     throw new Error('Device ID is required to get recommended playlists');
   }
   try {
+    // Use provided household name, or resolve it if not provided (fallback for backward compatibility)
+    let resolvedHouseholdName = householdName;
+    if (!resolvedHouseholdName) {
+      resolvedHouseholdName = await resolveHouseholdName(householdId, deviceId);
+    }
+    if (!resolvedHouseholdName) {
+      throw new Error('Could not resolve household name');
+    }
+    const finalHouseholdName = resolvedHouseholdName;
+
     // Use user's local time if provided, otherwise fall back to server time
     let currentHour, currentDay;
     if (typeof userHour === 'number' && typeof userDay === 'number') {
@@ -1299,8 +1327,8 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
       console.log(`[Recommendations] Using server time (no client time provided): hour ${currentHour}, day ${currentDay}`);
     }
 
-    // Load all time rules
-    const allRules = await loadVibeTimeRules();
+    // Load all time rules for this household
+    const allRules = await loadVibeTimeRules(finalHouseholdName);
     console.log(`[Recommendations] Current hour: ${currentHour}, Current day: ${currentDay}, Total rules: ${allRules.length}`);
 
     // Separate base schedule rules and override rules
@@ -1502,19 +1530,22 @@ async function getRecommendedPlaylists(householdId, userHour, userDay, timezoneO
 
 app.get('/api/playlist-recommendations', async (req, res) => {
   try {
-    if (!req.deviceId) {
+    // Try to get deviceId from multiple sources
+    const deviceId = req.deviceId || req.query.device_id || req.body?.device_id || req.headers['x-device-id'];
+    if (!deviceId) {
       return res.status(401).json({ error: 'Device ID is required' });
     }
     const preferredHousehold =
       typeof req.query.householdId === 'string' && req.query.householdId.trim().length > 0
         ? req.query.householdId.trim()
         : undefined;
-    const householdId = await resolveHouseholdId(preferredHousehold, req.deviceId);
+    const householdId = await resolveHouseholdId(preferredHousehold, deviceId);
 
     // Get user's local time from query params (if provided)
     const userHour = req.query.hour ? parseInt(req.query.hour, 10) : undefined;
     const userDay = req.query.day ? parseInt(req.query.day, 10) : undefined;
     const timezoneOffset = req.query.timezoneOffset ? parseFloat(req.query.timezoneOffset) : undefined;
+    const householdName = req.query.householdName || undefined;
 
     // Validate hour and day if provided
     if (userHour !== undefined && (userHour < 0 || userHour > 23 || isNaN(userHour))) {
@@ -1524,10 +1555,10 @@ app.get('/api/playlist-recommendations', async (req, res) => {
       return res.status(400).json({ error: 'Invalid day parameter (must be 0-6)' });
     }
 
-    const recommendations = await getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset, req.deviceId);
+    const recommendations = await getRecommendedPlaylists(householdId, userHour, userDay, timezoneOffset, deviceId, householdName);
     res.json(recommendations);
   } catch (error) {
-    handleProxyError(res, error, req.deviceId);
+    handleProxyError(res, error, req.deviceId || req.query.device_id);
   }
 });
 
@@ -1956,6 +1987,17 @@ async function listHouseholds(deviceId) {
   const payload = await response.json();
   const households = Array.isArray(payload.households) ? payload.households : [];
   return households.map((household) => household?.id).filter(Boolean);
+}
+
+async function resolveHouseholdName(householdId, deviceId) {
+  if (!deviceId) {
+    throw new Error('Device ID is required to resolve household name');
+  }
+  const response = await sonosRequest('/households', {}, deviceId);
+  const payload = await response.json();
+  const households = Array.isArray(payload.households) ? payload.households : [];
+  const household = households.find((h) => h.id === householdId);
+  return household?.name || householdId || null;
 }
 
 // Find favorite by container ID (for UI highlighting only - display uses container metadata directly)

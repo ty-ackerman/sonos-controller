@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS playlist_vibes (
 -- Table for storing vibe time rules
 CREATE TABLE IF NOT EXISTS vibe_time_rules (
   id SERIAL PRIMARY KEY,
+  household_name TEXT NOT NULL,
   name TEXT,
   start_hour INTEGER NOT NULL CHECK (start_hour >= 0 AND start_hour <= 23),
   end_hour INTEGER NOT NULL CHECK (end_hour >= 0 AND end_hour <= 23),
@@ -58,6 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_tokens_updated_at ON tokens(updated_at);
 CREATE INDEX IF NOT EXISTS idx_speaker_volumes_updated_at ON speaker_volumes(updated_at);
 CREATE INDEX IF NOT EXISTS idx_playlist_vibes_updated_at ON playlist_vibes(updated_at);
 CREATE INDEX IF NOT EXISTS idx_vibe_time_rules_updated_at ON vibe_time_rules(updated_at);
+CREATE INDEX IF NOT EXISTS idx_vibe_time_rules_household_name ON vibe_time_rules(household_name);
 CREATE INDEX IF NOT EXISTS idx_hidden_favorites_updated_at ON hidden_favorites(updated_at);
 CREATE INDEX IF NOT EXISTS idx_oauth_states_created_at ON oauth_states(created_at);
 
@@ -88,4 +90,11 @@ CREATE TRIGGER update_hidden_favorites_updated_at BEFORE UPDATE ON hidden_favori
 
 -- Note: Tokens are now device-specific. No initial insert needed.
 -- Each device will create its own token row on first login.
+
+-- Migration: Replace device_id with household_name in existing vibe_time_rules table
+-- Run this AFTER the table structure is updated:
+-- ALTER TABLE vibe_time_rules ADD COLUMN IF NOT EXISTS household_name TEXT;
+-- UPDATE vibe_time_rules SET household_name = 'Alter: College West' WHERE household_name IS NULL;
+-- ALTER TABLE vibe_time_rules DROP COLUMN IF EXISTS device_id;
+-- ALTER TABLE vibe_time_rules ALTER COLUMN household_name SET NOT NULL;
 

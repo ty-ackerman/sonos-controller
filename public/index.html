@@ -4530,6 +4530,11 @@ async function checkAuthAndInit() {
             evaluateFavoritesAvailability();
           }
 
+          // Update recommendations after households are loaded (if control panel is visible)
+          if (!panelControl.classList.contains('hidden')) {
+            await updatePlaylistRecommendations();
+          }
+
           if (!panelSettings.classList.contains('hidden')) {
             await renderSettings();
           }
@@ -5035,8 +5040,11 @@ async function checkAuthAndInit() {
 
       async function loadTimeRules() {
         try {
-          const deviceId = getDeviceId();
-          const response = await fetch(`/api/vibe-time-rules?device_id=${encodeURIComponent(deviceId)}`);
+          if (!currentHouseholdName) {
+            timeRules = [];
+            return;
+          }
+          const response = await fetch(`/api/vibe-time-rules?household_name=${encodeURIComponent(currentHouseholdName)}`);
           if (response.ok) {
             timeRules = await response.json();
           } else {
@@ -5135,7 +5143,10 @@ async function checkAuthAndInit() {
         deleteBtn.addEventListener('click', async () => {
           if (confirm('Are you sure you want to delete this rule?')) {
             try {
-              const response = await fetch(`/api/vibe-time-rules/${rule.id}`, {
+              if (!currentHouseholdName) {
+                throw new Error('No household selected');
+              }
+              const response = await fetch(`/api/vibe-time-rules/${rule.id}?household_name=${encodeURIComponent(currentHouseholdName)}`, {
                 method: 'DELETE'
               });
               if (response.ok) {
@@ -5548,22 +5559,25 @@ async function checkAuthAndInit() {
             rule_type: ruleType
           };
 
+          if (!currentHouseholdName) {
+            throw new Error('No household selected');
+          }
+
           if (editingRuleId) {
             rule.id = editingRuleId;
-            const response = await fetch(`/api/vibe-time-rules/${editingRuleId}`, {
+            const response = await fetch(`/api/vibe-time-rules/${editingRuleId}?household_name=${encodeURIComponent(currentHouseholdName)}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(rule)
+              body: JSON.stringify({ ...rule, household_name: currentHouseholdName })
             });
             if (!response.ok) {
               throw new Error('Failed to update rule');
             }
           } else {
-            const deviceId = getDeviceId();
-            const response = await fetch(`/api/vibe-time-rules?device_id=${encodeURIComponent(deviceId)}`, {
+            const response = await fetch(`/api/vibe-time-rules?household_name=${encodeURIComponent(currentHouseholdName)}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...rule, device_id: deviceId })
+              body: JSON.stringify({ ...rule, household_name: currentHouseholdName })
             });
             if (!response.ok) {
               throw new Error('Failed to create rule');
@@ -5642,7 +5656,7 @@ async function checkAuthAndInit() {
 
       async function updatePlaylistRecommendations() {
         console.log('[updatePlaylistRecommendations] Starting update');
-        if (!isSonosConnected || !currentHouseholdId) {
+        if (!isSonosConnected || !currentHouseholdId || !currentHouseholdName) {
           recommendedPlaylistContainer.innerHTML = '';
           alternativesDropdown.innerHTML = '';
           recommendationRuleInfo.textContent = '';
@@ -5659,6 +5673,7 @@ async function checkAuthAndInit() {
           const deviceId = getDeviceId();
           const params = new URLSearchParams({
             householdId: currentHouseholdId,
+            householdName: currentHouseholdName || '',
             hour: currentHour.toString(),
             day: currentDay.toString(),
             timezoneOffset: timezoneOffset.toString(),

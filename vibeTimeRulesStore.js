@@ -2,11 +2,15 @@ import { supabase } from './supabase.js';
 
 const VALID_VIBES = ['Down', 'Down/Mid', 'Mid'];
 
-export async function loadVibeTimeRules() {
+export async function loadVibeTimeRules(householdName) {
+  if (!householdName) {
+    throw new Error('Household name is required to load vibe time rules');
+  }
   try {
     const { data, error } = await supabase
       .from('vibe_time_rules')
       .select('id, name, start_hour, end_hour, allowed_vibes, days, rule_type, created_at, updated_at')
+      .eq('household_name', householdName)
       .order('start_hour', { ascending: true });
 
     if (error) {
@@ -114,16 +118,21 @@ function timeRangesOverlap(start1, end1, start2, end2) {
 }
 
 // Validate that base schedule rules don't overlap with existing base rules
-async function validateBaseScheduleOverlap(rule) {
+async function validateBaseScheduleOverlap(rule, householdName) {
   if (rule.rule_type !== 'base') {
     return; // Only validate base rules
   }
 
-  // Load all existing base schedule rules
+  if (!householdName) {
+    throw new Error('Household name is required to validate base schedule overlap');
+  }
+
+  // Load all existing base schedule rules for this household
   const { data, error } = await supabase
     .from('vibe_time_rules')
     .select('id, name, start_hour, end_hour')
-    .eq('rule_type', 'base');
+    .eq('rule_type', 'base')
+    .eq('household_name', householdName);
 
   if (error) {
     throw new Error('Failed to validate base schedule overlap');
@@ -150,9 +159,13 @@ async function validateBaseScheduleOverlap(rule) {
 }
 
 // Validate that override rules don't overlap with existing overrides for the same days
-async function validateOverrideOverlap(rule) {
+async function validateOverrideOverlap(rule, householdName) {
   if (rule.rule_type !== 'override') {
     return; // Only validate overrides
+  }
+
+  if (!householdName) {
+    throw new Error('Household name is required to validate override overlap');
   }
 
   if (!rule.days || !Array.isArray(rule.days) || rule.days.length === 0) {
@@ -161,11 +174,12 @@ async function validateOverrideOverlap(rule) {
 
   const overrideDays = rule.days;
 
-  // Load all existing override rules
+  // Load all existing override rules for this household
   const { data, error } = await supabase
     .from('vibe_time_rules')
     .select('id, name, start_hour, end_hour, days')
-    .eq('rule_type', 'override');
+    .eq('rule_type', 'override')
+    .eq('household_name', householdName);
 
   if (error) {
     throw new Error('Failed to validate override overlap');
@@ -200,7 +214,10 @@ async function validateOverrideOverlap(rule) {
   }
 }
 
-export async function saveVibeTimeRule(rule) {
+export async function saveVibeTimeRule(rule, householdName) {
+  if (!householdName) {
+    throw new Error('Household name is required to save vibe time rule');
+  }
   try {
     if (!rule || typeof rule.start_hour !== 'number' || typeof rule.end_hour !== 'number') {
       throw new Error('Invalid rule data');
@@ -257,13 +274,13 @@ export async function saveVibeTimeRule(rule) {
         ...rule,
         rule_type: ruleType,
         days: days
-      });
+      }, householdName);
     } else {
       await validateOverrideOverlap({
         ...rule,
         rule_type: ruleType,
         days: days
-      });
+      }, householdName);
     }
 
     // Sanitize name (optional field)
@@ -279,15 +296,33 @@ export async function saveVibeTimeRule(rule) {
       end_hour: rule.end_hour,
       allowed_vibes: validVibes,
       days: days,
-      rule_type: ruleType
+      rule_type: ruleType,
+      household_name: householdName
     };
 
     if (rule.id) {
+      // Update existing rule - verify it belongs to this household
+      // First check if the rule exists and belongs to this household
+      const { data: existingRule, error: checkError } = await supabase
+        .from('vibe_time_rules')
+        .select('household_name')
+        .eq('id', rule.id)
+        .single();
+
+      if (checkError || !existingRule) {
+        throw new Error('Rule not found');
+      }
+
+      if (existingRule.household_name !== householdName) {
+        throw new Error('You can only modify your own rules');
+      }
+
       // Update existing rule
       const { data, error } = await supabase
         .from('vibe_time_rules')
         .update(row)
         .eq('id', rule.id)
+        .eq('household_name', householdName)
         .select()
         .single();
 
@@ -332,13 +367,35 @@ export async function saveVibeTimeRule(rule) {
   }
 }
 
-export async function deleteVibeTimeRule(id) {
+export async function deleteVibeTimeRule(id, householdName) {
+  if (!householdName) {
+    throw new Error('Household name is required to delete vibe time rule');
+  }
   try {
     if (!id || typeof id !== 'number') {
       throw new Error('Invalid rule ID');
     }
 
-    const { error } = await supabase.from('vibe_time_rules').delete().eq('id', id);
+    // Verify the rule belongs to this household before deleting
+    const { data: existingRule, error: checkError } = await supabase
+      .from('vibe_time_rules')
+      .select('household_name')
+      .eq('id', id)
+      .single();
+
+    if (checkError || !existingRule) {
+      throw new Error('Rule not found');
+    }
+
+    if (existingRule.household_name !== householdName) {
+      throw new Error('You can only delete your own rules');
+    }
+
+    const { error } = await supabase
+      .from('vibe_time_rules')
+      .delete()
+      .eq('id', id)
+      .eq('household_name', householdName);
 
     if (error) {
       throw error;

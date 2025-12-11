@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Switch Sonos Account</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 16px;
+      padding: 40px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 20px;
+      font-size: 28px;
+    }
+    
+    p {
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 30px;
+      font-size: 16px;
+    }
+    
+    .instructions {
+      background: #f5f5f5;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+      text-align: left;
+    }
+    
+    .instructions ol {
+      margin-left: 20px;
+      color: #555;
+    }
+    
+    .instructions li {
+      margin: 10px 0;
+      line-height: 1.5;
+    }
+    
+    .button {
+      display: inline-block;
+      background: #667eea;
+      color: white;
+      padding: 14px 28px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: 600;
+      margin: 10px;
+      transition: background 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .button:hover {
+      background: #5568d3;
+    }
+    
+    .button-secondary {
+      background: #6c757d;
+    }
+    
+    .button-secondary:hover {
+      background: #5a6268;
+    }
+    
+    .highlight {
+      background: #fff3cd;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      color: #856404;
+    }
+    
+    .device-id {
+      font-family: monospace;
+      font-size: 12px;
+      color: #999;
+      margin-top: 20px;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Switch Sonos Account</h1>
+    <p>To switch to a different Sonos account, you'll need to log in using an incognito/private window to bypass cached sessions.</p>
+    
+    <div class="instructions">
+      <ol>
+        <li>Click the button below to open the login page</li>
+        <li><span class="highlight">Right-click</span> the new tab that opens</li>
+        <li>Select <span class="highlight">"Open in Incognito Window"</span> (Chrome) or <span class="highlight">"Open Link in New Private Window"</span> (Firefox)</li>
+        <li>Complete the login in the incognito window</li>
+        <li>Return to this tab and click "I've Completed Login"</li>
+      </ol>
+    </div>
+    
+    <div>
+      <a href="#" id="login-link" class="button">Open Login Page</a>
+      <button onclick="window.close()" class="button button-secondary">Cancel</button>
+    </div>
+    
+    <div class="device-id" id="device-id"></div>
+  </div>
+  
+  <script>
+    // Get device ID from URL or localStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    let deviceId = urlParams.get('device_id');
+    
+    if (!deviceId) {
+      // Try to get from localStorage
+      deviceId = localStorage.getItem('sonos_device_id');
+    }
+    
+    if (deviceId) {
+      document.getElementById('device-id').textContent = `Device ID: ${deviceId}`;
+      document.getElementById('login-link').href = `/auth/sonos/login?device_id=${encodeURIComponent(deviceId)}&force_login=true&_cb=${Date.now()}`;
+    } else {
+      document.getElementById('login-link').textContent = 'Generate Device ID First';
+      document.getElementById('login-link').onclick = function(e) {
+        e.preventDefault();
+        // Generate device ID
+        const newDeviceId = crypto.randomUUID ? crypto.randomUUID() : 'device_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
+        localStorage.setItem('sonos_device_id', newDeviceId);
+        window.location.href = `/switch-account.html?device_id=${encodeURIComponent(newDeviceId)}`;
+      };
+    }
+    
+    // Listen for OAuth completion
+    window.addEventListener('storage', function(e) {
+      if (e.key === 'sonos_oauth_complete' && e.newValue === 'true') {
+        localStorage.removeItem('sonos_oauth_complete');
+        alert('Login successful! You can close this window.');
+        window.close();
+      }
+    });
+    
+    // Also check periodically (for same-tab scenarios)
+    setInterval(() => {
+      if (localStorage.getItem('sonos_oauth_complete') === 'true') {
+        localStorage.removeItem('sonos_oauth_complete');
+        alert('Login successful! You can close this window.');
+        window.close();
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
