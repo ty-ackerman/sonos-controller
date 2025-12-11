@@ -71,8 +71,18 @@ export async function saveTokens(tokens, deviceId) {
     deviceId: deviceId.substring(0, 8) + '...',
     hasAccessToken: !!tokens.access_token,
     hasRefreshToken: !!tokens.refresh_token,
-    expiresAt: tokens.expires_at
+    expiresAt: tokens.expires_at,
+    accessTokenPreview: tokens.access_token ? `${tokens.access_token.substring(0, 20)}...` : null,
+    refreshTokenPreview: tokens.refresh_token ? `${tokens.refresh_token.substring(0, 20)}...` : null,
+    tokensObject: JSON.stringify(tokens, null, 2)
   });
+  
+  // Validate that we have actual token values before saving
+  if (!tokens.access_token || !tokens.refresh_token) {
+    const errorMsg = `Cannot save tokens - missing required values. access_token: ${!!tokens.access_token}, refresh_token: ${!!tokens.refresh_token}`;
+    console.error(`[AUTH DEBUG ${timestamp}] [${requestId}] ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
 
   try {
     // Check if tokens already exist for this device
@@ -111,23 +121,40 @@ export async function saveTokens(tokens, deviceId) {
 
     const toSave = {
       device_id: deviceId,
-      access_token: tokens.access_token || null,
-      refresh_token: tokens.refresh_token || null,
+      access_token: tokens.access_token, // Don't use || null - we validated above
+      refresh_token: tokens.refresh_token, // Don't use || null - we validated above
       expires_at: Number(tokens.expires_at || 0)
       // Don't set created_at - let Supabase set it with DEFAULT NOW()
       // If we deleted old tokens above, this will be a fresh INSERT with new created_at
     };
 
+    // Double-check we're not saving NULLs
+    if (!toSave.access_token || !toSave.refresh_token) {
+      const errorMsg = `Cannot save tokens - toSave object has NULL values. access_token: ${!!toSave.access_token}, refresh_token: ${!!toSave.refresh_token}`;
+      console.error(`[AUTH DEBUG ${timestamp}] [${requestId}] ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
+
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Saving to database:`, {
       device_id: toSave.device_id.substring(0, 8) + '...',
       hasAccessToken: !!toSave.access_token,
       hasRefreshToken: !!toSave.refresh_token,
-      expires_at: toSave.expires_at
+      expires_at: toSave.expires_at,
+      accessTokenPreview: toSave.access_token ? `${toSave.access_token.substring(0, 20)}...` : null,
+      refreshTokenPreview: toSave.refresh_token ? `${toSave.refresh_token.substring(0, 20)}...` : null
     });
 
-    const { error } = await supabase
+    const { data: upsertData, error } = await supabase
       .from('tokens')
-      .upsert(toSave, { onConflict: 'device_id' });
+      .upsert(toSave, { onConflict: 'device_id' })
+      .select();
+    
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Upsert result:`, {
+      hasData: !!upsertData,
+      dataLength: upsertData?.length,
+      hasError: !!error,
+      errorMessage: error?.message
+    });
 
     if (error) {
       console.error(`[AUTH DEBUG ${timestamp}] [${requestId}] Error saving tokens:`, error);
@@ -136,13 +163,26 @@ export async function saveTokens(tokens, deviceId) {
 
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Tokens saved successfully`);
     
-    // Verify the save worked by loading back
+    // Wait a moment for database to commit
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Verify the save worked by loading them back
     const verifyTokens = await loadTokens(deviceId);
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Verification - tokens loaded back:`, {
       hasAccessToken: !!verifyTokens.access_token,
+      hasRefreshToken: !!verifyTokens.refresh_token,
       created_at: verifyTokens.created_at,
-      created_atDate: verifyTokens.created_at ? new Date(verifyTokens.created_at).toISOString() : null
+      created_atDate: verifyTokens.created_at ? new Date(verifyTokens.created_at).toISOString() : null,
+      updated_at: verifyTokens.updated_at,
+      updated_atDate: verifyTokens.updated_at ? new Date(verifyTokens.updated_at).toISOString() : null
     });
+    
+    // Double-check verification - if tokens are NULL, something went wrong
+    if (!verifyTokens.access_token || !verifyTokens.refresh_token) {
+      const errorMsg = `Tokens were saved but verification shows NULL values! This indicates a database issue.`;
+      console.error(`[AUTH DEBUG ${timestamp}] [${requestId}] ${errorMsg}`);
+      throw new Error(errorMsg);
+    }
     
     return toSave;
   } catch (error) {
