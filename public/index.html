@@ -292,6 +292,45 @@
         pointer-events: none;
       }
 
+      /* Pull to Refresh */
+      .pull-to-refresh {
+        position: fixed;
+        top: 60px;
+        left: 50%;
+        transform: translateX(-50%) translateY(-50px);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 20px;
+        border-radius: 20px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .pull-to-refresh.visible {
+        opacity: 1;
+      }
+
+      .pull-to-refresh-text {
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--text-secondary);
+        white-space: nowrap;
+      }
+
+      .pull-to-refresh.ready .pull-to-refresh-text {
+        color: var(--text-primary);
+        font-weight: 600;
+      }
+
+      .pull-to-refresh.refreshing .pull-to-refresh-text {
+        color: var(--text-secondary);
+      }
+
       /* Location Picker Modal */
       .modal-overlay {
         position: fixed;
@@ -2972,6 +3011,11 @@
     </style>
   </head>
   <body>
+      <!-- Pull to refresh indicator -->
+      <div id="pull-to-refresh" class="pull-to-refresh">
+        <span class="pull-to-refresh-text">Pull to refresh</span>
+      </div>
+
       <!-- Location banner - solid color behind title -->
       <div id="location-banner" class="location-banner"></div>
       
@@ -8338,6 +8382,104 @@ async function checkAuthAndInit() {
       
       // Check periodically but less frequently to avoid crashes
       setInterval(ensureHeaderFixed, 1000); // Reduced from 200ms to 1000ms
+
+      // Pull to Refresh functionality
+      (function() {
+        const pullToRefresh = document.getElementById('pull-to-refresh');
+        const pullText = pullToRefresh.querySelector('.pull-to-refresh-text');
+        let startY = 0;
+        let currentY = 0;
+        let isPulling = false;
+        let isRefreshing = false;
+        const threshold = 100; // pixels to pull before triggering refresh
+        const maxPull = 150;
+
+        function canPullToRefresh() {
+          // Only allow pull to refresh when at top of page and not already refreshing
+          return window.scrollY <= 0 && !isRefreshing;
+        }
+
+        function hideIndicator() {
+          pullToRefresh.classList.remove('refreshing', 'visible', 'ready');
+          pullToRefresh.style.transform = 'translateX(-50%) translateY(-50px)';
+          pullToRefresh.style.opacity = '0';
+          pullText.textContent = 'Pull to refresh';
+        }
+
+        document.addEventListener('touchstart', (e) => {
+          if (!canPullToRefresh()) return;
+          startY = e.touches[0].clientY;
+          isPulling = true;
+        }, { passive: true });
+
+        document.addEventListener('touchmove', (e) => {
+          if (!isPulling || isRefreshing) return;
+          if (!canPullToRefresh() && currentY === 0) {
+            isPulling = false;
+            return;
+          }
+
+          currentY = e.touches[0].clientY;
+          const rawPull = currentY - startY;
+          
+          // Apply rubber band effect - diminishing returns as you pull further
+          const pullDistance = rawPull > 0 ? Math.pow(rawPull, 0.85) : 0;
+          
+          if (pullDistance > 10) {
+            const progress = Math.min(pullDistance / threshold, 1);
+            const translateY = -50 + pullDistance;
+            
+            pullToRefresh.style.transform = `translateX(-50%) translateY(${Math.min(translateY, 80)}px)`;
+            pullToRefresh.style.opacity = Math.min(progress * 1.5, 1);
+            pullToRefresh.classList.add('visible');
+            
+            // Update text based on pull distance
+            if (pullDistance >= threshold) {
+              pullText.textContent = 'Release to refresh';
+              pullToRefresh.classList.add('ready');
+            } else {
+              pullText.textContent = 'Pull to refresh';
+              pullToRefresh.classList.remove('ready');
+            }
+          }
+        }, { passive: true });
+
+        document.addEventListener('touchend', async () => {
+          if (!isPulling) return;
+          isPulling = false;
+
+          const rawPull = currentY - startY;
+          const pullDistance = rawPull > 0 ? Math.pow(rawPull, 0.85) : 0;
+          
+          if (pullDistance >= threshold && !isRefreshing) {
+            // Trigger refresh
+            isRefreshing = true;
+            pullToRefresh.classList.add('refreshing');
+            pullToRefresh.classList.remove('ready');
+            pullText.textContent = 'Refreshing...';
+            
+            // Snap to fixed position
+            pullToRefresh.style.transform = 'translateX(-50%) translateY(20px)';
+            pullToRefresh.style.opacity = '1';
+            
+            try {
+              await checkAuthAndInit();
+            } catch (err) {
+              console.error('Pull to refresh error:', err);
+            }
+            
+            // Hide immediately after refresh
+            hideIndicator();
+            isRefreshing = false;
+          } else {
+            // Cancel - animate back
+            hideIndicator();
+          }
+          
+          startY = 0;
+          currentY = 0;
+        }, { passive: true });
+      })();
 
       // Ensure header is fixed as early as possible
       document.addEventListener('DOMContentLoaded', () => {
