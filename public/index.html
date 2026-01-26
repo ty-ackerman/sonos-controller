@@ -396,6 +396,141 @@
         filter: brightness(0.95);
       }
 
+      /* Welcome Modal */
+      .welcome-modal {
+        text-align: center;
+      }
+
+      /* Password Field */
+      .password-field {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 16px;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        margin-bottom: 12px;
+        box-sizing: border-box;
+      }
+
+      .password-field:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .password-submit-btn {
+        width: 100%;
+        padding: 14px 24px;
+        font-size: 16px;
+        font-weight: 500;
+        border-radius: 10px;
+        border: none;
+        background: var(--accent);
+        color: var(--bg-primary);
+        cursor: pointer;
+        transition: opacity 0.2s ease;
+      }
+
+      .password-submit-btn:hover {
+        opacity: 0.9;
+      }
+
+      .password-submit-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .password-error-text {
+        color: var(--error);
+        font-size: 0.875rem;
+        margin: 0 0 12px 0;
+        text-align: center;
+      }
+
+      .password-error-text.hidden {
+        display: none;
+      }
+
+      /* Welcome Screen */
+      .welcome-content {
+        text-align: center;
+      }
+
+      .welcome-title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 24px 0;
+      }
+
+      .welcome-login-btn {
+        width: 100%;
+        padding: 14px 24px;
+        font-size: 16px;
+        font-weight: 500;
+        border-radius: 10px;
+        border: none;
+        background: var(--accent);
+        color: var(--bg-primary);
+        cursor: pointer;
+        transition: opacity 0.2s ease;
+      }
+
+      .welcome-login-btn:hover {
+        opacity: 0.9;
+      }
+
+      /* Password Help Accordion */
+      .password-help-accordion {
+        margin-top: 20px;
+        border-top: 1px solid var(--border-color);
+        padding-top: 16px;
+      }
+
+      .accordion-toggle {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        font-size: 0.875rem;
+        cursor: pointer;
+        text-align: left;
+      }
+
+      .accordion-toggle:hover {
+        color: var(--text-primary);
+      }
+
+      .accordion-icon {
+        font-size: 0.75rem;
+        transition: transform 0.2s ease;
+      }
+
+      .accordion-toggle.open .accordion-icon {
+        transform: rotate(180deg);
+      }
+
+      .accordion-content {
+        padding: 12px 0;
+      }
+
+      .accordion-content.hidden {
+        display: none;
+      }
+
+      .accordion-content p {
+        margin: 0;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        line-height: 1.5;
+      }
+
+
       .loading-content {
         text-align: center;
       }
@@ -3028,7 +3163,6 @@
           <span id="current-location-label">📍 Location: Loading...</span>
         </button>
         <button id="menu-item-switch-view" class="menu-item menu-item-secondary" type="button" style="display: none;">Switch to Manager View</button>
-        <button id="menu-item-signout" class="menu-item menu-item-destructive" type="button">Sign out</button>
       </div>
     </div>
 
@@ -3134,6 +3268,44 @@
 
       <div id="auth-bar" class="hidden" style="margin-bottom: 12px">
         <button id="signin-btn" onclick="login()">Sign in with Sonos</button>
+      </div>
+
+      <!-- Welcome Modal -->
+      <div id="welcome-overlay" class="modal-overlay hidden">
+        <div class="modal welcome-modal">
+          <h2 class="welcome-title">The Alter Sonos Controller</h2>
+          <button type="button" class="welcome-login-btn" id="welcome-login-btn">Log In</button>
+        </div>
+      </div>
+
+      <!-- Password Modal -->
+      <div id="password-overlay" class="modal-overlay hidden">
+        <div class="modal">
+          <h3>Enter Password</h3>
+          <form id="password-form" onsubmit="handlePasswordSubmit(event)">
+            <input 
+              type="password" 
+              id="password-input" 
+              class="password-field"
+              placeholder="Password"
+              autocomplete="current-password"
+              required
+            />
+            <p id="password-error" class="password-error-text hidden">Incorrect password</p>
+            <button type="submit" class="password-submit-btn">Enter</button>
+          </form>
+          
+          <!-- Password Help Accordion -->
+          <div class="password-help-accordion">
+            <button type="button" class="accordion-toggle" onclick="togglePasswordHelp()">
+              <span>Where can I find my password?</span>
+              <span class="accordion-icon">▼</span>
+            </button>
+            <div class="accordion-content hidden">
+              <p>In your 1Password account under Sonos Controller App</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Location Picker Modal -->
@@ -3464,7 +3636,6 @@
       const menuItemPlaylistManagement = document.getElementById('menu-item-playlist-management');
       const menuItemScheduleRules = document.getElementById('menu-item-schedule-rules');
       const menuItemSettings = document.getElementById('menu-item-settings');
-      const menuItemSignout = document.getElementById('menu-item-signout');
       const menuItemSwitchView = document.getElementById('menu-item-switch-view');
       const viewIndicator = document.getElementById('view-indicator');
       const passwordModalBackdrop = document.getElementById('password-modal-backdrop');
@@ -3545,6 +3716,86 @@ settingsStatusLabel.textContent = '';
       let previousTrackId = null; // Track previous track identifier for change detection
       let currentPlaylistName = null; // Track current playlist name to detect playlist changes
       let baseVolume = null; // Store base/reference volume level for loudness normalization
+
+      // App authentication (simple password protection)
+      const APP_AUTH_KEY = 'sonos_app_auth';
+      
+      function isAppAuthenticated() {
+        return localStorage.getItem(APP_AUTH_KEY) !== null;
+      }
+      
+      function setAppAuthenticated(token) {
+        localStorage.setItem(APP_AUTH_KEY, token);
+      }
+      
+      function showWelcomeModal() {
+        document.getElementById('welcome-overlay').classList.remove('hidden');
+      }
+      
+      function hideWelcomeModal() {
+        document.getElementById('welcome-overlay').classList.add('hidden');
+      }
+      
+      function showAppPasswordModal() {
+        hideWelcomeModal();
+        document.getElementById('password-overlay').classList.remove('hidden');
+        document.getElementById('password-input').focus();
+      }
+      
+      function hideAppPasswordModal() {
+        document.getElementById('password-overlay').classList.add('hidden');
+      }
+      
+      function togglePasswordHelp() {
+        const toggle = document.querySelector('.accordion-toggle');
+        const content = document.querySelector('.accordion-content');
+        
+        toggle.classList.toggle('open');
+        content.classList.toggle('hidden');
+      }
+      
+      async function handlePasswordSubmit(event) {
+        event.preventDefault();
+        
+        const passwordInput = document.getElementById('password-input');
+        const errorText = document.getElementById('password-error');
+        const submitBtn = document.querySelector('.password-submit-btn');
+        
+        const password = passwordInput.value;
+        
+        // Disable button during request
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Checking...';
+        errorText.classList.add('hidden');
+        
+        try {
+          const response = await fetch('/auth/app-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            setAppAuthenticated(data.token);
+            hideAppPasswordModal();
+            showLocationPicker();
+          } else {
+            errorText.textContent = data.error || 'Incorrect password';
+            errorText.classList.remove('hidden');
+            passwordInput.value = '';
+            passwordInput.focus();
+          }
+        } catch (err) {
+          console.error('Auth error:', err);
+          errorText.textContent = 'Connection error. Try again.';
+          errorText.classList.remove('hidden');
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Enter';
+        }
+      }
 
       // Location-based device ID management
       // Each location has its own global token, refreshed daily by GitHub Action
@@ -4024,8 +4275,9 @@ menuItemSettings.addEventListener('click', () => {
   showView('settings');
 });
 
-menuItemSignout.addEventListener('click', () => {
-  signout();
+// Welcome login button
+document.getElementById('welcome-login-btn').addEventListener('click', () => {
+  showAppPasswordModal();
 });
 
 menuItemSwitchView.addEventListener('click', () => {
@@ -8475,10 +8727,39 @@ async function checkAuthAndInit() {
         console.log(`[AUTH DEBUG ${timestamp}] Window load event fired`);
         console.log(`[AUTH DEBUG ${timestamp}] Current URL:`, window.location.href);
         
+        // Test mode: clear localStorage when ?clear=1 is in URL
+        const testParams = new URLSearchParams(window.location.search);
+        if (testParams.get('clear') === '1') {
+          localStorage.clear();
+          console.log('[TEST] localStorage cleared');
+          window.location.href = window.location.origin; // Redirect without param
+          return;
+        }
+        
         // Ensure header is fixed on load
         ensureHeaderFixed();
         // Loading screen is already visible by default
         applyAuthFeedback();
+        
+        // Check app authentication first
+        if (!isAppAuthenticated()) {
+          console.log(`[AUTH DEBUG ${timestamp}] App not authenticated, showing welcome modal`);
+          hideLoadingOverlay();
+          showWelcomeModal();
+          return;
+        }
+        
+        // Hide welcome/password modals if authenticated
+        hideWelcomeModal();
+        hideAppPasswordModal();
+        
+        // Check if location is selected
+        if (!getSelectedLocation()) {
+          console.log(`[AUTH DEBUG ${timestamp}] No location selected, showing location picker`);
+          hideLoadingOverlay();
+          showLocationPicker();
+          return;
+        }
         
         // Check if we just completed OAuth - add delay to ensure tokens are persisted
         const params = new URLSearchParams(window.location.search);
