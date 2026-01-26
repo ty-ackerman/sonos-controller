@@ -211,6 +211,30 @@ app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Simple app authentication (single password for internal use)
+app.post('/auth/app-login', (req, res) => {
+  const { password } = req.body;
+  const APP_PASSWORD = process.env.APP_PASSWORD;
+  
+  if (!APP_PASSWORD) {
+    // If no password is set, allow access (development mode)
+    return res.json({ success: true, token: 'dev-mode' });
+  }
+  
+  if (!password) {
+    return res.status(400).json({ success: false, error: 'Password required' });
+  }
+  
+  // Simple comparison (for internal tool, this is sufficient)
+  if (password === APP_PASSWORD) {
+    // Generate a simple session token
+    const token = crypto.randomBytes(32).toString('hex');
+    return res.json({ success: true, token });
+  }
+  
+  return res.status(401).json({ success: false, error: 'Invalid password' });
+});
+
 app.get('/auth/sonos/login', async (req, res) => {
   const deviceId = req.query.device_id;
   

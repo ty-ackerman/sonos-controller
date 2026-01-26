@@ -295,10 +295,10 @@
       /* Pull to Refresh */
       .pull-to-refresh {
         position: fixed;
-        top: 60px;
+        top: 70px;
         left: 50%;
         transform: translateX(-50%) translateY(-50px);
-        z-index: 100;
+        z-index: 40;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -368,48 +368,83 @@
 
       .modal-overlay .location-btn {
         width: 100%;
-        padding: 22px 24px;
-        font-size: 18px;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        border-radius: 16px;
+        padding: 18px 24px;
+        font-size: 16px;
+        font-weight: 400;
+        letter-spacing: 0.3px;
+        border-radius: 12px;
         border: none;
         color: white;
         cursor: pointer;
-        transition: all 0.25s ease;
+        transition: filter 0.2s ease;
         text-align: center;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        position: relative;
-        overflow: hidden;
-      }
-
-      .modal-overlay .location-btn::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.1) 100%);
-        pointer-events: none;
       }
 
       .modal-overlay .location-btn.college {
-        background: linear-gradient(135deg, #9aa36e 0%, #7a8154 100%);
+        background: #8b9063;
       }
 
       .modal-overlay .location-btn.leslieville {
-        background: linear-gradient(135deg, #5d8799 0%, #4a6d7a 100%);
+        background: #53788a;
       }
 
       .modal-overlay .location-btn:hover {
-        filter: brightness(1.1);
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+        filter: brightness(1.08);
       }
 
       .modal-overlay .location-btn:active {
         filter: brightness(0.95);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Password Modal */
+      .password-field {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 16px;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        margin-bottom: 12px;
+        box-sizing: border-box;
+      }
+
+      .password-field:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .password-submit-btn {
+        width: 100%;
+        padding: 14px 24px;
+        font-size: 16px;
+        font-weight: 500;
+        border-radius: 10px;
+        border: none;
+        background: var(--accent);
+        color: var(--bg-primary);
+        cursor: pointer;
+        transition: opacity 0.2s ease;
+      }
+
+      .password-submit-btn:hover {
+        opacity: 0.9;
+      }
+
+      .password-submit-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .password-error-text {
+        color: var(--error);
+        font-size: 0.875rem;
+        margin: 0 0 12px 0;
+        text-align: center;
+      }
+
+      .password-error-text.hidden {
+        display: none;
       }
 
       .loading-content {
@@ -3152,6 +3187,25 @@
         <button id="signin-btn" onclick="login()">Sign in with Sonos</button>
       </div>
 
+      <!-- Password Modal -->
+      <div id="password-overlay" class="modal-overlay">
+        <div class="modal">
+          <h3>Enter Password</h3>
+          <form id="password-form" onsubmit="handlePasswordSubmit(event)">
+            <input 
+              type="password" 
+              id="password-input" 
+              class="password-field"
+              placeholder="Password"
+              autocomplete="current-password"
+              required
+            />
+            <p id="password-error" class="password-error-text hidden">Incorrect password</p>
+            <button type="submit" class="password-submit-btn">Enter</button>
+          </form>
+        </div>
+      </div>
+
       <!-- Location Picker Modal -->
       <div id="location-picker-overlay" class="modal-overlay hidden">
         <div class="modal">
@@ -3561,6 +3615,78 @@ settingsStatusLabel.textContent = '';
       let previousTrackId = null; // Track previous track identifier for change detection
       let currentPlaylistName = null; // Track current playlist name to detect playlist changes
       let baseVolume = null; // Store base/reference volume level for loudness normalization
+
+      // App authentication (simple password protection)
+      const APP_AUTH_KEY = 'sonos_app_auth';
+      
+      function isAppAuthenticated() {
+        return localStorage.getItem(APP_AUTH_KEY) !== null;
+      }
+      
+      function setAppAuthenticated(token) {
+        localStorage.setItem(APP_AUTH_KEY, token);
+      }
+      
+      function clearAppAuth() {
+        localStorage.removeItem(APP_AUTH_KEY);
+      }
+      
+      function showPasswordModal() {
+        document.getElementById('password-overlay').classList.remove('hidden');
+        document.getElementById('password-input').focus();
+      }
+      
+      function hidePasswordModal() {
+        document.getElementById('password-overlay').classList.add('hidden');
+      }
+      
+      async function handlePasswordSubmit(event) {
+        event.preventDefault();
+        
+        const passwordInput = document.getElementById('password-input');
+        const errorText = document.getElementById('password-error');
+        const submitBtn = document.querySelector('.password-submit-btn');
+        
+        const password = passwordInput.value;
+        
+        // Disable button during request
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Checking...';
+        errorText.classList.add('hidden');
+        
+        try {
+          const response = await fetch('/auth/app-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password })
+          });
+          
+          const data = await response.json();
+          
+          if (data.success) {
+            setAppAuthenticated(data.token);
+            hidePasswordModal();
+            // Now check if location is selected
+            if (!getSelectedLocation()) {
+              showLocationPicker();
+            } else {
+              checkAuthAndInit();
+            }
+          } else {
+            errorText.textContent = data.error || 'Incorrect password';
+            errorText.classList.remove('hidden');
+            passwordInput.value = '';
+            passwordInput.focus();
+          }
+        } catch (err) {
+          console.error('Auth error:', err);
+          errorText.textContent = 'Connection error. Try again.';
+          errorText.classList.remove('hidden');
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Enter';
+        }
+      }
 
       // Location-based device ID management
       // Each location has its own global token, refreshed daily by GitHub Action
@@ -8495,6 +8621,17 @@ async function checkAuthAndInit() {
         ensureHeaderFixed();
         // Loading screen is already visible by default
         applyAuthFeedback();
+        
+        // First check if app is authenticated (password protection)
+        if (!isAppAuthenticated()) {
+          console.log(`[AUTH DEBUG ${timestamp}] App not authenticated, showing password modal`);
+          hideLoadingOverlay();
+          showPasswordModal();
+          return;
+        }
+        
+        // Hide password modal if authenticated
+        hidePasswordModal();
         
         // Check if we just completed OAuth - add delay to ensure tokens are persisted
         const params = new URLSearchParams(window.location.search);
