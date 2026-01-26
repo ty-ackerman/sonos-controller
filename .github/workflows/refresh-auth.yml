@@ -27,8 +27,10 @@ jobs:
 
       - name: Run authentication refresh
         env:
-          SONOS_EMAIL: ${{ secrets.SONOS_EMAIL }}
-          SONOS_PASSWORD: ${{ secrets.SONOS_PASSWORD }}
+          SONOS_EMAIL_COLLEGE: ${{ secrets.SONOS_EMAIL_COLLEGE }}
+          SONOS_PASSWORD_COLLEGE: ${{ secrets.SONOS_PASSWORD_COLLEGE }}
+          SONOS_EMAIL_LESLIEVILLE: ${{ secrets.SONOS_EMAIL_LESLIEVILLE }}
+          SONOS_PASSWORD_LESLIEVILLE: ${{ secrets.SONOS_PASSWORD_LESLIEVILLE }}
           APP_URL: https://sonos-controller.netlify.app
         run: node scripts/refresh-auth.js
 

@@ -2881,6 +2881,9 @@
         <button id="menu-item-settings" class="menu-item" type="button">Volume Control</button>
       </div>
       <div class="menu-footer">
+        <button id="menu-item-switch-location" class="menu-item menu-item-secondary" type="button" onclick="switchLocation()">
+          <span id="current-location-label">📍 Location: Loading...</span>
+        </button>
         <button id="menu-item-switch-view" class="menu-item menu-item-secondary" type="button" style="display: none;">Switch to Manager View</button>
         <button id="menu-item-signout" class="menu-item menu-item-destructive" type="button">Sign out</button>
       </div>
@@ -2988,6 +2991,21 @@
 
       <div id="auth-bar" class="hidden" style="margin-bottom: 12px">
         <button id="signin-btn" onclick="login()">Sign in with Sonos</button>
+      </div>
+
+      <!-- Location Picker Modal -->
+      <div id="location-picker-overlay" class="modal-overlay hidden">
+        <div class="modal" style="max-width: 400px;">
+          <h3 style="margin-bottom: 20px; text-align: center;">Select Your Location</h3>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <button class="location-btn" onclick="selectLocation('college')" style="padding: 20px; font-size: 18px; border-radius: 12px; border: 2px solid #ddd; background: white; cursor: pointer;">
+              🏫 College
+            </button>
+            <button class="location-btn" onclick="selectLocation('leslieville')" style="padding: 20px; font-size: 18px; border-radius: 12px; border: 2px solid #ddd; background: white; cursor: pointer;">
+              🏠 Leslieville
+            </button>
+          </div>
+        </div>
       </div>
 
       <div id="app-panels" class="hidden">
@@ -3385,22 +3403,72 @@ settingsStatusLabel.textContent = '';
       let currentPlaylistName = null; // Track current playlist name to detect playlist changes
       let baseVolume = null; // Store base/reference volume level for loudness normalization
 
-      // Device ID generation and management
-      const DEVICE_ID_STORAGE_KEY = 'sonos_device_id';
+      // Location-based device ID management
+      // Each location has its own global token, refreshed daily by GitHub Action
+      const LOCATION_STORAGE_KEY = 'sonos_location';
+      
+      const LOCATIONS = {
+        college: {
+          name: 'College',
+          deviceId: 'global-automation-college'
+        },
+        leslieville: {
+          name: 'Leslieville',
+          deviceId: 'global-automation-leslieville'
+        }
+      };
+      
+      function getSelectedLocation() {
+        return localStorage.getItem(LOCATION_STORAGE_KEY);
+      }
+      
+      function setSelectedLocation(location) {
+        localStorage.setItem(LOCATION_STORAGE_KEY, location);
+      }
       
       function getDeviceId() {
-        let deviceId = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
-        if (!deviceId) {
-          // Generate a new device ID using crypto.randomUUID if available, otherwise use a fallback
-          if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-            deviceId = crypto.randomUUID();
-          } else {
-            // Fallback for browsers without crypto.randomUUID
-            deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
-          }
-          localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
+        const location = getSelectedLocation();
+        if (!location || !LOCATIONS[location]) {
+          return null; // No location selected
         }
-        return deviceId;
+        return LOCATIONS[location].deviceId;
+      }
+      
+      function showLocationPicker() {
+        document.getElementById('location-picker-overlay').classList.remove('hidden');
+      }
+      
+      function hideLocationPicker() {
+        document.getElementById('location-picker-overlay').classList.add('hidden');
+      }
+      
+      function selectLocation(location) {
+        if (LOCATIONS[location]) {
+          setSelectedLocation(location);
+          hideLocationPicker();
+          // Reload to apply the new location
+          window.location.reload();
+        }
+      }
+      
+      function getCurrentLocationName() {
+        const location = getSelectedLocation();
+        return LOCATIONS[location]?.name || 'Unknown';
+      }
+      
+      function switchLocation() {
+        // Clear the current location and show picker
+        localStorage.removeItem(LOCATION_STORAGE_KEY);
+        closeMenu();
+        showLocationPicker();
+      }
+      
+      function updateLocationLabel() {
+        const label = document.getElementById('current-location-label');
+        if (label) {
+          const locationName = getCurrentLocationName();
+          label.textContent = `📍 Location: ${locationName}`;
+        }
       }
 
       function login() {
@@ -3934,6 +4002,8 @@ function setAuthUI(loggedIn) {
   panelsContainer.classList.toggle('hidden', !loggedIn);
   // Hide hamburger menu and now playing panel when not logged in
   hamburgerMenuBtn.classList.toggle('hidden', !loggedIn);
+  // Update location label in menu
+  updateLocationLabel();
   currentlyPlayingPanel.classList.toggle('hidden', !loggedIn);
   // Hide power button when not logged in
   powerButton.classList.toggle('hidden', !loggedIn);
@@ -3961,6 +4031,16 @@ async function checkAuthAndInit() {
       localStorage.removeItem(VIEW_STORAGE_KEY);
       setCurrentView(VIEW_FRONT_DESK);
     }
+    
+    // Check if location is selected - if not, show picker
+    const selectedLocation = getSelectedLocation();
+    if (!selectedLocation) {
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] No location selected, showing picker`);
+      showLocationPicker();
+      return;
+    }
+    
+    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Location: ${getCurrentLocationName()}`);
     
     const deviceId = getDeviceId();
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Device ID:`, deviceId);

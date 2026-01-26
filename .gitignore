@@ -4,3 +4,5 @@ node_modules
 .appstate.json
 .speaker-volumes.json
 .playlist-vibes.json
+auth-error-screenshot.png
+auth-unexpected-screenshot.png
