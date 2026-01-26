@@ -263,6 +263,63 @@
         pointer-events: none;
       }
 
+      /* Location Picker Modal */
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .modal-overlay.hidden {
+        display: none;
+      }
+
+      .modal-overlay .modal {
+        background: var(--bg-primary);
+        border-radius: 16px;
+        padding: 24px;
+        width: 100%;
+        max-width: 400px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      .modal-overlay .modal h3 {
+        color: var(--text-primary);
+        margin: 0 0 20px 0;
+        text-align: center;
+        font-size: 1.25rem;
+      }
+
+      .modal-overlay .location-btn {
+        width: 100%;
+        padding: 20px;
+        font-size: 18px;
+        border-radius: 12px;
+        border: 2px solid var(--border-color);
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        text-align: center;
+      }
+
+      .modal-overlay .location-btn:hover {
+        border-color: var(--accent);
+        background: var(--bg-tertiary);
+      }
+
+      .modal-overlay .location-btn:active {
+        transform: scale(0.98);
+      }
+
       .loading-content {
         text-align: center;
       }
@@ -2995,13 +3052,13 @@
 
       <!-- Location Picker Modal -->
       <div id="location-picker-overlay" class="modal-overlay hidden">
-        <div class="modal" style="max-width: 400px;">
-          <h3 style="margin-bottom: 20px; text-align: center;">Select Your Location</h3>
+        <div class="modal">
+          <h3>Select Your Location</h3>
           <div style="display: flex; flex-direction: column; gap: 12px;">
-            <button class="location-btn" onclick="selectLocation('college')" style="padding: 20px; font-size: 18px; border-radius: 12px; border: 2px solid #ddd; background: white; cursor: pointer;">
+            <button class="location-btn" onclick="selectLocation('college')">
               🏫 College
             </button>
-            <button class="location-btn" onclick="selectLocation('leslieville')" style="padding: 20px; font-size: 18px; border-radius: 12px; border: 2px solid #ddd; background: white; cursor: pointer;">
+            <button class="location-btn" onclick="selectLocation('leslieville')">
               🏠 Leslieville
             </button>
           </div>
