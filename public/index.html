@@ -207,12 +207,41 @@
       }
 
       .household-title {
-        font-size: 1.125rem;
-        font-weight: 600;
-        margin: 8px 0;
+        font-size: 2.25rem;
+        font-weight: 700;
+        padding: 24px 0;
+        margin: 0;
         text-align: center;
-        color: var(--text-primary);
-        min-height: 1.5rem;
+        color: #ffffff;
+        min-height: 2.5rem;
+        letter-spacing: -0.02em;
+        position: relative;
+        z-index: 2;
+      }
+
+      /* Location gradient header - inspired by Notion */
+      .location-banner {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        height: 280px;
+        pointer-events: none;
+        z-index: 0;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .location-banner.visible {
+        opacity: 1;
+      }
+
+      .location-banner.college {
+        background: #8b9063;
+      }
+
+      .location-banner.leslieville {
+        background: #53788a;
       }
 
       p.status {
@@ -300,24 +329,48 @@
 
       .modal-overlay .location-btn {
         width: 100%;
-        padding: 20px;
+        padding: 22px 24px;
         font-size: 18px;
-        border-radius: 12px;
-        border: 2px solid var(--border-color);
-        background: var(--bg-secondary);
-        color: var(--text-primary);
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        border-radius: 16px;
+        border: none;
+        color: white;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all 0.25s ease;
         text-align: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .modal-overlay .location-btn::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(0,0,0,0.1) 100%);
+        pointer-events: none;
+      }
+
+      .modal-overlay .location-btn.college {
+        background: linear-gradient(135deg, #9aa36e 0%, #7a8154 100%);
+      }
+
+      .modal-overlay .location-btn.leslieville {
+        background: linear-gradient(135deg, #5d8799 0%, #4a6d7a 100%);
       }
 
       .modal-overlay .location-btn:hover {
-        border-color: var(--accent);
-        background: var(--bg-tertiary);
+        filter: brightness(1.1);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
       }
 
       .modal-overlay .location-btn:active {
-        transform: scale(0.98);
+        filter: brightness(0.95);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
       }
 
       .loading-content {
@@ -439,6 +492,8 @@
         display: flex;
         flex-direction: column;
         gap: 20px;
+        position: relative;
+        z-index: 1;
       }
 
       label {
@@ -2917,6 +2972,9 @@
     </style>
   </head>
   <body>
+      <!-- Location banner - solid color behind title -->
+      <div id="location-banner" class="location-banner"></div>
+      
       <div id="menu-backdrop" class="menu-backdrop"></div>
     <div id="menu-panel" class="menu-panel">
       <div class="menu-header">
@@ -3055,11 +3113,11 @@
         <div class="modal">
           <h3>Select Your Location</h3>
           <div style="display: flex; flex-direction: column; gap: 12px;">
-            <button class="location-btn" onclick="selectLocation('college')">
-              🏫 College
+            <button class="location-btn college" onclick="selectLocation('college')">
+              College
             </button>
-            <button class="location-btn" onclick="selectLocation('leslieville')">
-              🏠 Leslieville
+            <button class="location-btn leslieville" onclick="selectLocation('leslieville')">
+              Leslieville
             </button>
           </div>
         </div>
@@ -3525,6 +3583,21 @@ settingsStatusLabel.textContent = '';
         if (label) {
           const locationName = getCurrentLocationName();
           label.textContent = `📍 Location: ${locationName}`;
+        }
+        
+        // Update the household title color based on location
+        updateHouseholdTitleColor();
+      }
+      
+      function updateHouseholdTitleColor() {
+        // Update the location banner based on selected location
+        const banner = document.getElementById('location-banner');
+        const selectedLocation = getSelectedLocation();
+        if (banner) {
+          banner.classList.remove('visible', 'college', 'leslieville');
+          if (selectedLocation) {
+            banner.classList.add(selectedLocation, 'visible');
+          }
         }
       }
 
@@ -4059,8 +4132,9 @@ function setAuthUI(loggedIn) {
   panelsContainer.classList.toggle('hidden', !loggedIn);
   // Hide hamburger menu and now playing panel when not logged in
   hamburgerMenuBtn.classList.toggle('hidden', !loggedIn);
-  // Update location label in menu
+  // Update location label in menu and household title color
   updateLocationLabel();
+  updateHouseholdTitleColor();
   currentlyPlayingPanel.classList.toggle('hidden', !loggedIn);
   // Hide power button when not logged in
   powerButton.classList.toggle('hidden', !loggedIn);
@@ -4654,7 +4728,9 @@ async function checkAuthAndInit() {
           const firstHousehold = households[0];
           currentHouseholdId = firstHousehold.id || null;
           currentHouseholdName = firstHousehold.name || firstHousehold.id || '';
-          householdTitle.textContent = currentHouseholdName;
+          // Strip "Alter:" prefix from household name
+          let displayName = currentHouseholdName.replace(/^Alter:\s*/i, '');
+          householdTitle.textContent = displayName;
 
           setAuthUI(true);
 
