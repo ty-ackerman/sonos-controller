@@ -3385,22 +3385,14 @@ settingsStatusLabel.textContent = '';
       let currentPlaylistName = null; // Track current playlist name to detect playlist changes
       let baseVolume = null; // Store base/reference volume level for loudness normalization
 
-      // Device ID generation and management
-      const DEVICE_ID_STORAGE_KEY = 'sonos_device_id';
+      // Device ID - using global shared authentication
+      // All users share the same token, refreshed daily by GitHub Action
+      const GLOBAL_DEVICE_ID = 'global-automation';
       
       function getDeviceId() {
-        let deviceId = localStorage.getItem(DEVICE_ID_STORAGE_KEY);
-        if (!deviceId) {
-          // Generate a new device ID using crypto.randomUUID if available, otherwise use a fallback
-          if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-            deviceId = crypto.randomUUID();
-          } else {
-            // Fallback for browsers without crypto.randomUUID
-            deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
-          }
-          localStorage.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
-        }
-        return deviceId;
+        // Return the global device ID for shared authentication
+        // This token is refreshed daily by the GitHub Action automation
+        return GLOBAL_DEVICE_ID;
       }
 
       function login() {

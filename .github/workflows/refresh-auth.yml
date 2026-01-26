@@ -1,0 +1,42 @@
+name: Refresh Sonos Authentication
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI
+
+jobs:
+  refresh-auth:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: |
+          npm install playwright
+          npx playwright install chromium
+
+      - name: Run authentication refresh
+        env:
+          SONOS_EMAIL: ${{ secrets.SONOS_EMAIL }}
+          SONOS_PASSWORD: ${{ secrets.SONOS_PASSWORD }}
+          APP_URL: https://sonos-controller.netlify.app
+        run: node scripts/refresh-auth.js
+
+      - name: Report status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Authentication refresh completed successfully"
+          else
+            echo "❌ Authentication refresh failed"
+          fi

@@ -130,28 +130,13 @@
   </div>
   
   <script>
-    // Get device ID from URL or localStorage
-    const urlParams = new URLSearchParams(window.location.search);
-    let deviceId = urlParams.get('device_id');
+    // Use global shared device ID for authentication
+    // All users share the same token, refreshed daily by GitHub Action
+    const GLOBAL_DEVICE_ID = 'global-automation';
+    const deviceId = GLOBAL_DEVICE_ID;
     
-    if (!deviceId) {
-      // Try to get from localStorage
-      deviceId = localStorage.getItem('sonos_device_id');
-    }
-    
-    if (deviceId) {
-      document.getElementById('device-id').textContent = `Device ID: ${deviceId}`;
-      document.getElementById('login-link').href = `/auth/sonos/login?device_id=${encodeURIComponent(deviceId)}&force_login=true&_cb=${Date.now()}`;
-    } else {
-      document.getElementById('login-link').textContent = 'Generate Device ID First';
-      document.getElementById('login-link').onclick = function(e) {
-        e.preventDefault();
-        // Generate device ID
-        const newDeviceId = crypto.randomUUID ? crypto.randomUUID() : 'device_' + Date.now() + '_' + Math.random().toString(36).substring(2, 15);
-        localStorage.setItem('sonos_device_id', newDeviceId);
-        window.location.href = `/switch-account.html?device_id=${encodeURIComponent(newDeviceId)}`;
-      };
-    }
+    document.getElementById('device-id').textContent = `Device ID: ${deviceId} (shared global authentication)`;
+    document.getElementById('login-link').href = `/auth/sonos/login?device_id=${encodeURIComponent(deviceId)}&force_login=true&_cb=${Date.now()}`;
     
     // Listen for OAuth completion
     window.addEventListener('storage', function(e) {
