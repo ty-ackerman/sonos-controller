@@ -408,9 +408,14 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: flex-start;
+        justify-content: center;
         padding: 20px;
-        padding-top: 15vh;
+        overflow: hidden;
+      }
+
+      .auth-overlay.auth-top {
+        justify-content: flex-start;
+        padding-top: 60px;
       }
 
       .auth-overlay.hidden {
@@ -3368,7 +3373,7 @@
       </div>
 
       <!-- Password Screen -->
-      <div id="password-overlay" class="auth-overlay hidden">
+      <div id="password-overlay" class="auth-overlay auth-top hidden">
         <div class="auth-content">
           <h3 class="auth-title">Enter Password</h3>
           <form id="password-form" onsubmit="handlePasswordSubmit(event)">
