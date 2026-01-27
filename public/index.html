@@ -396,8 +396,91 @@
         filter: brightness(0.95);
       }
 
-      /* Welcome Modal */
-      .welcome-modal {
+      /* Auth Screens (Welcome & Password) - Full screen, no modal */
+      .auth-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--bg-primary);
+        z-index: 10001;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .auth-overlay.hidden {
+        display: none;
+      }
+
+      .auth-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        max-width: 320px;
+      }
+
+      .auth-logo-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 40px;
+      }
+
+      .auth-logo {
+        height: 4rem;
+        width: 8rem;
+        max-width: 8rem;
+        object-fit: contain;
+      }
+
+      .auth-logo-light {
+        display: block;
+        filter: brightness(0);
+      }
+
+      .auth-logo-dark {
+        display: none;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .auth-logo-light {
+          display: none;
+        }
+        .auth-logo-dark {
+          display: block;
+        }
+      }
+
+      .auth-x {
+        font-size: 2rem;
+        font-weight: 400;
+        color: var(--text-primary);
+        margin: 0.5rem 0;
+      }
+
+      .auth-sonos-logo {
+        height: 2rem;
+        width: 8rem;
+        max-width: 8rem;
+        object-fit: contain;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .auth-sonos-logo {
+          filter: brightness(0) invert(1);
+        }
+      }
+
+      .auth-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 0 0 32px 0;
         text-align: center;
       }
 
@@ -410,7 +493,7 @@
         border: 1px solid var(--border-color);
         background: var(--bg-secondary);
         color: var(--text-primary);
-        margin-bottom: 12px;
+        margin-bottom: 16px;
         box-sizing: border-box;
       }
 
@@ -457,12 +540,6 @@
         text-align: center;
       }
 
-      .welcome-title {
-        font-size: 1.5rem;
-        font-weight: 600;
-        color: var(--text-primary);
-        margin: 0 0 24px 0;
-      }
 
       .welcome-login-btn {
         width: 100%;
@@ -483,23 +560,24 @@
 
       /* Password Help Accordion */
       .password-help-accordion {
-        margin-top: 20px;
+        margin-top: 32px;
         border-top: 1px solid var(--border-color);
-        padding-top: 16px;
+        padding-top: 24px;
       }
 
       .accordion-toggle {
         width: 100%;
         display: flex;
-        justify-content: space-between;
+        justify-content: center;
         align-items: center;
+        gap: 8px;
         padding: 10px 0;
         background: none;
         border: none;
         color: var(--text-secondary);
         font-size: 0.875rem;
         cursor: pointer;
-        text-align: left;
+        text-align: center;
       }
 
       .accordion-toggle:hover {
@@ -516,7 +594,7 @@
       }
 
       .accordion-content {
-        padding: 12px 0;
+        padding: 20px 0;
       }
 
       .accordion-content.hidden {
@@ -528,6 +606,7 @@
         font-size: 0.875rem;
         color: var(--text-secondary);
         line-height: 1.5;
+        text-align: center;
       }
 
 
@@ -3270,18 +3349,27 @@
         <button id="signin-btn" onclick="login()">Sign in with Sonos</button>
       </div>
 
-      <!-- Welcome Modal -->
-      <div id="welcome-overlay" class="modal-overlay hidden">
-        <div class="modal welcome-modal">
-          <h2 class="welcome-title">The Alter Sonos Controller</h2>
+      <!-- Welcome Screen -->
+      <div id="welcome-overlay" class="auth-overlay hidden">
+        <div class="auth-content">
+          <div class="auth-logo-container">
+            <div>
+              <img src="/images/alter-logo-light.png" alt="Alter" class="auth-logo auth-logo-light">
+              <img src="/images/alter-logo-dark.png" alt="Alter" class="auth-logo auth-logo-dark">
+            </div>
+            <div class="auth-x">×</div>
+            <div>
+              <img src="/images/sonos.svg" alt="Sonos" class="auth-sonos-logo">
+            </div>
+          </div>
           <button type="button" class="welcome-login-btn" id="welcome-login-btn">Log In</button>
         </div>
       </div>
 
-      <!-- Password Modal -->
-      <div id="password-overlay" class="modal-overlay hidden">
-        <div class="modal">
-          <h3>Enter Password</h3>
+      <!-- Password Screen -->
+      <div id="password-overlay" class="auth-overlay hidden">
+        <div class="auth-content">
+          <h3 class="auth-title">Enter Password</h3>
           <form id="password-form" onsubmit="handlePasswordSubmit(event)">
             <input 
               type="password" 
@@ -3302,7 +3390,8 @@
               <span class="accordion-icon">▼</span>
             </button>
             <div class="accordion-content hidden">
-              <p>In your 1Password account under Sonos Controller App</p>
+              <p>In your 1Password account under</p>
+              <p style="margin-top: 12px;"><strong>Sonos Controller App</strong></p>
             </div>
           </div>
         </div>
@@ -3730,6 +3819,7 @@ settingsStatusLabel.textContent = '';
       
       function showWelcomeModal() {
         document.getElementById('welcome-overlay').classList.remove('hidden');
+        document.querySelector('.header-wrapper').style.display = 'none';
       }
       
       function hideWelcomeModal() {
@@ -3740,10 +3830,12 @@ settingsStatusLabel.textContent = '';
         hideWelcomeModal();
         document.getElementById('password-overlay').classList.remove('hidden');
         document.getElementById('password-input').focus();
+        document.querySelector('.header-wrapper').style.display = 'none';
       }
       
       function hideAppPasswordModal() {
         document.getElementById('password-overlay').classList.add('hidden');
+        document.querySelector('.header-wrapper').style.display = '';
       }
       
       function togglePasswordHelp() {
@@ -8732,7 +8824,7 @@ async function checkAuthAndInit() {
         if (testParams.get('clear') === '1') {
           localStorage.clear();
           console.log('[TEST] localStorage cleared');
-          window.location.href = window.location.origin; // Redirect without param
+          window.location.href = window.location.origin + '?_=' + Date.now(); // Redirect with cache buster
           return;
         }
         
