@@ -440,6 +440,26 @@ app.get('/auth/status', async (req, res) => {
       loggedIn
     });
 
+    // If tokens exist but are expired, try to refresh them
+    if (!loggedIn && tokens.access_token && tokens.refresh_token) {
+      console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Access token expired but refresh_token exists, attempting refresh...`);
+      try {
+        tokens = await refreshAccessToken(tokens, deviceId);
+        loggedIn = Boolean(tokens.access_token) && Date.now() < (tokens.expires_at || 0);
+        console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token refresh successful, new loggedIn:`, loggedIn);
+      } catch (refreshError) {
+        console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Token refresh failed:`, {
+          errorStatus: refreshError.status,
+          errorMessage: refreshError?.message ?? refreshError
+        });
+        // If refresh fails with 401, tokens are already cleared by refreshAccessToken
+        // For other errors, keep loggedIn as false but don't clear tokens
+        if (refreshError.status === 401) {
+          loggedIn = false;
+        }
+      }
+    }
+
     if (loggedIn) {
       // Check if tokens are very fresh (updated within last 5 seconds)
       // Skip verification for fresh tokens to avoid race conditions after OAuth
@@ -504,31 +524,35 @@ app.get('/auth/status', async (req, res) => {
       console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Not logged in (no valid tokens)`);
     }
 
-    // Build debug object with explicit checks
+    // Reload tokens after potential refresh to get updated values
+    const finalTokens = await loadTokens(deviceId);
+    
+    // Build debug object with explicit checks (using potentially refreshed tokens)
     const debugInfo = {
-      hasAccessToken: tokens && typeof tokens.access_token !== 'undefined' ? !!tokens.access_token : false,
-      hasRefreshToken: tokens && typeof tokens.refresh_token !== 'undefined' ? !!tokens.refresh_token : false,
-      expiresAt: tokens?.expires_at || null,
-      expiresAtDate: tokens?.expires_at ? new Date(tokens.expires_at).toISOString() : null,
+      hasAccessToken: finalTokens && typeof finalTokens.access_token !== 'undefined' ? !!finalTokens.access_token : false,
+      hasRefreshToken: finalTokens && typeof finalTokens.refresh_token !== 'undefined' ? !!finalTokens.refresh_token : false,
+      expiresAt: finalTokens?.expires_at || null,
+      expiresAtDate: finalTokens?.expires_at ? new Date(finalTokens.expires_at).toISOString() : null,
       currentTime: Date.now(),
       currentTimeDate: new Date().toISOString(),
-      isExpired: tokens?.expires_at ? Date.now() >= tokens.expires_at : null,
-      created_at: tokens?.created_at || null,
-      created_atDate: tokens?.created_at ? new Date(tokens.created_at).toISOString() : null,
-      updated_at: tokens?.updated_at || null,
-      updated_atDate: tokens?.updated_at ? new Date(tokens.updated_at).toISOString() : null,
-      ageCheckDate: tokens?.updated_at || tokens?.created_at || null,
-      timeSinceUpdate: tokens?.updated_at || tokens?.created_at ? Date.now() - new Date(tokens?.updated_at || tokens?.created_at).getTime() : null,
+      isExpired: finalTokens?.expires_at ? Date.now() >= finalTokens.expires_at : null,
+      created_at: finalTokens?.created_at || null,
+      created_atDate: finalTokens?.created_at ? new Date(finalTokens.created_at).toISOString() : null,
+      updated_at: finalTokens?.updated_at || null,
+      updated_atDate: finalTokens?.updated_at ? new Date(finalTokens.updated_at).toISOString() : null,
+      ageCheckDate: finalTokens?.updated_at || finalTokens?.created_at || null,
+      timeSinceUpdate: finalTokens?.updated_at || finalTokens?.created_at ? Date.now() - new Date(finalTokens?.updated_at || finalTokens?.created_at).getTime() : null,
       deviceIdPreview: deviceId ? deviceId.substring(0, 8) + '...' : 'none',
-      tokensObjectKeys: tokens ? Object.keys(tokens) : [],
-      tokensObjectType: tokens ? typeof tokens : 'undefined',
-      tokensIsNull: tokens === null,
-      tokensIsUndefined: tokens === undefined
+      tokensObjectKeys: finalTokens ? Object.keys(finalTokens) : [],
+      tokensObjectType: finalTokens ? typeof finalTokens : 'undefined',
+      tokensIsNull: finalTokens === null,
+      tokensIsUndefined: finalTokens === undefined,
+      tokenWasRefreshed: tokens !== finalTokens
     };
     
     const responseData = {
       loggedIn,
-      expiresAt: loggedIn ? tokens?.expires_at || 0 : 0,
+      expiresAt: loggedIn ? finalTokens?.expires_at || 0 : 0,
       debug: debugInfo
     };
     
