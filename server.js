@@ -791,11 +791,16 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       return res.status(401).json({ error: 'Device ID is required' });
     }
     // Try playbackStatus endpoint first (more reliable), fallback to playbackState
+    // Track whether playback endpoints failed with NOT_FOUND (stale group ID)
+    let playbackEndpointNotFound = false;
     const [statusResponse, metadataResponse] = await Promise.allSettled([
       sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackStatus`, {}, req.deviceId).catch(() => {
         // Fallback to playbackState if playbackStatus fails
         return sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackState`, {}, req.deviceId).catch((err) => {
           console.error('[PlaybackStatus] Both playbackStatus and playbackState requests failed:', err.message);
+          if (err.message && err.message.includes('ERROR_RESOURCE_NOT_FOUND')) {
+            playbackEndpointNotFound = true;
+          }
           return null;
         });
       }),
@@ -965,9 +970,13 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       finalPlaybackState = 'STOPPED';
     }
 
-    // Fallback: If we have a currentItem but playbackState says STOPPED, 
-    // assume it's playing (the API sometimes returns incorrect state)
-    if (finalPlaybackState === 'STOPPED' && currentItem) {
+    // Fallback: If we have a currentItem but playbackState says STOPPED,
+    // assume it's playing (the API sometimes returns incorrect state).
+    // BUT: don't apply this fallback when both playback endpoints returned
+    // ERROR_RESOURCE_NOT_FOUND -- that means the group ID is stale (e.g. speakers
+    // silently regrouped) and playback genuinely stopped. Stale metadata from the
+    // old group shouldn't be treated as evidence of active playback.
+    if (finalPlaybackState === 'STOPPED' && currentItem && !playbackEndpointNotFound) {
       finalPlaybackState = 'PLAYING';
     }
     
@@ -986,7 +995,8 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
         hasImageUrl: !!finalActiveFavorite.imageUrl
       } : null,
       playbackState: finalPlaybackState,
-      hasCurrentItem: !!currentItem
+      hasCurrentItem: !!currentItem,
+      ...(playbackEndpointNotFound ? { groupNotFound: true } : {})
     });
 
     res.json({
@@ -997,7 +1007,9 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       volume: volume.volume || volume.groupVolume || 0,
       activeFavoriteId: finalActiveFavoriteId,
       activeFavorite: finalActiveFavorite,
-      container: container || metadata.container || null, // Explicitly include container for playlist name
+      container: container || metadata.container || null,
+      // Signal the client that this group ID is stale so it can re-fetch groups
+      ...(playbackEndpointNotFound ? { groupNotFound: true } : {}),
       ...playbackState,
       ...metadata
     });

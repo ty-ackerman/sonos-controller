@@ -7714,6 +7714,14 @@ async function checkAuthAndInit() {
           const status = await response.json();
           const statusUpdateTime = Date.now();
           
+          // If the server reports the group ID is stale (speakers silently regrouped),
+          // re-fetch groups to get updated IDs and select the new group
+          if (status.groupNotFound && currentHouseholdId) {
+            console.warn('[Client] Group not found (speakers may have regrouped) — refreshing groups');
+            await loadPlayers(currentHouseholdId);
+            return;
+          }
+          
           // Log what we received from server
           console.log('[Client] Status received:', {
             groupId,
