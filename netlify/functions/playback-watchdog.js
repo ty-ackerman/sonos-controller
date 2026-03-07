@@ -110,20 +110,15 @@ async function checkAndResumePlayback(deviceId) {
       );
       tokens = t3;
 
-      let status;
       if (!statusRes.ok) {
         const { response: fallbackRes, tokens: t3b } = await sonosApi(
           `/groups/${encodeURIComponent(group.id)}/playback/playbackState`, tokens, deviceId
         );
         tokens = t3b;
-        if (!fallbackRes.ok) {
-          console.warn(`[PlaybackWatchdog] Both playback endpoints failed for group "${group.name}" (${group.id}) — treating as stopped`);
-          status = { playbackState: 'PLAYBACK_STATE_IDLE' };
-        } else {
-          status = await fallbackRes.json();
-        }
+        if (!fallbackRes.ok) continue;
+        var status = await fallbackRes.json();
       } else {
-        status = await statusRes.json();
+        var status = await statusRes.json();
       }
 
       const rawState = String(status.playbackState || status.state || '');
