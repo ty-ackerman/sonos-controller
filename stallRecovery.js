@@ -50,7 +50,10 @@ const log = (msg) => console.log(`[TRACE-RECOVERY] ${msg}`);
 const lastAlert = new Map();
 async function notify(title, message, { priority = 'default', tags = 'warning', throttleKey = null, throttleMs = 0 } = {}) {
   const topic = process.env.NTFY_TOPIC;
-  if (!topic) return;
+  if (!topic) {
+    log(`ntfy not configured (NTFY_TOPIC is empty in this deploy); would have sent: ${title}`);
+    return;
+  }
   if (throttleKey) {
     const now = Date.now();
     if (now - (lastAlert.get(throttleKey) || 0) < throttleMs) return;
@@ -67,7 +70,7 @@ async function notify(title, message, { priority = 'default', tags = 'warning', 
       body: message,
       signal: controller.signal
     });
-    if (!res.ok) log(`ntfy alert failed: http ${res.status}`);
+    log(res.ok ? `ntfy alert sent: ${title}` : `ntfy alert failed: http ${res.status}`);
   } catch (error) {
     log(`ntfy alert failed: ${error.message}`);
   } finally {
