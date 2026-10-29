@@ -22,6 +22,8 @@ A web app that controls Sonos speakers across multiple locations. Pick a playlis
 
 ## Playback Watchdog
 
+> **Switched off for now.** The watchdog's location list is empty, because "Stall recovery" below now covers every location and the two would otherwise act on the same speaker. The description is kept for reference.
+
 Sonos occasionally fails to load the next track in a playlist (streaming hiccup, network blip, etc.), leaving the speaker silent. The watchdog catches this automatically.
 
 **How it works:**
@@ -38,7 +40,7 @@ Sonos occasionally fails to load the next track in a playlist (streaming hiccup,
 
 **Worst case:** up to ~60 seconds of silence before the watchdog kicks in and resumes. The check runs every minute.
 
-## Stall recovery (Test location only, for now)
+## Stall recovery (all locations)
 
 Sometimes Sonos hits several Spotify songs in a row that it can't play (for example songs that have been removed or are unavailable in your country). It skips a few, then gives up: the group drops to **idle at the very start of the queue** and stays silent until someone presses play. A normal pause looks different (it says **paused**, partway into a song), so the two are easy to tell apart.
 
@@ -57,14 +59,14 @@ A lock in the database makes sure only one recovery runs at a time. When Sonos r
 4. Starts **play**. Steps 2 to 4 are a single request to Sonos; if Sonos refuses that, the app falls back to doing them one at a time, and if the music still hasn't started after 1.5 seconds it presses play itself.
 5. Puts **every speaker's volume** back to what it was while the music was still playing (it saves these every minute while playing, so it is not fooled by anything the reload changes).
 
-Safeguards: it never touches a paused group, and every step is logged with `[TRACE-RECOVERY]`. There is **no limit on how many times** it recovers a group, by choice: a playlist made entirely of unplayable songs would keep restarting until someone stops it. If it can't match the loaded playlist to a saved favorite, it still turns on shuffle and presses play on the current queue. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. College and Leslieville are not covered yet.
+Safeguards: it never touches a paused group, and every step is logged with `[TRACE-RECOVERY]`. There is **no limit on how many times** it recovers a group, by choice: a playlist made entirely of unplayable songs would keep restarting until someone stops it. If it can't match the loaded playlist to a saved favorite, it still turns on shuffle and presses play on the current queue. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. Test, College and Leslieville are all covered (the list is `RECOVERY_DEVICE_IDS` in `stallRecovery.js`). Heads-up for classes: the shuffle and the restart-from-the-top behaviour are built for drop-in playlists that are saved as Sonos favorites; playlists that staff bring themselves are not handled properly yet.
 
 ## Diagnosing playback problems (logs)
 
 When a track fails to load, Sonos reports why in a `playbackError` event. The app can receive these, but only after one manual step in the Sonos developer portal.
 
 - **One-time setup:** in the Sonos integration page for this API key, set the **callback URL** to `https://sonos-controller.netlify.app/sonos/events`. Until that is set, Sonos rejects event subscriptions with `callbackUrl cannot be null or empty`.
-- **What the app does:** while the Test location is open, it subscribes to the Roam's playback events and logs each one. It does not skip, pause, or resume anything because of them.
+- **What the app does:** it subscribes to every location's playback events (when a location's page is open, and every minute from the scheduled check) and logs each one. The recovery described above acts on two kinds of event: a song starting to buffer, and a playback error.
 - **Where to look:** in the Netlify function logs for `server`, search for these prefixes:
   - `[TRACE]` — one line per status poll (state, song, next song, item, any Sonos error)
   - `[TRACE-CMD]` — each skip and play/pause the app sends, plus Sonos's reply

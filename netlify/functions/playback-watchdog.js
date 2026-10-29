@@ -8,10 +8,9 @@ const SONOS_CONTROL_BASE = 'https://api.ws.sonos.com/control/api/v1';
 const SONOS_CLIENT_ID = process.env.SONOS_CLIENT_ID;
 const SONOS_CLIENT_SECRET = process.env.SONOS_CLIENT_SECRET;
 
-const DEVICE_IDS = [
-  'global-automation-college',
-  'global-automation-leslieville'
-];
+// Empty on purpose: every location is now covered by the event-driven recovery in stallRecovery.js.
+// Leaving this watchdog on College/Leslieville as well would make two systems act on the same group.
+const DEVICE_IDS = [];
 
 function storeTokens(tokenResponse, existingTokens) {
   const expiresIn = Number(tokenResponse.expires_in ?? 0);

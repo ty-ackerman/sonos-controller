@@ -2769,7 +2769,7 @@ async function sonosFetch(endpoint, options = {}, deviceId) {
 // Diagnostic: subscribe to playback events (state changes + playbackError) for a group.
 // Only for the Test location. Subscriptions last up to 3 days, so we renew at most every 30 minutes
 // per server instance. Failures are logged and never block the status poll.
-const EVENT_SUBSCRIBE_DEVICE_IDS = new Set(['global-automation-test']);
+const EVENT_SUBSCRIBE_DEVICE_IDS = new Set(['global-automation-test', 'global-automation-college', 'global-automation-leslieville']);
 async function ensurePlaybackSubscription(groupId, deviceId) {
   if (!EVENT_SUBSCRIBE_DEVICE_IDS.has(deviceId)) return;
   globalThis.__sonosSubs = globalThis.__sonosSubs || new Map();

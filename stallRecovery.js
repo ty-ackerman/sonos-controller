@@ -25,8 +25,13 @@ const SONOS_CONTROL_BASE = 'https://api.ws.sonos.com/control/api/v1';
 const SONOS_CLIENT_ID = process.env.SONOS_CLIENT_ID;
 const SONOS_CLIENT_SECRET = process.env.SONOS_CLIENT_SECRET;
 
-// Only these locations get recovery. College and Leslieville are intentionally not listed.
-export const RECOVERY_DEVICE_IDS = ['global-automation-test'];
+// Locations that get recovery (all of them). The group id in a Sonos event is matched against each
+// location's groups to find which one it belongs to.
+export const RECOVERY_DEVICE_IDS = [
+  'global-automation-test',
+  'global-automation-college',
+  'global-automation-leslieville'
+];
 
 const RECENTLY_ACTIVE_MS = 150 * 1000; // group must have been playing within this window
 const CONFIRM_WAIT_MS = 2 * 1000; // wait after spotting the pattern, then check it is still true
@@ -439,14 +444,20 @@ const errorTimes = new Map(); // per warm instance; the DB flag is what the back
 const BURST_COUNT = 3;
 const BURST_WINDOW_MS = 3000;
 export async function noteError(groupId) {
-  const deviceId = RECOVERY_DEVICE_IDS[0];
-  if (!deviceId || !groupId) return;
+  if (!groupId) return;
   const now = Date.now();
   const times = (errorTimes.get(groupId) || []).filter((t) => now - t < BURST_WINDOW_MS);
   times.push(now);
   errorTimes.set(groupId, times);
   if (times.length === BURST_COUNT) {
-    await saveHealth(deviceId, groupId, { error_burst_at: new Date(now).toISOString() });
+    // Which location owns this group? playback_health rows are keyed by (device, group); the
+    // one-minute check creates the row for every group it sees. If none exists yet the early
+    // reaction is skipped and the recovery still acts when Sonos goes idle.
+    const { data: rows } = await supabase.from('playback_health').select('device_id').eq('group_id', groupId);
+    const owners = (rows || []).map((r) => r.device_id).filter((id) => RECOVERY_DEVICE_IDS.includes(id));
+    for (const deviceId of owners) {
+      await saveHealth(deviceId, groupId, { error_burst_at: new Date(now).toISOString() });
+    }
     log(`error burst: ${BURST_COUNT} playbackErrors within ${BURST_WINDOW_MS / 1000}s for ${String(groupId).slice(0, 24)}`);
   }
 }
