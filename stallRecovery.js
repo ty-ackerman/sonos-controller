@@ -256,7 +256,6 @@ async function recoverGroup(client, deviceId, household, group, health) {
     );
     return null;
   }
-  const failedAt = Date.now();
   await notify(
     `Sonos failed at ${prettyPlace(deviceId)}`,
     `"${group.name}" stalled on "${found.favorite.name}". Restarting the playlist now.`,
@@ -350,18 +349,40 @@ async function recoverGroup(client, deviceId, household, group, health) {
   recent.push(new Date(now).toISOString());
   await saveHealth(deviceId, group.id, { recoveries: recent });
 
-  const seconds = Math.round((Date.now() - failedAt) / 1000);
-  const playingAgain = after.ok && (after.raw.includes('PLAYING') || after.raw.includes('BUFFERING'));
+  return after;
+}
+
+// Reload the playlist, then check the result and go again if it did not take: the first song of the
+// reloaded playlist can stall too, and Sonos can also drop straight to IDLE again (seen at 04:11).
+// Stops as soon as music is playing, someone paused it, or after MAX_RECOVERY_ATTEMPTS. Sends the
+// final "recovered" / "still not playing" alert once, so retries do not spam the phone.
+const MAX_RECOVERY_ATTEMPTS = 4;
+async function recoverWithRetries(client, deviceId, household, group, health) {
+  const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
+  const startedAt = Date.now();
+  let result = null;
+  for (let attempt = 1; attempt <= MAX_RECOVERY_ATTEMPTS; attempt += 1) {
+    result = await recoverGroup(client, deviceId, household, group, health);
+    if (!result) return null; // not a saved playlist: recoverGroup did nothing
+    const pos = result.positionMillis ?? 0;
+    const stuck = result.ok && (result.raw.includes('IDLE') || (result.raw.includes('BUFFERING') && pos < 1000));
+    if (!stuck) break;
+    const state = result.raw.replace('PLAYBACK_STATE_', '');
+    log(`${label} still ${state} after recovery attempt ${attempt}/${MAX_RECOVERY_ATTEMPTS}${attempt < MAX_RECOVERY_ATTEMPTS ? '; trying again.' : '; giving up.'}`);
+  }
+
+  const seconds = Math.round((Date.now() - startedAt) / 1000);
+  const playingAgain = result.ok && result.raw.includes('PLAYING');
   await notify(
     playingAgain ? `Sonos recovered at ${prettyPlace(deviceId)}` : `Sonos still not playing at ${prettyPlace(deviceId)}`,
     playingAgain
       ? `"${group.name}" is playing again (${seconds}s after the reload started).`
-      : `"${group.name}" is ${after.ok ? after.raw.replace('PLAYBACK_STATE_', '').toLowerCase() : 'unreadable'} after the reload. Someone needs to check it.`,
+      : `"${group.name}" is ${result.ok ? result.raw.replace('PLAYBACK_STATE_', '').toLowerCase() : 'unreadable'} after ${MAX_RECOVERY_ATTEMPTS} tries at restarting the playlist. Someone needs to check it.`,
     playingAgain
-      ? { tags: 'white_check_mark', throttleKey: `ok:${group.id}`, throttleMs: 30 * 1000 }
+      ? { tags: 'white_check_mark' }
       : { priority: 'high', tags: 'rotating_light' }
   );
-  return after;
+  return result;
 }
 
 async function checkGroup(client, deviceId, household, group) {
@@ -418,7 +439,7 @@ async function checkGroup(client, deviceId, household, group) {
     }
 
     log(`${label} confirmed stalled. Recovering (reload playlist, shuffle, play, keep volumes).`);
-    await recoverGroup(client, deviceId, household, group, health);
+    await recoverWithRetries(client, deviceId, household, group, health);
   } finally {
     await releaseLock(deviceId, group.id);
   }
@@ -614,7 +635,7 @@ export async function recoverAfterError(groupId, householdId, errorAt) {
       const health = (await loadHealth(deviceId, group.id)) || { recoveries: [], last_volumes: null };
 
       log(`${label} ${cascade ? 'error burst' : 'idle after playbackError'} (+${Date.now() - t0}ms). Recovering now (reload playlist, shuffle, play, keep volumes).`);
-      const done = await recoverGroup(client, deviceId, household, group, health);
+      const done = await recoverWithRetries(client, deviceId, household, group, health);
       if (done) log(`${label} recovery finished (+${Date.now() - t0}ms total).`);
     } finally {
       if (locked) await releaseLock(deviceId, group.id); // never release a lock another run holds
@@ -660,7 +681,6 @@ export async function startRecoveryFromError({ groupId, householdId, origin }) {
 // A healthy song buffers for about 1.1s. A failing one sits in BUFFERING for ~20s before Sonos
 // reports ERROR_LOST_CONNECTION. If a song is still buffering after BUFFER_LIMIT_MS, recover now.
 export const BUFFER_LIMIT_MS = 2000;
-const MAX_BUFFER_ATTEMPTS = 4;
 
 export async function recoverIfStillBuffering(groupId, householdId, itemId, bufferedAt) {
   const t0 = Date.now();
@@ -712,16 +732,8 @@ export async function recoverIfStillBuffering(groupId, householdId, itemId, buff
     try {
       const health = (await loadHealth(deviceId, group.id)) || { recoveries: [], last_volumes: null };
       log(`${label} still BUFFERING item=${s.itemId} after ${Date.now() - since}ms (limit ${BUFFER_LIMIT_MS}ms). Recovering now.`);
-      // The reloaded playlist's first song can stall too (seen at 03:19). Recovery holds the lock, so
-      // no new watcher could act on it. Check the result and go again while it is still buffering
-      // well past the limit (recoverGroup waits several seconds before reporting).
-      for (let attempt = 1; attempt <= MAX_BUFFER_ATTEMPTS; attempt += 1) {
-        const result = await recoverGroup(client, deviceId, household, group, health);
-        if (!result) break; // not a saved playlist: recoverGroup did nothing
-        const stillStuck = result?.ok && result.raw.includes('BUFFERING') && (result.positionMillis ?? 0) < 1000;
-        if (!stillStuck) break;
-        log(`${label} still BUFFERING after recovery attempt ${attempt}/${MAX_BUFFER_ATTEMPTS}${attempt < MAX_BUFFER_ATTEMPTS ? '; trying again.' : '; giving up.'}`);
-      }
+      // Retries if the reloaded playlist stalls or drops to IDLE again (see recoverWithRetries).
+      await recoverWithRetries(client, deviceId, household, group, health);
       log(`${label} slow-buffer recovery finished (+${Date.now() - since}ms since buffering began).`);
     } finally {
       await releaseLock(deviceId, group.id);
