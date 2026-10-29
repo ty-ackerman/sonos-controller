@@ -105,25 +105,18 @@ async function checkAndResumePlayback(deviceId) {
     const { groups = [] } = await groupsRes.json();
 
     for (const group of groups) {
+      // Correct Sonos endpoint is GET /groups/{id}/playback (the old /playback/playbackStatus path always 404s)
       const { response: statusRes, tokens: t3 } = await sonosApi(
-        `/groups/${encodeURIComponent(group.id)}/playback/playbackStatus`, tokens, deviceId
+        `/groups/${encodeURIComponent(group.id)}/playback`, tokens, deviceId
       );
       tokens = t3;
 
       if (!statusRes.ok) {
-        const { response: fallbackRes, tokens: t3b } = await sonosApi(
-          `/groups/${encodeURIComponent(group.id)}/playback/playbackState`, tokens, deviceId
-        );
-        tokens = t3b;
-        if (!fallbackRes.ok) {
-          const errBody = await fallbackRes.text().catch(() => '');
-          console.log(`[TRACE-WD] ${deviceId} "${group.name}" status unreadable: ${statusRes.status}/${fallbackRes.status} ${errBody.slice(0, 160)}`);
-          continue;
-        }
-        var status = await fallbackRes.json();
-      } else {
-        var status = await statusRes.json();
+        const errBody = await statusRes.text().catch(() => '');
+        console.log(`[TRACE-WD] ${deviceId} "${group.name}" status unreadable: ${statusRes.status} ${errBody.slice(0, 160)}`);
+        continue;
       }
+      const status = await statusRes.json();
 
       const rawState = String(status.playbackState || status.state || '');
 

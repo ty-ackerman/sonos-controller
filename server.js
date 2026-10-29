@@ -803,16 +803,13 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       traceErrors[key] = { http: err.status || null, code, msg: String(err.message || '').slice(0, 160) };
     };
 
-    // Try playbackStatus endpoint first (more reliable), fallback to playbackState
+    // The Sonos endpoint for playback state is GET /groups/{id}/playback (returns a playbackStatus object).
+    // The old /playback/playbackStatus and /playback/playbackState paths always return 404.
     const [statusResponse, metadataResponse] = await Promise.allSettled([
-      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackStatus`, {}, req.deviceId).catch((firstErr) => {
-        traceError('playbackStatus', firstErr);
-        // Fallback to playbackState if playbackStatus fails
-        return sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackState`, {}, req.deviceId).catch((err) => {
-          traceError('playbackState', err);
-          console.error('[PlaybackStatus] Both playbackStatus and playbackState requests failed:', err.message);
-          return null;
-        });
+      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback`, {}, req.deviceId).catch((err) => {
+        traceError('playback', err);
+        console.error('[PlaybackStatus] playback state request failed:', err.message);
+        return null;
       }),
       sonosRequest(`/groups/${encodeURIComponent(groupId)}/playbackMetadata`, {}, req.deviceId).catch((err) => {
         traceError('playbackMetadata', err);
@@ -971,7 +968,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     // Normalize state values (handle both PLAYBACK_STATE_PLAYING and PLAYING)
     // Ensure finalPlaybackState is a string before calling includes()
     const stateString = String(finalPlaybackState || 'STOPPED');
-    if (stateString.includes('PLAYING')) {
+    if (stateString.includes('PLAYING') || stateString.includes('BUFFERING')) {
       finalPlaybackState = 'PLAYING';
     } else if (stateString.includes('PAUSED')) {
       finalPlaybackState = 'PAUSED';
@@ -1036,6 +1033,15 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       );
     } catch (traceErr) {
       console.warn('[TRACE] failed to build trace:', traceErr.message);
+    }
+
+    // If Sonos could not answer the state or metadata call, do NOT pretend the group is STOPPED.
+    // Return an error so the page keeps showing the last good now-playing card.
+    if (traceErrors.playback || traceErrors.playbackMetadata) {
+      return res.status(503).json({
+        error: 'Sonos did not return playback info',
+        details: traceErrors
+      });
     }
 
     // Log final status data being sent to client

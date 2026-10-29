@@ -8318,9 +8318,8 @@ async function checkAuthAndInit() {
             }
           }
         } catch (error) {
+          // A failed poll must not blank the card; keep showing the last good state.
           console.error('Failed to update currently playing:', error);
-          currentlyPlayingPanel.classList.remove('visible');
-          unlockBodyScroll();
         }
       }
 
