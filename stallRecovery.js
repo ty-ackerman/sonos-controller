@@ -132,6 +132,15 @@ function makeSonosClient(initialTokens, deviceId) {
       tokens = await refreshAccessToken(tokens, deviceId);
       response = await doFetch();
     }
+    // Sonos answers 429 when it is asked too much too fast. Wait briefly and try again instead of
+    // treating it as a failure (that silently skipped recoveries at 04:16 to 04:23).
+    for (let retry = 1; retry <= 2 && response.status === 429; retry += 1) {
+      const waitSeconds = Number(response.headers.get('retry-after'));
+      const waitMs = Math.min(Number.isFinite(waitSeconds) && waitSeconds > 0 ? waitSeconds * 1000 : 700 * retry, 2500);
+      log(`Sonos said 429 (too many requests) for ${endpoint.split('?')[0]}; waiting ${waitMs}ms (retry ${retry}/2)`);
+      await sleep(waitMs);
+      response = await doFetch();
+    }
     return response;
   }
 
@@ -232,6 +241,43 @@ async function findLoadedFavorite(client, householdId, groupId) {
   return favorite
     ? { favorite, containerName: container.name || null }
     : { error: `no favorite matches "${container.name || objectId}"`, containerName: container.name || null };
+}
+
+// Finding "which location and group does this event belong to" used to cost a token lookup and 1-2
+// Sonos calls per location on EVERY event. Sonos started answering 429 (too many requests), which
+// silently broke recovery. So remember which location owns each household, and cache its groups.
+const householdOwners = new Map(); // householdId -> deviceId
+const groupCache = new Map(); // `${deviceId}|${householdId}` -> { at, groups }
+const GROUP_CACHE_MS = 10 * 60 * 1000;
+
+function skipDevice(deviceId, householdId) {
+  const owner = householdId ? householdOwners.get(householdId) : null;
+  return Boolean(owner && owner !== deviceId);
+}
+
+async function lookupGroup(client, deviceId, groupId, householdId) {
+  const householdIds = householdId ? [householdId] : [];
+  if (!householdIds.length) {
+    const hhRes = await client.call('/households');
+    if (hhRes.ok) householdIds.push(...((await hhRes.json().catch(() => ({}))).households || []).map((h) => h.id));
+  }
+  for (const id of householdIds) {
+    const key = `${deviceId}|${id}`;
+    const cached = groupCache.get(key);
+    let group = cached && Date.now() - cached.at < GROUP_CACHE_MS ? cached.groups.find((g) => g.id === groupId) : null;
+    if (!group) {
+      const groupsRes = await client.call(`/households/${encodeURIComponent(id)}/groups`);
+      if (!groupsRes.ok) continue;
+      const groups = (await groupsRes.json().catch(() => ({}))).groups || [];
+      groupCache.set(key, { at: Date.now(), groups });
+      group = groups.find((g) => g.id === groupId) || null;
+    }
+    if (group) {
+      householdOwners.set(id, deviceId);
+      return { household: { id }, group };
+    }
+  }
+  return null;
 }
 
 async function recoverGroup(client, deviceId, household, group, health) {
@@ -396,11 +442,9 @@ async function checkGroup(client, deviceId, household, group) {
   const nowIso = new Date().toISOString();
 
   if (state.raw.includes('PLAYING') || state.raw.includes('BUFFERING')) {
-    // Remember that it was healthy, and what the speaker volumes were while it was.
-    const fields = { last_active_at: nowIso };
-    const players = await readPlayerVolumes(client, group.playerIds);
-    if (players) fields.last_volumes = { players, at: nowIso };
-    await saveHealth(deviceId, group.id, fields);
+    // Remember that it was healthy. (Volumes are no longer saved here: recovery reads the live volume,
+    // and reading every speaker every minute at every location added a lot of Sonos calls.)
+    await saveHealth(deviceId, group.id, { last_active_at: nowIso });
     return;
   }
 
@@ -555,29 +599,15 @@ export async function recoverAfterError(groupId, householdId, errorAt) {
   const t0 = Date.now();
   const burstSince = (Number(errorAt) || t0) - 2000;
   for (const deviceId of RECOVERY_DEVICE_IDS) {
+    if (skipDevice(deviceId, householdId)) continue;
     const tokens = await loadTokens(deviceId);
     if (!tokens?.access_token) continue;
     const client = makeSonosClient(tokens, deviceId);
 
     // Find the group (and its household) on this account.
-    let household = null;
-    let group = null;
-    const householdIds = householdId ? [householdId] : [];
-    if (!householdIds.length) {
-      const hhRes = await client.call('/households');
-      if (hhRes.ok) householdIds.push(...((await hhRes.json().catch(() => ({}))).households || []).map((h) => h.id));
-    }
-    for (const id of householdIds) {
-      const groupsRes = await client.call(`/households/${encodeURIComponent(id)}/groups`);
-      if (!groupsRes.ok) continue;
-      const found = ((await groupsRes.json().catch(() => ({}))).groups || []).find((g) => g.id === groupId);
-      if (found) {
-        household = { id };
-        group = found;
-        break;
-      }
-    }
-    if (!group) continue;
+    const located = await lookupGroup(client, deviceId, groupId, householdId);
+    if (!located) continue;
+    const { household, group } = located;
 
     const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
     await saveHealth(deviceId, group.id, {}); // make sure the row exists so the lock can be taken
@@ -686,28 +716,14 @@ export async function recoverIfStillBuffering(groupId, householdId, itemId, buff
   const t0 = Date.now();
   const since = Number(bufferedAt) || t0;
   for (const deviceId of RECOVERY_DEVICE_IDS) {
+    if (skipDevice(deviceId, householdId)) continue;
     const tokens = await loadTokens(deviceId);
     if (!tokens?.access_token) continue;
     const client = makeSonosClient(tokens, deviceId);
 
-    let household = null;
-    let group = null;
-    const householdIds = householdId ? [householdId] : [];
-    if (!householdIds.length) {
-      const hhRes = await client.call('/households');
-      if (hhRes.ok) householdIds.push(...((await hhRes.json().catch(() => ({}))).households || []).map((h) => h.id));
-    }
-    for (const id of householdIds) {
-      const groupsRes = await client.call(`/households/${encodeURIComponent(id)}/groups`);
-      if (!groupsRes.ok) continue;
-      const found = ((await groupsRes.json().catch(() => ({}))).groups || []).find((g) => g.id === groupId);
-      if (found) {
-        household = { id };
-        group = found;
-        break;
-      }
-    }
-    if (!group) continue;
+    const located = await lookupGroup(client, deviceId, groupId, householdId);
+    if (!located) continue;
+    const { household, group } = located;
 
     const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
     const wait = since + BUFFER_LIMIT_MS - Date.now();
@@ -774,13 +790,15 @@ export async function startBufferWatch({ groupId, householdId, itemId, queueVers
 // is harmless, so the one-minute check renews it for every group, even with no page open.
 let lastSubscribeLog = 0;
 async function renewEventSubscription(client, group) {
+  // Subscriptions last 3 days, so twice an hour is plenty (every minute added many Sonos calls).
+  if (new Date().getUTCMinutes() % 30 !== 0) return;
   const res = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/subscription`, { method: 'POST' });
   const now = Date.now();
   if (!res.ok) {
     log(`event subscription renew failed for "${group.name}": http ${res.status} ${(await res.text().catch(() => '')).slice(0, 120)}`);
   } else if (now - lastSubscribeLog > 10 * 60 * 1000) {
     lastSubscribeLog = now;
-    log(`event subscription renewed for "${group.name}" (http ${res.status}); renewed every minute.`);
+    log(`event subscription renewed for "${group.name}" (http ${res.status}); renewed twice an hour.`);
   }
 }
 
