@@ -38,6 +38,20 @@ Sonos occasionally fails to load the next track in a playlist (streaming hiccup,
 
 **Worst case:** up to ~60 seconds of silence before the watchdog kicks in and resumes. The check runs every minute.
 
+## Stall recovery (Test location only, for now)
+
+Sometimes Sonos hits several Spotify songs in a row that it can't play (for example songs that have been removed or are unavailable in your country). It skips a few, then gives up: the group drops to **idle at the very start of the queue** and stays silent until someone presses play. A normal pause looks different (it says **paused**, partway into a song), so the two are easy to tell apart.
+
+A second scheduled function (`netlify/functions/playback-recovery.js`, every minute) watches for exactly that pattern. When a group was playing within the last couple of minutes and is now idle at the start, it:
+
+1. Waits 5 seconds and checks again, so a slow start is not treated as a failure.
+2. **Reloads the playlist that was playing** (the same Spotify playlist, back to the start).
+3. Turns **shuffle on**, which makes a run of bad songs in a row much less likely. Other play modes are left as they were.
+4. Presses **play**.
+5. Puts **every speaker's volume** back to what it was while the music was still playing (it saves these every minute while playing, so it is not fooled by anything the reload changes).
+
+Safety limits: it never touches a paused group, it recovers a group at most twice in 10 minutes (so a playlist full of bad songs can't loop forever), and every step is logged with `[TRACE-RECOVERY]`. If it can't match the loaded playlist to a saved favorite, it still turns on shuffle and presses play on the current queue. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. College and Leslieville are not covered yet.
+
 ## Project structure
 
 ```
