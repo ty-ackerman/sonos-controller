@@ -32,7 +32,7 @@ const RECENTLY_ACTIVE_MS = 150 * 1000; // group must have been playing within th
 const CONFIRM_WAIT_MS = 5 * 1000; // wait after spotting the pattern, then check it is still true
 const SETTLE_WAIT_MS = 4 * 1000; // let playback start before restoring volumes / verifying
 const LOCK_MS = 90 * 1000; // one recovery per group at a time
-const MAX_RECOVERIES = 2; // per group...
+const MAX_RECOVERIES = 5; // per group...
 const RECOVERY_WINDOW_MS = 10 * 60 * 1000; // ...per 10 minutes
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -336,7 +336,7 @@ const TRIGGER_EVERY_MS = 30 * 1000;
 const lastActiveWrite = new Map(); // per warm server instance; only to avoid writing every poll
 const lastTrigger = new Map();
 
-export async function watchForStall({ deviceId, groupId, state, positionMillis }) {
+export async function watchForStall({ deviceId, groupId, state, positionMillis, origin }) {
   if (!RECOVERY_DEVICE_IDS.includes(deviceId) || !groupId) return;
   const raw = String(state || '');
   const key = `${deviceId}:${groupId}`;
@@ -363,9 +363,11 @@ export async function watchForStall({ deviceId, groupId, state, positionMillis }
     if (now - (lastTrigger.get(key) || 0) < TRIGGER_EVERY_MS) return;
     lastTrigger.set(key, now);
 
-    const siteUrl = process.env.URL || process.env.DEPLOY_PRIME_URL;
-    if (!siteUrl || process.env.NETLIFY !== 'true') {
-      return; // local development: the scheduled function path is not available either
+    // Use the address this request came in on (Netlify's URL variables are not reliably set when functions run).
+    const siteUrl = origin || process.env.URL || process.env.DEPLOY_PRIME_URL;
+    if (!siteUrl || /localhost|127\.0\.0\.1/.test(siteUrl)) {
+      log(`stall seen in status poll but no deployed site address to call (origin=${origin || 'none'}); the once-a-minute check will handle it`);
+      return;
     }
 
     const controller = new AbortController();

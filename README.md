@@ -55,7 +55,7 @@ A lock in the database makes sure only one recovery runs at a time. When a group
 4. Presses **play**.
 5. Puts **every speaker's volume** back to what it was while the music was still playing (it saves these every minute while playing, so it is not fooled by anything the reload changes).
 
-Safety limits: it never touches a paused group, it recovers a group at most twice in 10 minutes (so a playlist full of bad songs can't loop forever), and every step is logged with `[TRACE-RECOVERY]`. If it can't match the loaded playlist to a saved favorite, it still turns on shuffle and presses play on the current queue. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. College and Leslieville are not covered yet.
+Safety limits: it never touches a paused group, it recovers a group at most five times in 10 minutes (so a playlist full of bad songs can't loop forever), and every step is logged with `[TRACE-RECOVERY]`. If it can't match the loaded playlist to a saved favorite, it still turns on shuffle and presses play on the current queue. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. College and Leslieville are not covered yet.
 
 ## Project structure
 

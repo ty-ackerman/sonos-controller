@@ -1057,7 +1057,8 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
       deviceId: req.deviceId,
       groupId,
       state: playbackState.playbackState || playbackState.state,
-      positionMillis: playbackState.positionMillis
+      positionMillis: playbackState.positionMillis,
+      origin: `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers['x-forwarded-host'] || req.headers.host}`
     }).catch((err) => console.warn('[TRACE-RECOVERY] watchForStall failed:', err.message));
 
     // Log final status data being sent to client
