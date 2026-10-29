@@ -481,11 +481,10 @@ export async function recoverAfterError(groupId, householdId, errorAt) {
 
     const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
     await saveHealth(deviceId, group.id, {}); // make sure the row exists so the lock can be taken
-    if (!(await claimLock(deviceId, group.id))) {
-      log(`${label} playbackError seen, but another recovery is already handling it.`);
-      return;
-    }
 
+    // The lock is taken only when we are about to recover (below), not while watching, so this
+    // watcher can never block the slow-buffer trigger (that is what happened at 03:19).
+    let locked = false;
     try {
       log(`${label} playbackError seen (+${Date.now() - t0}ms after start). Watching for Sonos to give up.`);
       let idleReads = 0;
@@ -528,13 +527,18 @@ export async function recoverAfterError(groupId, householdId, errorAt) {
         return;
       }
 
+      if (!(await claimLock(deviceId, group.id))) {
+        log(`${label} playbackError recovery not needed: another recovery is already handling it.`);
+        return;
+      }
+      locked = true;
       const health = (await loadHealth(deviceId, group.id)) || { recoveries: [], last_volumes: null };
 
       log(`${label} ${cascade ? 'error burst' : 'idle after playbackError'} (+${Date.now() - t0}ms). Recovering now (reload playlist, shuffle, play, keep volumes).`);
       await recoverGroup(client, deviceId, household, group, health);
       log(`${label} recovery finished (+${Date.now() - t0}ms total).`);
     } finally {
-      await releaseLock(deviceId, group.id);
+      if (locked) await releaseLock(deviceId, group.id); // never release a lock another run holds
     }
     return;
   }
