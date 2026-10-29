@@ -790,16 +790,32 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     if (!req.deviceId) {
       return res.status(401).json({ error: 'Device ID is required' });
     }
+    // Diagnostic: remember exactly which Sonos calls failed and why (see [TRACE] below)
+    const traceStart = Date.now();
+    const traceErrors = {};
+    const traceError = (key, err) => {
+      let code = null;
+      try {
+        code = JSON.parse(err.message)?.errorCode || null;
+      } catch (_) {
+        code = null;
+      }
+      traceErrors[key] = { http: err.status || null, code, msg: String(err.message || '').slice(0, 160) };
+    };
+
     // Try playbackStatus endpoint first (more reliable), fallback to playbackState
     const [statusResponse, metadataResponse] = await Promise.allSettled([
-      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackStatus`, {}, req.deviceId).catch(() => {
+      sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackStatus`, {}, req.deviceId).catch((firstErr) => {
+        traceError('playbackStatus', firstErr);
         // Fallback to playbackState if playbackStatus fails
         return sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/playbackState`, {}, req.deviceId).catch((err) => {
+          traceError('playbackState', err);
           console.error('[PlaybackStatus] Both playbackStatus and playbackState requests failed:', err.message);
           return null;
         });
       }),
       sonosRequest(`/groups/${encodeURIComponent(groupId)}/playbackMetadata`, {}, req.deviceId).catch((err) => {
+        traceError('playbackMetadata', err);
         console.error('[PlaybackStatus] playbackMetadata request failed:', err.message);
         return null;
       })
@@ -819,7 +835,10 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
         })
       : {};
 
-    const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`, {}, req.deviceId).catch(() => null);
+    const volumeResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/groupVolume`, {}, req.deviceId).catch((err) => {
+      traceError('groupVolume', err);
+      return null;
+    });
     const volume = volumeResponse ? await volumeResponse.json().catch(() => ({})) : {};
     
     const currentItem = metadata.currentItem || metadata.item || null;
@@ -975,6 +994,50 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     const finalActiveFavoriteId = (finalPlaybackState === 'STOPPED' && !currentItem) ? null : (activeFavorite?.id || null);
     const finalActiveFavorite = (finalPlaybackState === 'STOPPED' && !currentItem) ? null : activeFavorite;
     
+    // One-line diagnostic per poll. Search Netlify logs for "[TRACE]".
+    // Flags: CHANGE = something differs from the previous poll of this group; BAD = a Sonos call failed or came back empty.
+    try {
+      const nameOf = (v) => normalizeField(v?.name) || normalizeField(v?.title) || null;
+      const nextItem = metadata.nextItem || null;
+      const rawTrack = currentItem?.track || null;
+      const snap = {
+        dev: String(req.deviceId || '').replace('global-automation-', ''),
+        grp: String(groupId).slice(0, 24),
+        raw: playbackState.playbackState || playbackState.state || null,
+        final: finalPlaybackState,
+        track: nameOf(rawTrack) || nameOf(currentItem),
+        artist: normalizeField(rawTrack?.artist) || null,
+        trackId: rawTrack?.id?.objectId || (typeof rawTrack?.id === 'string' ? rawTrack.id : null),
+        next: nameOf(nextItem?.track) || nameOf(nextItem),
+        list: playlistName || null,
+        itemId: playbackState.itemId || null,
+        prevItemId: playbackState.previousItemId || null,
+        posMs: playbackState.positionMillis ?? null,
+        actions: playbackState.availablePlaybackActions
+          ? Object.entries(playbackState.availablePlaybackActions).filter(([, v]) => v === false).map(([k]) => k).join(',')
+          : null,
+        stream: metadata.streamInfo || null,
+        vol: volume.volume || volume.groupVolume || 0,
+        keys: { status: Object.keys(playbackState).join(','), meta: Object.keys(metadata).join(',') },
+        ms: Date.now() - traceStart
+      };
+      const bad = Object.keys(traceErrors).length > 0 || !currentItem || !snap.raw;
+      const lastKey = `${req.deviceId}:${groupId}`;
+      globalThis.__sonosTraceLast = globalThis.__sonosTraceLast || new Map();
+      const prev = globalThis.__sonosTraceLast.get(lastKey);
+      const sig = [snap.final, snap.track, snap.list, snap.itemId].join('|');
+      const changed = !prev || prev.sig !== sig;
+      globalThis.__sonosTraceLast.set(lastKey, { sig, at: Date.now() });
+      const flags = [changed ? 'CHANGE' : null, bad ? 'BAD' : null].filter(Boolean).join('+') || 'ok';
+      console.log(
+        `[TRACE] ${flags} ${JSON.stringify(snap)}` +
+        (Object.keys(traceErrors).length ? ` errors=${JSON.stringify(traceErrors)}` : '') +
+        (changed && prev ? ` prev=${prev.sig} gapMs=${Date.now() - prev.at}` : '')
+      );
+    } catch (traceErr) {
+      console.warn('[TRACE] failed to build trace:', traceErr.message);
+    }
+
     // Log final status data being sent to client
     console.log('[SonosData] Final status response:', {
       groupId,

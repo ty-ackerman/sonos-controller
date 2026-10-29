@@ -115,7 +115,11 @@ async function checkAndResumePlayback(deviceId) {
           `/groups/${encodeURIComponent(group.id)}/playback/playbackState`, tokens, deviceId
         );
         tokens = t3b;
-        if (!fallbackRes.ok) continue;
+        if (!fallbackRes.ok) {
+          const errBody = await fallbackRes.text().catch(() => '');
+          console.log(`[TRACE-WD] ${deviceId} "${group.name}" status unreadable: ${statusRes.status}/${fallbackRes.status} ${errBody.slice(0, 160)}`);
+          continue;
+        }
         var status = await fallbackRes.json();
       } else {
         var status = await statusRes.json();
@@ -128,6 +132,7 @@ async function checkAndResumePlayback(deviceId) {
       }
 
       if (rawState.includes('PAUSED')) {
+        console.log(`[TRACE-WD] ${deviceId} "${group.name}" is ${rawState}, leaving it alone`);
         continue;
       }
 
@@ -137,6 +142,11 @@ async function checkAndResumePlayback(deviceId) {
       tokens = t4;
       const metadata = metaRes.ok ? await metaRes.json() : {};
       const hasContent = !!(metadata.currentItem || metadata.container);
+
+      console.log(
+        `[TRACE-WD] ${deviceId} "${group.name}" state=${rawState || 'none'} metaHttp=${metaRes.status} ` +
+        `track=${metadata.currentItem?.track?.name || null} next=${metadata.nextItem?.track?.name || null} hasContent=${hasContent}`
+      );
 
       if (!hasContent) {
         continue;
