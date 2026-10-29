@@ -2,7 +2,7 @@
 // answers right away and keeps running for up to 15 minutes) the moment it sees the Roam idle at
 // the start of a track. It runs the same guarded check as the scheduled function.
 // The logic lives in ../../stallRecovery.js.
-import { runRecoveryCheck, recoverAfterError, recoverIfStillBuffering } from '../../stallRecovery.js';
+import { runRecoveryCheck, recoverAfterError, recoverIfStillBuffering, resubscribeHousehold } from '../../stallRecovery.js';
 
 // Started two ways:
 //  - by the Sonos event receiver with { groupId, householdId } the moment a playbackError arrives (fastest)
@@ -14,7 +14,9 @@ export default async (req) => {
   } catch (_) {
     body = null;
   }
-  if (body?.groupId && body.bufferWatch) {
+  if (body?.resubscribe) {
+    await resubscribeHousehold(body.householdId);
+  } else if (body?.groupId && body.bufferWatch) {
     await recoverIfStillBuffering(body.groupId, body.householdId, body.itemId, body.bufferedAt);
   } else if (body?.groupId) {
     await recoverAfterError(body.groupId, body.householdId, body.errorAt);

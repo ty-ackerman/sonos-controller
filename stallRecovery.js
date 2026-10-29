@@ -809,16 +809,81 @@ export async function startBufferWatch({ groupId, householdId, itemId, queueVers
 // events stopped while the speaker kept playing, so no recovery could trigger). Subscribing again
 // is harmless, so the one-minute check renews it for every group, even with no page open.
 let lastSubscribeLog = 0;
+// Renewal runs every 10 minutes: cheap (one call per group), and it limits how long a group that
+// Sonos cleaned up stays unsubscribed. Group changes are also handled at once (see resubscribeHousehold).
+const RENEW_EVERY_MINUTES = 10;
+
+// The household-level "groups" subscription tells us when speakers are regrouped or unpaired, so we
+// can re-subscribe the new groups straight away instead of waiting for the next renewal.
+async function renewGroupsSubscription(client, household) {
+  if (new Date().getUTCMinutes() % RENEW_EVERY_MINUTES !== 0) return;
+  const res = await client.call(`/households/${encodeURIComponent(household.id)}/groups/subscription`, { method: 'POST' });
+  if (!res.ok) log(`groups-change subscription failed: http ${res.status} ${(await res.text().catch(() => '')).slice(0, 120)}`);
+}
+
+// Called (in the background) when Sonos reports a group change. Re-subscribes every group in that
+// household now. At 3:48pm on 2026-10-29 a regroup silenced College for 12 minutes until the next renewal.
+export async function resubscribeHousehold(householdId) {
+  for (const deviceId of RECOVERY_DEVICE_IDS) {
+    if (skipDevice(deviceId, householdId)) continue;
+    const tokens = await loadTokens(deviceId);
+    if (!tokens?.access_token) continue;
+    const client = makeSonosClient(tokens, deviceId);
+    const householdIds = householdId ? [householdId] : [];
+    for (const id of householdIds) {
+      const groupsRes = await client.call(`/households/${encodeURIComponent(id)}/groups`);
+      if (!groupsRes.ok) continue;
+      const groups = (await groupsRes.json().catch(() => ({}))).groups || [];
+      groupCache.set(`${deviceId}|${id}`, { at: Date.now(), groups });
+      householdOwners.set(id, deviceId);
+      const results = [];
+      for (const group of groups) {
+        const res = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/subscription`, { method: 'POST' });
+        results.push(`${group.name}:${res.status}`);
+      }
+      await client.call(`/households/${encodeURIComponent(id)}/groups/subscription`, { method: 'POST' });
+      log(`${deviceId.replace('global-automation-', '')} group change: re-subscribed ${groups.length} group(s) (${results.join(', ')})`);
+      return;
+    }
+  }
+  log(`group change for household ${String(householdId).slice(0, 12)} but no location matched; nothing re-subscribed.`);
+}
+
+const lastResubscribe = new Map();
+export async function startResubscribe({ householdId, origin }) {
+  if (!householdId) return;
+  const now = Date.now();
+  if (now - (lastResubscribe.get(householdId) || 0) < 10 * 1000) return; // a regroup sends several events
+  lastResubscribe.set(householdId, now);
+  const siteUrl = origin || process.env.URL || process.env.DEPLOY_PRIME_URL;
+  if (!siteUrl || /localhost|127\.0\.0\.1/.test(siteUrl)) return;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 700);
+  try {
+    await fetch(`${siteUrl}/.netlify/functions/playback-recovery-background`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resubscribe: true, householdId }),
+      signal: controller.signal
+    });
+    log(`group change reported for household ${String(householdId).slice(0, 12)}; re-subscribing its groups.`);
+  } catch (error) {
+    if (error.name !== 'AbortError') log(`could not start re-subscribe: ${error.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function renewEventSubscription(client, group) {
-  // Subscriptions last 3 days, so twice an hour is plenty (every minute added many Sonos calls).
-  if (new Date().getUTCMinutes() % 30 !== 0) return;
+  // Subscriptions last 3 days; renewing every few minutes is cheap and bounds any gap.
+  if (new Date().getUTCMinutes() % RENEW_EVERY_MINUTES !== 0) return;
   const res = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/subscription`, { method: 'POST' });
   const now = Date.now();
   if (!res.ok) {
     log(`event subscription renew failed for "${group.name}": http ${res.status} ${(await res.text().catch(() => '')).slice(0, 120)}`);
   } else if (now - lastSubscribeLog > 10 * 60 * 1000) {
     lastSubscribeLog = now;
-    log(`event subscription renewed for "${group.name}" (http ${res.status}); renewed twice an hour.`);
+    log(`event subscription renewed for "${group.name}" (http ${res.status}); renewed every ${RENEW_EVERY_MINUTES} minutes.`);
   }
 }
 
@@ -840,6 +905,7 @@ async function checkDevice(deviceId) {
     const groupsRes = await client.call(`/households/${encodeURIComponent(household.id)}/groups`);
     if (!groupsRes.ok) continue;
     const { groups = [] } = await groupsRes.json();
+    await renewGroupsSubscription(client, household).catch((error) => log(`groups-change subscription error: ${error.message}`));
     for (const group of groups) {
       try {
         await renewEventSubscription(client, group);

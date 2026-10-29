@@ -13,7 +13,7 @@ import {
 } from './vibeTimeRulesStore.js';
 import { loadHiddenFavorites, setFavoriteHidden } from './hiddenFavoritesStore.js';
 import { supabase } from './supabase.js';
-import { watchForStall, startRecoveryFromError, noteError, startBufferWatch } from './stallRecovery.js';
+import { watchForStall, startRecoveryFromError, noteError, startBufferWatch, startResubscribe } from './stallRecovery.js';
 
 // Use native fetch (Node.js 18+) - Netlify Functions supports it
 // No need to import node-fetch which causes bundling issues
@@ -258,7 +258,12 @@ app.use('/sonos/events', (req, res) => {
   //  - a playbackError arrives: a fast error cascade (3+ errors in 3s) or Sonos giving up (IDLE)
   //    recovers too. This catches failures where no song buffers for 2s (e.g. 03:37).
   const origin = `${h['x-forwarded-proto'] || 'https'}://${h['x-forwarded-host'] || h.host}`;
-  const kickoff = signatureOk && type === 'playbackError'
+  const isGroupChange = type === 'groupCoordinatorChanged' || type === 'groups' || h['x-sonos-namespace'] === 'groups';
+  const kickoff = signatureOk && isGroupChange
+    // Speakers were regrouped or unpaired: Sonos drops our old group subscriptions, so re-subscribe now.
+    ? startResubscribe({ householdId: h['x-sonos-household-id'], origin })
+        .catch((err) => console.warn('[TRACE-RECOVERY] could not start re-subscribe:', err.message))
+    : signatureOk && type === 'playbackError'
     ? Promise.all([
         noteError(h['x-sonos-target-value']),
         startRecoveryFromError({
