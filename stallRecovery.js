@@ -572,6 +572,97 @@ export async function startRecoveryFromError({ groupId, householdId, origin }) {
   }
 }
 
+// ---- Slow-buffer trigger -------------------------------------------------------------------
+// A healthy song buffers for about 1.1s. A failing one sits in BUFFERING for ~20s before Sonos
+// reports ERROR_LOST_CONNECTION. If a song is still buffering after BUFFER_LIMIT_MS, recover now.
+export const BUFFER_LIMIT_MS = 2000;
+
+export async function recoverIfStillBuffering(groupId, householdId, itemId, bufferedAt) {
+  const t0 = Date.now();
+  const since = Number(bufferedAt) || t0;
+  for (const deviceId of RECOVERY_DEVICE_IDS) {
+    const tokens = await loadTokens(deviceId);
+    if (!tokens?.access_token) continue;
+    const client = makeSonosClient(tokens, deviceId);
+
+    let household = null;
+    let group = null;
+    const householdIds = householdId ? [householdId] : [];
+    if (!householdIds.length) {
+      const hhRes = await client.call('/households');
+      if (hhRes.ok) householdIds.push(...((await hhRes.json().catch(() => ({}))).households || []).map((h) => h.id));
+    }
+    for (const id of householdIds) {
+      const groupsRes = await client.call(`/households/${encodeURIComponent(id)}/groups`);
+      if (!groupsRes.ok) continue;
+      const found = ((await groupsRes.json().catch(() => ({}))).groups || []).find((g) => g.id === groupId);
+      if (found) {
+        household = { id };
+        group = found;
+        break;
+      }
+    }
+    if (!group) continue;
+
+    const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
+    const wait = since + BUFFER_LIMIT_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+
+    const s = await readPlayback(client, group.id);
+    if (!s.ok) {
+      log(`${label} slow-buffer check: could not read state (${s.status}); leaving it.`);
+      return;
+    }
+    const stuck = s.raw.includes('BUFFERING') && (!itemId || s.itemId === itemId);
+    if (!stuck) {
+      log(`${label} slow-buffer check: ${s.raw.replace('PLAYBACK_STATE_', '')} item=${s.itemId} ${Date.now() - since}ms after buffering began; fine.`);
+      return;
+    }
+
+    await saveHealth(deviceId, group.id, {});
+    if (!(await claimLock(deviceId, group.id))) {
+      log(`${label} still buffering after ${Date.now() - since}ms, but another recovery is already handling it.`);
+      return;
+    }
+    try {
+      const health = (await loadHealth(deviceId, group.id)) || { recoveries: [], last_volumes: null };
+      log(`${label} still BUFFERING item=${s.itemId} after ${Date.now() - since}ms (limit ${BUFFER_LIMIT_MS}ms). Recovering now.`);
+      await recoverGroup(client, deviceId, household, group, health);
+      log(`${label} slow-buffer recovery finished (+${Date.now() - since}ms since buffering began).`);
+    } finally {
+      await releaseLock(deviceId, group.id);
+    }
+    return;
+  }
+}
+
+const lastBufferTrigger = new Map();
+export async function startBufferWatch({ groupId, householdId, itemId, queueVersion, origin }) {
+  if (!groupId) return;
+  const now = Date.now();
+  const key = `${groupId}|${itemId}|${queueVersion}`;
+  if (now - (lastBufferTrigger.get(key) || 0) < 5000) return; // Sonos often sends two BUFFERING events
+  lastBufferTrigger.set(key, now);
+
+  const siteUrl = origin || process.env.URL || process.env.DEPLOY_PRIME_URL;
+  if (!siteUrl || /localhost|127\.0\.0\.1/.test(siteUrl)) return;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 700);
+  try {
+    await fetch(`${siteUrl}/.netlify/functions/playback-recovery-background`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupId, householdId, bufferWatch: true, itemId, bufferedAt: now }),
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error.name !== 'AbortError') log(`could not start buffer watch: ${error.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function checkDevice(deviceId) {
   const tokens = await loadTokens(deviceId);
   if (!tokens?.access_token) {

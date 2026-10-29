@@ -13,7 +13,7 @@ import {
 } from './vibeTimeRulesStore.js';
 import { loadHiddenFavorites, setFavoriteHidden } from './hiddenFavoritesStore.js';
 import { supabase } from './supabase.js';
-import { watchForStall, startRecoveryFromError, noteError } from './stallRecovery.js';
+import { watchForStall, startRecoveryFromError, noteError, startBufferWatch } from './stallRecovery.js';
 
 // Use native fetch (Node.js 18+) - Netlify Functions supports it
 // No need to import node-fetch which causes bundling issues
@@ -264,7 +264,16 @@ app.use('/sonos/events', (req, res) => {
           origin: `${h['x-forwarded-proto'] || 'https'}://${h['x-forwarded-host'] || h.host}`
         })
       ]).catch((err) => console.warn('[TRACE-RECOVERY] could not start from event:', err.message))
-    : Promise.resolve();
+    : signatureOk && type === 'playbackStatus' && req.body?.playbackState === 'PLAYBACK_STATE_BUFFERING'
+      // A song started buffering: if it is still buffering 2s later, recover.
+      ? startBufferWatch({
+          groupId: h['x-sonos-target-value'],
+          householdId: h['x-sonos-household-id'],
+          itemId: req.body.itemId,
+          queueVersion: req.body.queueVersion,
+          origin: `${h['x-forwarded-proto'] || 'https'}://${h['x-forwarded-host'] || h.host}`
+        }).catch((err) => console.warn('[TRACE-RECOVERY] could not start buffer watch:', err.message))
+      : Promise.resolve();
 
   // The kickoff is capped at ~0.7s so the reply stays inside Sonos's 1s window.
   kickoff.then(() => res.status(200).json({}));
