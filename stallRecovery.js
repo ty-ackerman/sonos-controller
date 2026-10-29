@@ -202,14 +202,22 @@ async function recoverGroup(client, deviceId, household, group, health) {
   // Volumes exactly as they are right now, at the moment of the failure. We never use a volume saved
   // earlier: it can be a minute old, and restoring it would undo a change someone just made
   // (at 03:19 it lowered 34 back to a stale 26). If this read fails we leave volumes alone.
-  const target = await readPlayerVolumes(client, playerIds);
+  // Only saved playlists (Sonos favorites) are recovered. Anything else, such as a playlist staff
+  // brought to a class, is left completely alone: reloading or shuffling it would scramble the order.
+  const [found, target] = await Promise.all([
+    findLoadedFavorite(client, household.id, group.id),
+    readPlayerVolumes(client, playerIds)
+  ]);
+  if (!found.favorite) {
+    log(`${label} not a saved playlist (${found.error}); doing nothing.`);
+    return null;
+  }
   log(`${label} volumes to keep (live, just before reload): ${JSON.stringify(target)}`);
 
   const before = await readPlayback(client, group.id);
   const playModes = { ...(before.ok ? before.playModes : {}), shuffle: true };
 
   // 1. Reload the same playlist from the start.
-  const found = await findLoadedFavorite(client, household.id, group.id);
   let startedInOneCall = false;
   if (found.favorite) {
     // Fast way: one Sonos call reloads the playlist, sets shuffle and starts playing.
@@ -240,8 +248,6 @@ async function recoverGroup(client, deviceId, household, group, health) {
       });
       log(`${label} fallback reload playlist -> http ${plainRes.status} ${plainRes.ok ? '' : (await plainRes.text().catch(() => '')).slice(0, 160)}`);
     }
-  } else {
-    log(`${label} could not reload playlist (${found.error}); continuing with shuffle + play on the current queue`);
   }
 
   if (startedInOneCall) {
@@ -546,8 +552,8 @@ export async function recoverAfterError(groupId, householdId, errorAt) {
       const health = (await loadHealth(deviceId, group.id)) || { recoveries: [], last_volumes: null };
 
       log(`${label} ${cascade ? 'error burst' : 'idle after playbackError'} (+${Date.now() - t0}ms). Recovering now (reload playlist, shuffle, play, keep volumes).`);
-      await recoverGroup(client, deviceId, household, group, health);
-      log(`${label} recovery finished (+${Date.now() - t0}ms total).`);
+      const done = await recoverGroup(client, deviceId, household, group, health);
+      if (done) log(`${label} recovery finished (+${Date.now() - t0}ms total).`);
     } finally {
       if (locked) await releaseLock(deviceId, group.id); // never release a lock another run holds
     }
@@ -649,6 +655,7 @@ export async function recoverIfStillBuffering(groupId, householdId, itemId, buff
       // well past the limit (recoverGroup waits several seconds before reporting).
       for (let attempt = 1; attempt <= MAX_BUFFER_ATTEMPTS; attempt += 1) {
         const result = await recoverGroup(client, deviceId, household, group, health);
+        if (!result) break; // not a saved playlist: recoverGroup did nothing
         const stillStuck = result?.ok && result.raw.includes('BUFFERING') && (result.positionMillis ?? 0) < 1000;
         if (!stillStuck) break;
         log(`${label} still BUFFERING after recovery attempt ${attempt}/${MAX_BUFFER_ATTEMPTS}${attempt < MAX_BUFFER_ATTEMPTS ? '; trying again.' : '; giving up.'}`);
