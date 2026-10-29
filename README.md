@@ -57,6 +57,18 @@ A lock in the database makes sure only one recovery runs at a time. When a group
 
 Safety limits: it never touches a paused group, it recovers a group at most five times in 10 minutes (so a playlist full of bad songs can't loop forever), and every step is logged with `[TRACE-RECOVERY]`. If it can't match the loaded playlist to a saved favorite, it still turns on shuffle and presses play on the current queue. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. College and Leslieville are not covered yet.
 
+## Diagnosing playback problems (logs)
+
+When a track fails to load, Sonos reports why in a `playbackError` event. The app can receive these, but only after one manual step in the Sonos developer portal.
+
+- **One-time setup:** in the Sonos integration page for this API key, set the **callback URL** to `https://sonos-controller.netlify.app/sonos/events`. Until that is set, Sonos rejects event subscriptions with `callbackUrl cannot be null or empty`.
+- **What the app does:** while the Test location is open, it subscribes to the Roam's playback events and logs each one. It does not skip, pause, or resume anything because of them.
+- **Where to look:** in the Netlify function logs for `server`, search for these prefixes:
+  - `[TRACE]` — one line per status poll (state, song, next song, item, any Sonos error)
+  - `[TRACE-CMD]` — each skip and play/pause the app sends, plus Sonos's reply
+  - `[TRACE-EVT]` — events sent by Sonos; `!!ERROR!!` marks a `playbackError`
+  - `[TRACE-WD]` — what the watchdog saw
+
 ## Project structure
 
 ```

@@ -212,6 +212,49 @@ app.get('/healthz', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Sonos event receiver (diagnostic, log-only).
+// Sonos POSTs playback events (including playbackError) here once a callback URL is registered
+// for our API key in the Sonos developer portal and a group subscription exists.
+// Intentionally outside /api and /auth so the app login does not block Sonos.
+// Must answer 200 fast (Sonos allows ~1s, retries 3x, never replays).
+function verifySonosEventSignature(headers) {
+  try {
+    const hash = crypto.createHash('sha256');
+    [
+      headers['x-sonos-event-seq-id'],
+      headers['x-sonos-namespace'],
+      headers['x-sonos-type'],
+      headers['x-sonos-target-type'],
+      headers['x-sonos-target-value'],
+      SONOS_CLIENT_ID,
+      SONOS_CLIENT_SECRET
+    ].forEach((part) => hash.update(String(part ?? ''), 'utf8'));
+    const expected = hash.digest('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const actual = String(headers['x-sonos-event-signature'] || '');
+    const a = Buffer.from(expected);
+    const b = Buffer.from(actual);
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  } catch (_) {
+    return false;
+  }
+}
+
+app.use('/sonos/events', (req, res) => {
+  if (req.method !== 'POST') {
+    return res.status(200).json({ status: 'ok' });
+  }
+  const h = req.headers;
+  const signatureOk = verifySonosEventSignature(h);
+  const type = h['x-sonos-type'] || 'unknown';
+  const body = signatureOk ? JSON.stringify(req.body ?? {}).slice(0, 800) : '(discarded: bad signature)';
+  const flag = type === 'playbackError' ? ' !!ERROR!!' : '';
+  console.log(
+    `[TRACE-EVT]${flag} type=${type} ns=${h['x-sonos-namespace'] || '?'} grp=${h['x-sonos-target-value'] || '?'} ` +
+    `seq=${h['x-sonos-event-seq-id'] || '?'} sig=${signatureOk ? 'ok' : 'BAD'} body=${body}`
+  );
+  res.status(200).json({});
+});
+
 // Simple app authentication (single password for internal use)
 app.post('/auth/app-login', (req, res) => {
   const { password } = req.body;
@@ -799,6 +842,7 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
     }
     // Diagnostic: remember exactly which Sonos calls failed and why (see [TRACE] below)
     const traceStart = Date.now();
+    await ensurePlaybackSubscription(groupId, req.deviceId);
     const traceErrors = {};
     const traceError = (key, err) => {
       let code = null;
@@ -2694,6 +2738,31 @@ async function sonosFetch(endpoint, options = {}, deviceId) {
   }
 
   return response;
+}
+
+// Diagnostic: subscribe to playback events (state changes + playbackError) for a group.
+// Only for the Test location. Subscriptions last up to 3 days, so we renew at most every 30 minutes
+// per server instance. Failures are logged and never block the status poll.
+const EVENT_SUBSCRIBE_DEVICE_IDS = new Set(['global-automation-test']);
+async function ensurePlaybackSubscription(groupId, deviceId) {
+  if (!EVENT_SUBSCRIBE_DEVICE_IDS.has(deviceId)) return;
+  globalThis.__sonosSubs = globalThis.__sonosSubs || new Map();
+  const key = `${deviceId}:${groupId}`;
+  const last = globalThis.__sonosSubs.get(key);
+  if (last && Date.now() - last < 30 * 60 * 1000) return;
+  globalThis.__sonosSubs.set(key, Date.now());
+  try {
+    const response = await sonosRequest(
+      `/groups/${encodeURIComponent(groupId)}/playback/subscription`,
+      { method: 'POST' },
+      deviceId
+    );
+    console.log(`[TRACE-EVT] subscribed grp=${String(groupId).slice(0, 24)} http=${response.status}`);
+  } catch (err) {
+    // Retry again in ~5 minutes instead of 30
+    globalThis.__sonosSubs.set(key, Date.now() - 25 * 60 * 1000);
+    console.warn(`[TRACE-EVT] subscribe failed grp=${String(groupId).slice(0, 24)} http=${err.status || '?'} ${String(err.message).slice(0, 200)}`);
+  }
 }
 
 async function sonosRequest(endpoint, options = {}, deviceId) {

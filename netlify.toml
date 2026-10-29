@@ -22,6 +22,12 @@
   to = "/.netlify/functions/server"
   status = 200
 
+# Route Sonos event callbacks (playbackError etc.) to serverless function
+[[redirects]]
+  from = "/sonos/*"
+  to = "/.netlify/functions/server"
+  status = 200
+
 # Route health check to serverless function
 [[redirects]]
   from = "/healthz"
