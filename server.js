@@ -706,9 +706,12 @@ app.post('/api/groups/:groupId/playpause', async (req, res) => {
     if (!req.deviceId) {
       return res.status(401).json({ error: 'Device ID is required' });
     }
-    await sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/togglePlayPause`, {
+    const toggleStart = Date.now();
+    const toggleResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/togglePlayPause`, {
       method: 'POST'
     }, req.deviceId);
+    const toggleBody = await toggleResponse.text().catch(() => '');
+    console.log(`[TRACE-CMD] togglePlayPause dev=${String(req.deviceId).replace('global-automation-', '')} grp=${String(groupId).slice(0, 24)} http=${toggleResponse.status} ms=${Date.now() - toggleStart} body=${toggleBody.slice(0, 300)}`);
     res.json({ status: 'ok' });
   } catch (error) {
     handleProxyError(res, error, req.deviceId);
@@ -754,9 +757,12 @@ app.post('/api/groups/:groupId/next', async (req, res) => {
     if (!req.deviceId) {
       return res.status(401).json({ error: 'Device ID is required' });
     }
-    await sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/skipToNextTrack`, {
+    const skipStart = Date.now();
+    const skipResponse = await sonosRequest(`/groups/${encodeURIComponent(groupId)}/playback/skipToNextTrack`, {
       method: 'POST'
     }, req.deviceId);
+    const skipBody = await skipResponse.text().catch(() => '');
+    console.log(`[TRACE-CMD] skipToNextTrack dev=${String(req.deviceId).replace('global-automation-', '')} grp=${String(groupId).slice(0, 24)} http=${skipResponse.status} ms=${Date.now() - skipStart} body=${skipBody.slice(0, 300)}`);
     res.json({ status: 'ok' });
   } catch (error) {
     handleProxyError(res, error, req.deviceId);
@@ -2760,6 +2766,8 @@ async function sonosRequestWithTokens(endpoint, tokens, deviceId) {
 function handleProxyError(res, error, deviceId) {
   const status = error.status ?? 500;
   const message = error.message ?? 'Unexpected error';
+
+  console.error(`[TRACE-CMD] request failed dev=${String(deviceId || '').replace('global-automation-', '')} http=${status} msg=${String(message).slice(0, 300)}`);
 
   if (status === 401 && deviceId) {
     // Clear tokens for this device on 401
