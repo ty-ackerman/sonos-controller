@@ -13,6 +13,7 @@ import {
 } from './vibeTimeRulesStore.js';
 import { loadHiddenFavorites, setFavoriteHidden } from './hiddenFavoritesStore.js';
 import { supabase } from './supabase.js';
+import { watchForStall } from './stallRecovery.js';
 
 // Use native fetch (Node.js 18+) - Netlify Functions supports it
 // No need to import node-fetch which causes bundling issues
@@ -1049,6 +1050,15 @@ app.get('/api/groups/:groupId/playback/status', async (req, res) => {
         details: traceErrors
       });
     }
+
+    // Stall recovery (Test location only): note healthy playback, and if the group has just dropped
+    // to idle at the start of the queue, start the recovery check right away. Never blocks the poll for long.
+    await watchForStall({
+      deviceId: req.deviceId,
+      groupId,
+      state: playbackState.playbackState || playbackState.state,
+      positionMillis: playbackState.positionMillis
+    }).catch((err) => console.warn('[TRACE-RECOVERY] watchForStall failed:', err.message));
 
     // Log final status data being sent to client
     console.log('[SonosData] Final status response:', {

@@ -42,7 +42,12 @@ Sonos occasionally fails to load the next track in a playlist (streaming hiccup,
 
 Sometimes Sonos hits several Spotify songs in a row that it can't play (for example songs that have been removed or are unavailable in your country). It skips a few, then gives up: the group drops to **idle at the very start of the queue** and stays silent until someone presses play. A normal pause looks different (it says **paused**, partway into a song), so the two are easy to tell apart.
 
-A second scheduled function (`netlify/functions/playback-recovery.js`, every minute) watches for exactly that pattern. When a group was playing within the last couple of minutes and is now idle at the start, it:
+Two things watch for exactly that pattern, using the same code (`stallRecovery.js`):
+
+- **Fast path:** while the Test page is open, the app checks the speaker every few seconds. The moment it sees "idle at the start" it starts a background function (`playback-recovery-background.js`), so recovery begins within seconds.
+- **Backstop:** a scheduled function (`playback-recovery.js`) checks once a minute even if nobody has the page open, so the worst case is about a minute.
+
+A lock in the database makes sure only one recovery runs at a time. When a group was playing within the last couple of minutes and is now idle at the start, it:
 
 1. Waits 5 seconds and checks again, so a slow start is not treated as a failure.
 2. **Reloads the playlist that was playing** (the same Spotify playlist, back to the start).
