@@ -244,6 +244,10 @@
         background: #53788a;
       }
 
+      .location-banner.test {
+        background: #5c5346;
+      }
+
       p.status {
         display: none;
         margin: 0;
@@ -386,6 +390,10 @@
 
       .modal-overlay .location-btn.leslieville {
         background: #53788a;
+      }
+
+      .modal-overlay .location-btn.test {
+        background: #5c5346;
       }
 
       .modal-overlay .location-btn:hover {
@@ -3414,6 +3422,9 @@
             <button class="location-btn leslieville" onclick="selectLocation('leslieville')">
               Leslieville
             </button>
+            <button id="location-btn-test" class="location-btn test hidden" type="button" onclick="selectLocation('test')">
+              Test
+            </button>
           </div>
         </div>
       </div>
@@ -3907,8 +3918,18 @@ settingsStatusLabel.textContent = '';
         leslieville: {
           name: 'Leslieville',
           deviceId: 'global-automation-leslieville'
+        },
+        // Separate Sonos login. Not in the playback watchdog.
+        // The picker only shows it in manager view, and a front-desk
+        // session cannot stay on it.
+        test: {
+          name: 'Test',
+          deviceId: 'global-automation-test',
+          managerOnly: true
         }
       };
+
+      const TEST_LOCATION_SESSION_KEY = 'sonos_allow_test';
       
       function getSelectedLocation() {
         return localStorage.getItem(LOCATION_STORAGE_KEY);
@@ -3927,6 +3948,10 @@ settingsStatusLabel.textContent = '';
       }
       
       function showLocationPicker() {
+        const testButton = document.getElementById('location-btn-test');
+        if (testButton) {
+          testButton.classList.toggle('hidden', getCurrentView() !== VIEW_MANAGER);
+        }
         document.getElementById('location-picker-overlay').classList.remove('hidden');
       }
       
@@ -3935,12 +3960,22 @@ settingsStatusLabel.textContent = '';
       }
       
       function selectLocation(location) {
-        if (LOCATIONS[location]) {
-          setSelectedLocation(location);
-          hideLocationPicker();
-          // Reload to apply the new location
-          window.location.reload();
+        const config = LOCATIONS[location];
+        if (!config) {
+          return;
         }
+        if (config.managerOnly && getCurrentView() !== VIEW_MANAGER) {
+          return;
+        }
+        if (config.managerOnly) {
+          sessionStorage.setItem(TEST_LOCATION_SESSION_KEY, '1');
+        } else {
+          sessionStorage.removeItem(TEST_LOCATION_SESSION_KEY);
+        }
+        setSelectedLocation(location);
+        hideLocationPicker();
+        // Reload to apply the new location
+        window.location.reload();
       }
       
       function getCurrentLocationName() {
@@ -3971,7 +4006,7 @@ settingsStatusLabel.textContent = '';
         const banner = document.getElementById('location-banner');
         const selectedLocation = getSelectedLocation();
         if (banner) {
-          banner.classList.remove('visible', 'college', 'leslieville');
+          banner.classList.remove('visible', 'college', 'leslieville', 'test');
           if (selectedLocation) {
             banner.classList.add(selectedLocation, 'visible');
           }
@@ -4276,6 +4311,11 @@ function switchToManagerView() {
 
 function switchToFrontDeskView() {
   setCurrentView(VIEW_FRONT_DESK);
+  if (LOCATIONS[getSelectedLocation()]?.managerOnly) {
+    sessionStorage.removeItem(TEST_LOCATION_SESSION_KEY);
+    localStorage.removeItem(LOCATION_STORAGE_KEY);
+    showLocationPicker();
+  }
   if (panelPlaylistManagement && !panelPlaylistManagement.classList.contains('hidden')) {
     showView('control');
   }
@@ -4534,16 +4574,28 @@ async function checkAuthAndInit() {
   console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] URL params:`, new URLSearchParams(window.location.search).toString());
   
   try {
-    // Force front desk view on page load/refresh - clear manager view if stored
+    // Force front desk view on page load/refresh - clear manager view if stored.
+    // The test location is the exception: choosing it sets a tab session flag
+    // so the manager stays on it across the reload and the Sonos sign-in redirect.
     const stored = localStorage.getItem(VIEW_STORAGE_KEY);
     if (stored === VIEW_MANAGER) {
       localStorage.removeItem(VIEW_STORAGE_KEY);
       setCurrentView(VIEW_FRONT_DESK);
     }
+
+    const selectedLocation = getSelectedLocation();
+    if (selectedLocation && LOCATIONS[selectedLocation]?.managerOnly) {
+      if (sessionStorage.getItem(TEST_LOCATION_SESSION_KEY) === '1') {
+        setCurrentView(VIEW_MANAGER);
+      } else {
+        localStorage.removeItem(LOCATION_STORAGE_KEY);
+        showLocationPicker();
+        return;
+      }
+    }
     
     // Check if location is selected - if not, show picker
-    const selectedLocation = getSelectedLocation();
-    if (!selectedLocation) {
+    if (!getSelectedLocation()) {
       console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] No location selected, showing picker`);
       showLocationPicker();
       return;
