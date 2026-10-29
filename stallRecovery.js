@@ -199,11 +199,11 @@ async function recoverGroup(client, deviceId, household, group, health) {
   const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
   const playerIds = group.playerIds || [];
 
-  // Volumes from just before the failure (saved while it was still playing); else whatever they are now.
-  let target = health.last_volumes?.players || null;
-  const targetSource = target ? 'saved while playing' : 'read now';
-  if (!target) target = await readPlayerVolumes(client, playerIds);
-  log(`${label} volumes to keep (${targetSource}): ${JSON.stringify(target)}`);
+  // Volumes exactly as they are right now, at the moment of the failure. We never use a volume saved
+  // earlier: it can be a minute old, and restoring it would undo a change someone just made
+  // (at 03:19 it lowered 34 back to a stale 26). If this read fails we leave volumes alone.
+  const target = await readPlayerVolumes(client, playerIds);
+  log(`${label} volumes to keep (live, just before reload): ${JSON.stringify(target)}`);
 
   const before = await readPlayback(client, group.id);
   const playModes = { ...(before.ok ? before.playModes : {}), shuffle: true };
