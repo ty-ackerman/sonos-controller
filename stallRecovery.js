@@ -288,6 +288,7 @@ async function recoverGroup(client, deviceId, household, group, health) {
   const recent = (health.recoveries || []).filter((t) => now - new Date(t).getTime() < RECOVERY_WINDOW_MS);
   recent.push(new Date(now).toISOString());
   await saveHealth(deviceId, group.id, { recoveries: recent });
+  return after;
 }
 
 async function checkGroup(client, deviceId, household, group) {
@@ -576,6 +577,7 @@ export async function startRecoveryFromError({ groupId, householdId, origin }) {
 // A healthy song buffers for about 1.1s. A failing one sits in BUFFERING for ~20s before Sonos
 // reports ERROR_LOST_CONNECTION. If a song is still buffering after BUFFER_LIMIT_MS, recover now.
 export const BUFFER_LIMIT_MS = 2000;
+const MAX_BUFFER_ATTEMPTS = 4;
 
 export async function recoverIfStillBuffering(groupId, householdId, itemId, bufferedAt) {
   const t0 = Date.now();
@@ -627,7 +629,15 @@ export async function recoverIfStillBuffering(groupId, householdId, itemId, buff
     try {
       const health = (await loadHealth(deviceId, group.id)) || { recoveries: [], last_volumes: null };
       log(`${label} still BUFFERING item=${s.itemId} after ${Date.now() - since}ms (limit ${BUFFER_LIMIT_MS}ms). Recovering now.`);
-      await recoverGroup(client, deviceId, household, group, health);
+      // The reloaded playlist's first song can stall too (seen at 03:19). Recovery holds the lock, so
+      // no new watcher could act on it. Check the result and go again while it is still buffering
+      // well past the limit (recoverGroup waits several seconds before reporting).
+      for (let attempt = 1; attempt <= MAX_BUFFER_ATTEMPTS; attempt += 1) {
+        const result = await recoverGroup(client, deviceId, household, group, health);
+        const stillStuck = result?.ok && result.raw.includes('BUFFERING') && (result.positionMillis ?? 0) < 1000;
+        if (!stillStuck) break;
+        log(`${label} still BUFFERING after recovery attempt ${attempt}/${MAX_BUFFER_ATTEMPTS}${attempt < MAX_BUFFER_ATTEMPTS ? '; trying again.' : '; giving up.'}`);
+      }
       log(`${label} slow-buffer recovery finished (+${Date.now() - since}ms since buffering began).`);
     } finally {
       await releaseLock(deviceId, group.id);

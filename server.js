@@ -13,7 +13,7 @@ import {
 } from './vibeTimeRulesStore.js';
 import { loadHiddenFavorites, setFavoriteHidden } from './hiddenFavoritesStore.js';
 import { supabase } from './supabase.js';
-import { watchForStall, startRecoveryFromError, noteError, startBufferWatch } from './stallRecovery.js';
+import { watchForStall, startBufferWatch } from './stallRecovery.js';
 
 // Use native fetch (Node.js 18+) - Netlify Functions supports it
 // No need to import node-fetch which causes bundling issues
@@ -253,27 +253,17 @@ app.use('/sonos/events', (req, res) => {
     `seq=${h['x-sonos-event-seq-id'] || '?'} sig=${signatureOk ? 'ok' : 'BAD'} body=${body}`
   );
 
-  // A failed track: start recovery right away (it only acts if Sonos then gives up and goes idle).
-  const kickoff = signatureOk && type === 'playbackError'
-    ? Promise.all([
-        // Counts errors; flags a burst (3+ in 3s) in the database so the recovery can act early.
-        noteError(h['x-sonos-target-value']),
-        startRecoveryFromError({
-          groupId: h['x-sonos-target-value'],
-          householdId: h['x-sonos-household-id'],
-          origin: `${h['x-forwarded-proto'] || 'https'}://${h['x-forwarded-host'] || h.host}`
-        })
-      ]).catch((err) => console.warn('[TRACE-RECOVERY] could not start from event:', err.message))
-    : signatureOk && type === 'playbackStatus' && req.body?.playbackState === 'PLAYBACK_STATE_BUFFERING'
-      // A song started buffering: if it is still buffering 2s later, recover.
-      ? startBufferWatch({
-          groupId: h['x-sonos-target-value'],
-          householdId: h['x-sonos-household-id'],
-          itemId: req.body.itemId,
-          queueVersion: req.body.queueVersion,
-          origin: `${h['x-forwarded-proto'] || 'https'}://${h['x-forwarded-host'] || h.host}`
-        }).catch((err) => console.warn('[TRACE-RECOVERY] could not start buffer watch:', err.message))
-      : Promise.resolve();
+  // Recovery listens for one thing only: a song that starts buffering. If it is still buffering
+  // 2s later, the background function recovers. playbackError events are logged but not acted on.
+  const kickoff = signatureOk && type === 'playbackStatus' && req.body?.playbackState === 'PLAYBACK_STATE_BUFFERING'
+    ? startBufferWatch({
+        groupId: h['x-sonos-target-value'],
+        householdId: h['x-sonos-household-id'],
+        itemId: req.body.itemId,
+        queueVersion: req.body.queueVersion,
+        origin: `${h['x-forwarded-proto'] || 'https'}://${h['x-forwarded-host'] || h.host}`
+      }).catch((err) => console.warn('[TRACE-RECOVERY] could not start buffer watch:', err.message))
+    : Promise.resolve();
 
   // The kickoff is capped at ~0.7s so the reply stays inside Sonos's 1s window.
   kickoff.then(() => res.status(200).json({}));
