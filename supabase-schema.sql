@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS playback_health (
   group_id TEXT NOT NULL,
   last_active_at TIMESTAMP WITH TIME ZONE,
   recoveries JSONB NOT NULL DEFAULT '[]'::jsonb,
+  last_volumes JSONB,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   PRIMARY KEY (device_id, group_id)
 );

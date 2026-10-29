@@ -4,7 +4,11 @@
 // PLAYBACK_STATE_IDLE at position 0 (Sonos gave up after several unplayable Spotify tracks).
 // A deliberate pause shows up as PAUSED, so it is never touched.
 //
-// Recovery: turn shuffle on, press play, put the group volume back to what it was.
+// Recovery, 5 seconds after the pattern is confirmed:
+//   1. Reload the playlist that was playing (same Spotify playlist, back to the start).
+//   2. Turn shuffle on (other play modes are left as they were).
+//   3. Press play.
+//   4. Put every speaker back to the volume it had while the music was still playing.
 // Every step logs with the prefix [TRACE-RECOVERY].
 
 import { loadTokens, saveTokens } from '../../tokenStore.js';
@@ -22,8 +26,8 @@ const SONOS_CLIENT_SECRET = process.env.SONOS_CLIENT_SECRET;
 const RECOVERY_DEVICE_IDS = ['global-automation-test'];
 
 const RECENTLY_ACTIVE_MS = 150 * 1000; // group must have been playing within this window
-const CONFIRM_WAIT_MS = 8 * 1000; // re-check before acting so a slow start is not "fixed"
-const VERIFY_WAIT_MS = 4 * 1000;
+const CONFIRM_WAIT_MS = 5 * 1000; // wait after spotting the pattern, then check it is still true
+const SETTLE_WAIT_MS = 4 * 1000; // let playback start before restoring volumes / verifying
 const MAX_RECOVERIES = 2; // per group...
 const RECOVERY_WINDOW_MS = 10 * 60 * 1000; // ...per 10 minutes
 
@@ -100,17 +104,25 @@ async function readPlayback(client, groupId) {
   };
 }
 
-async function readVolume(client, groupId) {
-  const res = await client.call(`/groups/${encodeURIComponent(groupId)}/groupVolume`);
-  if (!res.ok) return null;
-  const json = await res.json().catch(() => ({}));
-  return Number.isFinite(Number(json.volume)) ? Number(json.volume) : null;
+// Volume of every speaker in the group, e.g. { RINCON_x: 16 }. Returns null if any read fails,
+// so we never save or restore a half-known picture.
+async function readPlayerVolumes(client, playerIds) {
+  const volumes = {};
+  for (const playerId of playerIds || []) {
+    const res = await client.call(`/players/${encodeURIComponent(playerId)}/playerVolume`);
+    if (!res.ok) return null;
+    const json = await res.json().catch(() => ({}));
+    const value = Number(json.volume);
+    if (!Number.isFinite(value)) return null;
+    volumes[playerId] = value;
+  }
+  return Object.keys(volumes).length ? volumes : null;
 }
 
 async function loadHealth(deviceId, groupId) {
   const { data, error } = await supabase
     .from('playback_health')
-    .select('last_active_at, recoveries')
+    .select('last_active_at, recoveries, last_volumes')
     .eq('device_id', deviceId)
     .eq('group_id', groupId)
     .maybeSingle();
@@ -118,7 +130,7 @@ async function loadHealth(deviceId, groupId) {
     log(`could not read playback_health: ${error.message}`);
     return null;
   }
-  return data || { last_active_at: null, recoveries: [] };
+  return data || { last_active_at: null, recoveries: [], last_volumes: null };
 }
 
 async function saveHealth(deviceId, groupId, fields) {
@@ -129,38 +141,92 @@ async function saveHealth(deviceId, groupId, fields) {
   if (error) log(`could not write playback_health: ${error.message}`);
 }
 
-async function recoverGroup(client, deviceId, group, health) {
-  const label = `${deviceId.replace('global-automation-', '')} "${group.name}" ${group.id}`;
-  const volumeBefore = await readVolume(client, group.id);
+// Find the saved favorite (playlist) that matches what the group has loaded.
+async function findLoadedFavorite(client, householdId, groupId) {
+  const metaRes = await client.call(`/groups/${encodeURIComponent(groupId)}/playbackMetadata`);
+  if (!metaRes.ok) return { error: `metadata http ${metaRes.status}` };
+  const metadata = await metaRes.json().catch(() => ({}));
+  const container = metadata.container;
+  if (!container) return { error: 'no playlist loaded' };
 
-  // Shuffle on (keep the other play modes as they were), then play.
+  const favRes = await client.call(`/households/${encodeURIComponent(householdId)}/favorites`);
+  if (!favRes.ok) return { error: `favorites http ${favRes.status}` };
+  const favorites = (await favRes.json().catch(() => ({}))).items || [];
+
+  const objectId = container.id?.objectId || null;
+  const byId = objectId
+    ? favorites.find((f) => String(f.resource?.id?.objectId || '').includes(objectId))
+    : null;
+  const favorite = byId || favorites.find((f) => container.name && f.name === container.name) || null;
+
+  return favorite
+    ? { favorite, containerName: container.name || null }
+    : { error: `no favorite matches "${container.name || objectId}"`, containerName: container.name || null };
+}
+
+async function recoverGroup(client, deviceId, household, group, health) {
+  const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
+  const playerIds = group.playerIds || [];
+
+  // Volumes from just before the failure (saved while it was still playing); else whatever they are now.
+  let target = health.last_volumes?.players || null;
+  const targetSource = target ? 'saved while playing' : 'read now';
+  if (!target) target = await readPlayerVolumes(client, playerIds);
+  log(`${label} volumes to keep (${targetSource}): ${JSON.stringify(target)}`);
+
   const before = await readPlayback(client, group.id);
   const playModes = { ...(before.ok ? before.playModes : {}), shuffle: true };
+
+  // 1. Reload the same playlist from the start.
+  const found = await findLoadedFavorite(client, household.id, group.id);
+  if (found.favorite) {
+    const loadRes = await client.call(`/groups/${encodeURIComponent(group.id)}/favorites`, {
+      method: 'POST',
+      body: JSON.stringify({
+        favoriteId: found.favorite.id,
+        queueAction: 'REPLACE',
+        action: 'REPLACE',
+        playOnCompletion: false
+      })
+    });
+    log(`${label} reload playlist "${found.favorite.name}" -> http ${loadRes.status} ${loadRes.ok ? '' : (await loadRes.text().catch(() => '')).slice(0, 160)}`);
+  } else {
+    log(`${label} could not reload playlist (${found.error}); continuing with shuffle + play on the current queue`);
+  }
+
+  // 2. Shuffle on.
   const modeRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/playMode`, {
     method: 'POST',
     body: JSON.stringify({ playModes })
   });
   log(`${label} shuffle on -> http ${modeRes.status} ${modeRes.ok ? '' : (await modeRes.text().catch(() => '')).slice(0, 160)}`);
 
+  // 3. Play.
   const playRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/play`, { method: 'POST' });
   log(`${label} play -> http ${playRes.status} ${playRes.ok ? '' : (await playRes.text().catch(() => '')).slice(0, 160)}`);
 
-  await sleep(VERIFY_WAIT_MS);
+  await sleep(SETTLE_WAIT_MS);
 
-  // Put the volume back if starting playback moved it.
-  const volumeAfter = await readVolume(client, group.id);
-  if (volumeBefore !== null && volumeAfter !== null && volumeAfter !== volumeBefore) {
-    const volRes = await client.call(`/groups/${encodeURIComponent(group.id)}/groupVolume`, {
-      method: 'POST',
-      body: JSON.stringify({ volume: volumeBefore })
-    });
-    log(`${label} volume ${volumeAfter} -> ${volumeBefore} restored, http ${volRes.status}`);
+  // 4. Volumes back to what they were.
+  const restored = [];
+  if (target) {
+    const nowVolumes = await readPlayerVolumes(client, playerIds);
+    for (const [playerId, wanted] of Object.entries(target)) {
+      const current = nowVolumes ? nowVolumes[playerId] : undefined;
+      if (current === wanted) continue;
+      const volRes = await client.call(`/players/${encodeURIComponent(playerId)}/playerVolume`, {
+        method: 'POST',
+        body: JSON.stringify({ volume: wanted })
+      });
+      restored.push(`${playerId}: ${current ?? '?'} -> ${wanted} (http ${volRes.status})`);
+    }
   }
+  log(`${label} volumes ${restored.length ? `restored: ${restored.join('; ')}` : 'already correct'}`);
 
   const after = await readPlayback(client, group.id);
   log(
     `${label} result: ${after.ok ? after.raw.replace('PLAYBACK_STATE_', '') : `unreadable ${after.status}`} ` +
-    `item=${after.ok ? after.itemId : '?'} pos=${after.ok ? after.positionMillis : '?'} volume=${volumeBefore}->${volumeAfter}`
+    `item=${after.ok ? after.itemId : '?'} pos=${after.ok ? after.positionMillis : '?'}`
   );
 
   const now = Date.now();
@@ -169,7 +235,7 @@ async function recoverGroup(client, deviceId, group, health) {
   await saveHealth(deviceId, group.id, { recoveries: recent });
 }
 
-async function checkGroup(client, deviceId, group) {
+async function checkGroup(client, deviceId, household, group) {
   const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
   const state = await readPlayback(client, group.id);
   if (!state.ok) {
@@ -180,7 +246,11 @@ async function checkGroup(client, deviceId, group) {
   const nowIso = new Date().toISOString();
 
   if (state.raw.includes('PLAYING') || state.raw.includes('BUFFERING')) {
-    await saveHealth(deviceId, group.id, { last_active_at: nowIso });
+    // Remember that it was healthy, and what the speaker volumes were while it was.
+    const fields = { last_active_at: nowIso };
+    const players = await readPlayerVolumes(client, group.playerIds);
+    if (players) fields.last_volumes = { players, at: nowIso };
+    await saveHealth(deviceId, group.id, fields);
     return;
   }
 
@@ -207,7 +277,7 @@ async function checkGroup(client, deviceId, group) {
 
   const confirm = await readPlayback(client, group.id);
   if (!confirm.ok || !confirm.raw.includes('IDLE') || (confirm.positionMillis ?? 0) !== 0) {
-    log(`${label} changed during confirm wait (${confirm.ok ? confirm.raw : `unreadable ${confirm.status}`}); not acting.`);
+    log(`${label} changed during the wait (${confirm.ok ? confirm.raw : `unreadable ${confirm.status}`}); not acting.`);
     return;
   }
 
@@ -218,8 +288,8 @@ async function checkGroup(client, deviceId, group) {
     return;
   }
 
-  log(`${label} confirmed stalled. Recovering (shuffle on, play, keep volume).`);
-  await recoverGroup(client, deviceId, group, health);
+  log(`${label} confirmed stalled. Recovering (reload playlist, shuffle, play, keep volumes).`);
+  await recoverGroup(client, deviceId, household, group, health);
 }
 
 async function checkDevice(deviceId) {
@@ -242,7 +312,7 @@ async function checkDevice(deviceId) {
     const { groups = [] } = await groupsRes.json();
     for (const group of groups) {
       try {
-        await checkGroup(client, deviceId, group);
+        await checkGroup(client, deviceId, household, group);
       } catch (error) {
         log(`${deviceId} "${group.name}" check failed: ${error.message}`);
       }
