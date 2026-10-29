@@ -61,6 +61,22 @@ A lock in the database makes sure only one recovery runs at a time. When Sonos r
 
 Safeguards: it never touches a paused group, and every step is logged with `[TRACE-RECOVERY]`. There is **no limit on how many times** it recovers a group, by choice: a playlist made entirely of unplayable songs would keep restarting until someone stops it. **It only acts on saved playlists** (Sonos favorites): if the loaded playlist doesn't match a saved favorite, as with a playlist staff bring to a class, it logs `not a saved playlist ... doing nothing` and touches nothing, so the class order is never scrambled. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. Test, College and Leslieville are all covered (the list is `RECOVERY_DEVICE_IDS` in `stallRecovery.js`). Classes are not covered yet: that is a separate problem (keeping the song order and resuming from the song that failed).
 
+### Phone alerts (ntfy)
+
+The app can message your phone when a speaker fails, using the free service [ntfy](https://ntfy.sh). How to turn it on:
+
+1. Install the **ntfy** app (iPhone or Android) and subscribe to your private topic name.
+2. In Netlify, go to Site configuration, then Environment variables, and add `NTFY_TOPIC` with that same topic name. Then redeploy. Without this variable, nothing is sent and nothing else changes.
+
+You get these messages:
+
+- **"Sonos failed at ..."** when a saved playlist stalls and the app starts restarting it.
+- **"Sonos recovered at ..."** once music is playing again, with the seconds it took.
+- **"Sonos still not playing at ..."** (urgent) if the reload didn't get music going.
+- **"Sonos failed at ... (not fixed)"** (urgent) when the stalled playlist is not a saved one, such as a class playlist. The app deliberately does nothing there, so someone has to press play.
+
+Anyone who knows the topic name can read the messages, so treat it like a password and don't use an easy-to-guess name. The messages contain only the location, speaker group and playlist names.
+
 ## Diagnosing playback problems (logs)
 
 When a track fails to load, Sonos reports why in a `playbackError` event. The app can receive these, but only after one manual step in the Sonos developer portal.

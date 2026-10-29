@@ -44,6 +44,42 @@ const RECOVERY_WINDOW_MS = 10 * 60 * 1000;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const log = (msg) => console.log(`[TRACE-RECOVERY] ${msg}`);
 
+// ---- Phone alerts (ntfy) -------------------------------------------------------------------
+// Set NTFY_TOPIC in the Netlify environment to turn alerts on (optional NTFY_SERVER, default
+// https://ntfy.sh). Install the ntfy app and subscribe to that topic. Never throws.
+const lastAlert = new Map();
+async function notify(title, message, { priority = 'default', tags = 'warning', throttleKey = null, throttleMs = 0 } = {}) {
+  const topic = process.env.NTFY_TOPIC;
+  if (!topic) return;
+  if (throttleKey) {
+    const now = Date.now();
+    if (now - (lastAlert.get(throttleKey) || 0) < throttleMs) return;
+    lastAlert.set(throttleKey, now);
+  }
+  const server = (process.env.NTFY_SERVER || 'https://ntfy.sh').replace(/\/$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
+  try {
+    // Headers must be plain ASCII, so keep titles simple.
+    const res = await fetch(`${server}/${encodeURIComponent(topic)}`, {
+      method: 'POST',
+      headers: { Title: title, Priority: priority, Tags: tags },
+      body: message,
+      signal: controller.signal
+    });
+    if (!res.ok) log(`ntfy alert failed: http ${res.status}`);
+  } catch (error) {
+    log(`ntfy alert failed: ${error.message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const prettyPlace = (deviceId) => {
+  const name = deviceId.replace('global-automation-', '');
+  return name.charAt(0).toUpperCase() + name.slice(1);
+};
+
 function storeTokens(tokenResponse, existingTokens) {
   const expiresIn = Number(tokenResponse.expires_in ?? 0);
   const bufferMs = 60 * 1000;
@@ -210,8 +246,19 @@ async function recoverGroup(client, deviceId, household, group, health) {
   ]);
   if (!found.favorite) {
     log(`${label} not a saved playlist (${found.error}); doing nothing.`);
+    await notify(
+      `Sonos failed at ${prettyPlace(deviceId)} (not fixed)`,
+      `"${group.name}" stalled on a playlist that is not saved${found.containerName ? ` ("${found.containerName}")` : ''}. Nothing was changed, so someone needs to press play or skip.`,
+      { priority: 'high', tags: 'rotating_light', throttleKey: `skip:${group.id}`, throttleMs: 2 * 60 * 1000 }
+    );
     return null;
   }
+  const failedAt = Date.now();
+  await notify(
+    `Sonos failed at ${prettyPlace(deviceId)}`,
+    `"${group.name}" stalled on "${found.favorite.name}". Restarting the playlist now.`,
+    { tags: 'warning', throttleKey: `start:${group.id}`, throttleMs: 30 * 1000 }
+  );
   log(`${label} volumes to keep (live, just before reload): ${JSON.stringify(target)}`);
 
   const before = await readPlayback(client, group.id);
@@ -299,6 +346,18 @@ async function recoverGroup(client, deviceId, household, group, health) {
   const recent = (health.recoveries || []).filter((t) => now - new Date(t).getTime() < RECOVERY_WINDOW_MS);
   recent.push(new Date(now).toISOString());
   await saveHealth(deviceId, group.id, { recoveries: recent });
+
+  const seconds = Math.round((Date.now() - failedAt) / 1000);
+  const playingAgain = after.ok && (after.raw.includes('PLAYING') || after.raw.includes('BUFFERING'));
+  await notify(
+    playingAgain ? `Sonos recovered at ${prettyPlace(deviceId)}` : `Sonos still not playing at ${prettyPlace(deviceId)}`,
+    playingAgain
+      ? `"${group.name}" is playing again (${seconds}s after the reload started).`
+      : `"${group.name}" is ${after.ok ? after.raw.replace('PLAYBACK_STATE_', '').toLowerCase() : 'unreadable'} after the reload. Someone needs to check it.`,
+    playingAgain
+      ? { tags: 'white_check_mark', throttleKey: `ok:${group.id}`, throttleMs: 30 * 1000 }
+      : { priority: 'high', tags: 'rotating_light' }
+  );
   return after;
 }
 
