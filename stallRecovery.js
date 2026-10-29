@@ -134,10 +134,10 @@ function makeSonosClient(initialTokens, deviceId) {
     }
     // Sonos answers 429 when it is asked too much too fast. Wait briefly and try again instead of
     // treating it as a failure (that silently skipped recoveries at 04:16 to 04:23).
-    for (let retry = 1; retry <= 2 && response.status === 429; retry += 1) {
+    for (let retry = 1; retry <= 1 && response.status === 429; retry += 1) {
       const waitSeconds = Number(response.headers.get('retry-after'));
       const waitMs = Math.min(Number.isFinite(waitSeconds) && waitSeconds > 0 ? waitSeconds * 1000 : 700 * retry, 2500);
-      log(`Sonos said 429 (too many requests) for ${endpoint.split('?')[0]}; waiting ${waitMs}ms (retry ${retry}/2)`);
+      log(`Sonos said 429 (too many requests) for ${endpoint.split('?')[0]}; waiting ${waitMs}ms (retry ${retry}/1)`);
       await sleep(waitMs);
       response = await doFetch();
     }
@@ -267,7 +267,15 @@ async function lookupGroup(client, deviceId, groupId, householdId) {
     let group = cached && Date.now() - cached.at < GROUP_CACHE_MS ? cached.groups.find((g) => g.id === groupId) : null;
     if (!group) {
       const groupsRes = await client.call(`/households/${encodeURIComponent(id)}/groups`);
-      if (!groupsRes.ok) continue;
+      if (!groupsRes.ok) {
+        // Rate limited or failing: fall back to an older copy of the groups rather than nothing.
+        const stale = cached?.groups.find((g) => g.id === groupId);
+        if (stale) {
+          householdOwners.set(id, deviceId);
+          return { household: { id }, group: stale };
+        }
+        continue;
+      }
       const groups = (await groupsRes.json().catch(() => ({}))).groups || [];
       groupCache.set(key, { at: Date.now(), groups });
       group = groups.find((g) => g.id === groupId) || null;
@@ -721,24 +729,36 @@ export async function recoverIfStillBuffering(groupId, householdId, itemId, buff
     if (!tokens?.access_token) continue;
     const client = makeSonosClient(tokens, deviceId);
 
-    const located = await lookupGroup(client, deviceId, groupId, householdId);
-    if (!located) continue;
-    const { household, group } = located;
-
-    const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
+    // Most checks find the song already playing, so do the cheapest thing first: wait out the limit and
+    // read the state (one Sonos call, no group lookup). Only a song that is really stuck needs the
+    // group's name and speakers. The old version looked the group up before every check; during fast
+    // skipping that was dozens of calls a minute and Sonos answered 429 to all of them (04:29).
+    const shortId = `${deviceId.replace('global-automation-', '')} ${String(groupId).slice(0, 24)}`;
     const wait = since + BUFFER_LIMIT_MS - Date.now();
     if (wait > 0) await sleep(wait);
 
-    const s = await readPlayback(client, group.id);
+    const s = await readPlayback(client, groupId);
     if (!s.ok) {
-      log(`${label} slow-buffer check: could not read state (${s.status}); leaving it.`);
-      return;
+      if (s.status === 429) {
+        log(`${shortId} slow-buffer check: Sonos is rate limiting (429); leaving it.`);
+        return;
+      }
+      continue; // probably another location's speaker; try the next one
     }
+    if (householdId) householdOwners.set(householdId, deviceId);
     const stuck = s.raw.includes('BUFFERING') && (!itemId || s.itemId === itemId);
     if (!stuck) {
-      log(`${label} slow-buffer check: ${s.raw.replace('PLAYBACK_STATE_', '')} item=${s.itemId} ${Date.now() - since}ms after buffering began; fine.`);
+      log(`${shortId} slow-buffer check: ${s.raw.replace('PLAYBACK_STATE_', '')} item=${s.itemId} ${Date.now() - since}ms after buffering began; fine.`);
       return;
     }
+
+    const located = await lookupGroup(client, deviceId, groupId, householdId);
+    if (!located) {
+      log(`${shortId} still buffering but the group could not be looked up (Sonos may be rate limiting); leaving it.`);
+      return;
+    }
+    const { household, group } = located;
+    const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
 
     await saveHealth(deviceId, group.id, {});
     if (!(await claimLock(deviceId, group.id))) {
