@@ -4853,6 +4853,10 @@ async function checkAuthAndInit() {
           setTimeout(() => {
             updateCurrentlyPlaying(wasPanelVisible);
           }, 500);
+          // Sonos can take a moment to switch songs, so check once more (polling is now only every 10s).
+          setTimeout(() => {
+            updateCurrentlyPlaying(wasPanelVisible);
+          }, 2500);
         } catch (error) {
           console.error('Failed to skip song:', error);
           showToast('Failed to skip song');
@@ -8616,14 +8620,19 @@ async function checkAuthAndInit() {
 
       function startPlaybackRefresh() {
         clearInterval(playbackRefreshTimer);
+        // Every poll costs about 3 Sonos calls, and Sonos allows 20,000 calls per day per location.
+        // So poll every 10s (not 3s) and not at all while the tab is hidden; the visibilitychange
+        // handler refreshes immediately when the tab is shown again, and our own buttons (skip,
+        // play/pause) refresh right after they run.
         playbackRefreshTimer = setInterval(() => {
+          if (document.hidden) return;
           if (isSonosConnected && getSelectedGroupId() && panelShouldBeVisible !== false) {
             // Skip refresh if any slider is being dragged
             if (!isAnySliderDragging()) {
               updateCurrentlyPlaying();
             }
           }
-        }, 3000);
+        }, 10000);
         // Update immediately, but only if panel should be visible and no sliders are dragging
         if (panelShouldBeVisible !== false && !isAnySliderDragging()) {
           updateCurrentlyPlaying();
