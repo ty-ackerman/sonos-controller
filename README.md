@@ -6,7 +6,7 @@ A web app that controls Sonos speakers across multiple locations. Pick a playlis
 
 - **Playback controls** — play/pause, skip, previous, volume (per-speaker and group)
 - **Favorites & playlists** — browse your Sonos favorites, start them with one tap
-- **Multi-location support** — switch between locations (e.g. "College" and "Leslieville"), each with their own Sonos system. A **Test** location is listed only in manager view. It uses its own Sonos login (`global-automation-test`) and is left out of the playback watchdog. Front desk sessions cannot stay on it.
+- **Multi-location support** — switch between locations (e.g. "College" and "Leslieville"), each with their own Sonos system. A **Test** location is listed only in manager view. It uses its own Sonos login (`global-automation-test`), opens the **Roam 2** system on that account, and is left out of the playback watchdog. Front desk sessions cannot stay on it.
 - **Vibe-based scheduling** — tag playlists with "vibes" and set time-of-day rules so the right music plays automatically
 - **Playback watchdog** — a background function that checks every minute whether music unexpectedly stopped and auto-resumes it
 

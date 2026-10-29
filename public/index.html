@@ -3925,7 +3925,8 @@ settingsStatusLabel.textContent = '';
         test: {
           name: 'Test',
           deviceId: 'global-automation-test',
-          managerOnly: true
+          managerOnly: true,
+          playerName: 'Roam 2'
         }
       };
 
@@ -5154,8 +5155,29 @@ async function checkAuthAndInit() {
             return;
           }
 
-          // Auto-select first household and display as title
-          const firstHousehold = households[0];
+          // College and Leslieville have one system, so the first household is correct.
+          // Test has two; open the one that contains its speaker.
+          const preferredPlayer = LOCATIONS[getSelectedLocation()]?.playerName;
+          let firstHousehold = households[0];
+          if (preferredPlayer) {
+            const matched = await findHouseholdWithPlayer(households, deviceId, preferredPlayer);
+            if (!matched) {
+              hideLoadingOverlay();
+              setAuthUI(true);
+              showFeedback(`Couldn't find ${preferredPlayer} on this account.`, true);
+              currentHouseholdId = null;
+              currentHouseholdName = null;
+              householdTitle.textContent = '';
+              currentGroupId = null;
+              currentGroupName = 'No group selected';
+              updateActiveGroupDisplay();
+              await loadFavorites(null);
+              await loadPlayers(null);
+              evaluateFavoritesAvailability();
+              return;
+            }
+            firstHousehold = matched;
+          }
           currentHouseholdId = firstHousehold.id || null;
           currentHouseholdName = firstHousehold.name || firstHousehold.id || '';
           // Strip "Alter:" prefix from household name
@@ -5191,6 +5213,18 @@ async function checkAuthAndInit() {
           setAuthUI(false);
           favoritesStatus.textContent = 'Unable to load playlists.';
         }
+      }
+
+      async function findHouseholdWithPlayer(households, deviceId, playerName) {
+        const target = playerName.trim().toLowerCase();
+        for (const household of households) {
+          if (!household?.id) continue;
+          const snapshot = await fetchGroupsPlayers(household.id, deviceId);
+          const players = Array.isArray(snapshot.players) ? snapshot.players : [];
+          const found = players.some((player) => String(player?.name || '').trim().toLowerCase() === target);
+          if (found) return household;
+        }
+        return null;
       }
 
       async function fetchGroupsPlayers(householdId, deviceId) {
