@@ -13,7 +13,7 @@ import {
 } from './vibeTimeRulesStore.js';
 import { loadHiddenFavorites, setFavoriteHidden } from './hiddenFavoritesStore.js';
 import { supabase } from './supabase.js';
-import { watchForStall } from './stallRecovery.js';
+import { watchForStall, startRecoveryFromError } from './stallRecovery.js';
 
 // Use native fetch (Node.js 18+) - Netlify Functions supports it
 // No need to import node-fetch which causes bundling issues
@@ -252,7 +252,18 @@ app.use('/sonos/events', (req, res) => {
     `[TRACE-EVT]${flag} type=${type} ns=${h['x-sonos-namespace'] || '?'} grp=${h['x-sonos-target-value'] || '?'} ` +
     `seq=${h['x-sonos-event-seq-id'] || '?'} sig=${signatureOk ? 'ok' : 'BAD'} body=${body}`
   );
-  res.status(200).json({});
+
+  // A failed track: start recovery right away (it only acts if Sonos then gives up and goes idle).
+  const kickoff = signatureOk && type === 'playbackError'
+    ? startRecoveryFromError({
+        groupId: h['x-sonos-target-value'],
+        householdId: h['x-sonos-household-id'],
+        origin: `${h['x-forwarded-proto'] || 'https'}://${h['x-forwarded-host'] || h.host}`
+      }).catch((err) => console.warn('[TRACE-RECOVERY] could not start from event:', err.message))
+    : Promise.resolve();
+
+  // The kickoff is capped at ~0.7s so the reply stays inside Sonos's 1s window.
+  kickoff.then(() => res.status(200).json({}));
 });
 
 // Simple app authentication (single password for internal use)

@@ -29,7 +29,7 @@ const SONOS_CLIENT_SECRET = process.env.SONOS_CLIENT_SECRET;
 export const RECOVERY_DEVICE_IDS = ['global-automation-test'];
 
 const RECENTLY_ACTIVE_MS = 150 * 1000; // group must have been playing within this window
-const CONFIRM_WAIT_MS = 5 * 1000; // wait after spotting the pattern, then check it is still true
+const CONFIRM_WAIT_MS = 2 * 1000; // wait after spotting the pattern, then check it is still true
 const SETTLE_WAIT_MS = 4 * 1000; // let playback start before restoring volumes / verifying
 const LOCK_MS = 90 * 1000; // one recovery per group at a time
 const MAX_RECOVERIES = 5; // per group...
@@ -383,6 +383,134 @@ export async function watchForStall({ deviceId, groupId, state, positionMillis, 
     } finally {
       clearTimeout(timer);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fastest path: started by the Sonos event receiver the moment Sonos reports a playbackError.
+// No flat waiting: it polls the group every ~0.6s, and as soon as Sonos has given up (IDLE twice in
+// a row) it reloads the playlist right away. A pause (PAUSED) is never touched, and a group that
+// Sonos got going again by itself is left alone.
+// ---------------------------------------------------------------------------
+
+const FAST_POLL_MS = 600;
+const FAST_MAX_WAIT_MS = 9 * 1000; // give up waiting for Sonos to give up after this long
+const FAST_IDLE_CONFIRMATIONS = 2; // consecutive IDLE reads before acting
+const SELF_RECOVERED_MS = 3000; // PLAYING this far into a track = Sonos fixed itself
+
+export async function recoverAfterError(groupId, householdId) {
+  const t0 = Date.now();
+  for (const deviceId of RECOVERY_DEVICE_IDS) {
+    const tokens = await loadTokens(deviceId);
+    if (!tokens?.access_token) continue;
+    const client = makeSonosClient(tokens, deviceId);
+
+    // Find the group (and its household) on this account.
+    let household = null;
+    let group = null;
+    const householdIds = householdId ? [householdId] : [];
+    if (!householdIds.length) {
+      const hhRes = await client.call('/households');
+      if (hhRes.ok) householdIds.push(...((await hhRes.json().catch(() => ({}))).households || []).map((h) => h.id));
+    }
+    for (const id of householdIds) {
+      const groupsRes = await client.call(`/households/${encodeURIComponent(id)}/groups`);
+      if (!groupsRes.ok) continue;
+      const found = ((await groupsRes.json().catch(() => ({}))).groups || []).find((g) => g.id === groupId);
+      if (found) {
+        household = { id };
+        group = found;
+        break;
+      }
+    }
+    if (!group) continue;
+
+    const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
+    await saveHealth(deviceId, group.id, {}); // make sure the row exists so the lock can be taken
+    if (!(await claimLock(deviceId, group.id))) {
+      log(`${label} playbackError seen, but another recovery is already handling it.`);
+      return;
+    }
+
+    try {
+      log(`${label} playbackError seen (+${Date.now() - t0}ms after start). Watching for Sonos to give up.`);
+      let idleReads = 0;
+      let last = 'no reads';
+      while (Date.now() - t0 < FAST_MAX_WAIT_MS) {
+        const s = await readPlayback(client, group.id);
+        if (!s.ok) {
+          last = `unreadable ${s.status}`;
+          idleReads = 0;
+        } else {
+          last = `${s.raw.replace('PLAYBACK_STATE_', '')} pos=${s.positionMillis}`;
+          if (s.raw.includes('PAUSED')) {
+            log(`${label} is PAUSED (deliberate pause); leaving it alone.`);
+            await saveHealth(deviceId, group.id, { last_active_at: null });
+            return;
+          }
+          if (s.raw.includes('PLAYING') && (s.positionMillis ?? 0) >= SELF_RECOVERED_MS) {
+            log(`${label} Sonos got going again by itself (${last}); nothing to do.`);
+            return;
+          }
+          idleReads = s.raw.includes('IDLE') ? idleReads + 1 : 0;
+          if (idleReads >= FAST_IDLE_CONFIRMATIONS) break;
+        }
+        await sleep(FAST_POLL_MS);
+      }
+
+      if (idleReads < FAST_IDLE_CONFIRMATIONS) {
+        log(`${label} did not go idle within ${FAST_MAX_WAIT_MS / 1000}s (last: ${last}); the regular checks will pick it up if it stalls.`);
+        return;
+      }
+
+      const health = (await loadHealth(deviceId, group.id)) || { recoveries: [], last_volumes: null };
+      const now = Date.now();
+      const recent = (health.recoveries || []).filter((t) => now - new Date(t).getTime() < RECOVERY_WINDOW_MS);
+      if (recent.length >= MAX_RECOVERIES) {
+        log(`${label} idle again but already recovered ${recent.length}x in the last 10 min; leaving it alone.`);
+        return;
+      }
+
+      log(`${label} idle after playbackError (+${Date.now() - t0}ms). Recovering now (reload playlist, shuffle, play, keep volumes).`);
+      await recoverGroup(client, deviceId, household, group, health);
+      log(`${label} recovery finished (+${Date.now() - t0}ms total).`);
+    } finally {
+      await releaseLock(deviceId, group.id);
+    }
+    return;
+  }
+  log(`playbackError for group ${String(groupId).slice(0, 24)} is not on a recovery location; ignoring.`);
+}
+
+// Called by the event receiver. Hands the work to the background function and returns quickly,
+// because Sonos wants an answer to each event within about a second.
+const lastErrorTrigger = new Map();
+export async function startRecoveryFromError({ groupId, householdId, origin }) {
+  if (!groupId) return;
+  const now = Date.now();
+  if (now - (lastErrorTrigger.get(groupId) || 0) < 5000) return; // an error burst sends several events
+  lastErrorTrigger.set(groupId, now);
+
+  const siteUrl = origin || process.env.URL || process.env.DEPLOY_PRIME_URL;
+  if (!siteUrl || /localhost|127\.0\.0\.1/.test(siteUrl)) {
+    log(`playbackError received but no deployed site address to call (origin=${origin || 'none'})`);
+    return;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 700);
+  try {
+    const res = await fetch(`${siteUrl}/.netlify/functions/playback-recovery-background`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groupId, householdId }),
+      signal: controller.signal
+    });
+    log(`playbackError for ${String(groupId).slice(0, 24)}: started background recovery -> http ${res.status}`);
+  } catch (error) {
+    log(`could not start background recovery from playbackError: ${error.message}`);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

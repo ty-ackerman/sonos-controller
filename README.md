@@ -42,14 +42,15 @@ Sonos occasionally fails to load the next track in a playlist (streaming hiccup,
 
 Sometimes Sonos hits several Spotify songs in a row that it can't play (for example songs that have been removed or are unavailable in your country). It skips a few, then gives up: the group drops to **idle at the very start of the queue** and stays silent until someone presses play. A normal pause looks different (it says **paused**, partway into a song), so the two are easy to tell apart.
 
-Two things watch for exactly that pattern, using the same code (`stallRecovery.js`):
+Three things watch for exactly that pattern, using the same code (`stallRecovery.js`):
 
-- **Fast path:** while the Test page is open, the app checks the speaker every few seconds. The moment it sees "idle at the start" it starts a background function (`playback-recovery-background.js`), so recovery begins within seconds.
+- **Fastest path (events):** Sonos tells the app the instant a song fails (a `playbackError` event, see "Diagnosing playback problems" below). The app starts the background function (`playback-recovery-background.js`) straight away, which checks the speaker every half second. As soon as Sonos gives up (idle on two checks in a row) it reloads the playlist, with no fixed waiting. If Sonos recovers on its own, or the group is paused, it does nothing.
+- **Status poll:** while the Test page is open, the app checks the speaker every few seconds. If it sees "idle at the start" it starts the same background function.
 - **Backstop:** a scheduled function (`playback-recovery.js`) checks once a minute even if nobody has the page open, so the worst case is about a minute.
 
-A lock in the database makes sure only one recovery runs at a time. When a group was playing within the last couple of minutes and is now idle at the start, it:
+A lock in the database makes sure only one recovery runs at a time. When Sonos reports a failed song and the group then goes idle (or, for the two slower paths, when a group was playing within the last couple of minutes and is now idle at the start), it:
 
-1. Waits 5 seconds and checks again, so a slow start is not treated as a failure.
+1. Confirms it is still idle (the slower paths wait 2 seconds; the events path has already checked twice), so a slow start is not treated as a failure.
 2. **Reloads the playlist that was playing** (the same Spotify playlist, back to the start).
 3. Turns **shuffle on**, which makes a run of bad songs in a row much less likely. Other play modes are left as they were.
 4. Presses **play**.
