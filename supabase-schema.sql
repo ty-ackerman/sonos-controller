@@ -54,6 +54,18 @@ CREATE TABLE IF NOT EXISTS oauth_states (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Table used by the stall-recovery function (netlify/functions/playback-recovery.js)
+-- to remember when each group last played and when it was last recovered
+CREATE TABLE IF NOT EXISTS playback_health (
+  device_id TEXT NOT NULL,
+  group_id TEXT NOT NULL,
+  last_active_at TIMESTAMP WITH TIME ZONE,
+  recoveries JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  PRIMARY KEY (device_id, group_id)
+);
+ALTER TABLE playback_health ENABLE ROW LEVEL SECURITY;
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_tokens_updated_at ON tokens(updated_at);
 CREATE INDEX IF NOT EXISTS idx_speaker_volumes_updated_at ON speaker_volumes(updated_at);
