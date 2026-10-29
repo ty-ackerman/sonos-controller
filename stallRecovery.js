@@ -663,6 +663,21 @@ export async function startBufferWatch({ groupId, householdId, itemId, queueVers
   }
 }
 
+// Sonos silently stops sending events if it drops our subscription (seen at 03:17 on 2026-10-29:
+// events stopped while the speaker kept playing, so no recovery could trigger). Subscribing again
+// is harmless, so the one-minute check renews it for every group, even with no page open.
+let lastSubscribeLog = 0;
+async function renewEventSubscription(client, group) {
+  const res = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/subscription`, { method: 'POST' });
+  const now = Date.now();
+  if (!res.ok) {
+    log(`event subscription renew failed for "${group.name}": http ${res.status} ${(await res.text().catch(() => '')).slice(0, 120)}`);
+  } else if (now - lastSubscribeLog > 10 * 60 * 1000) {
+    lastSubscribeLog = now;
+    log(`event subscription renewed for "${group.name}" (http ${res.status}); renewed every minute.`);
+  }
+}
+
 async function checkDevice(deviceId) {
   const tokens = await loadTokens(deviceId);
   if (!tokens?.access_token) {
@@ -683,6 +698,7 @@ async function checkDevice(deviceId) {
     const { groups = [] } = await groupsRes.json();
     for (const group of groups) {
       try {
+        await renewEventSubscription(client, group);
         await checkGroup(client, deviceId, household, group);
       } catch (error) {
         log(`${deviceId} "${group.name}" check failed: ${error.message}`);
