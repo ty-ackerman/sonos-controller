@@ -32,8 +32,9 @@ const RECENTLY_ACTIVE_MS = 150 * 1000; // group must have been playing within th
 const CONFIRM_WAIT_MS = 2 * 1000; // wait after spotting the pattern, then check it is still true
 const SETTLE_WAIT_MS = 4 * 1000; // let playback start before restoring volumes / verifying
 const LOCK_MS = 90 * 1000; // one recovery per group at a time
-const MAX_RECOVERIES = 5; // per group...
-const RECOVERY_WINDOW_MS = 10 * 60 * 1000; // ...per 10 minutes
+// There is deliberately no limit on how often a group is recovered. Recoveries are still recorded
+// for the last 10 minutes (RECOVERY_WINDOW_MS) so they show up in playback_health for debugging.
+const RECOVERY_WINDOW_MS = 10 * 60 * 1000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const log = (msg) => console.log(`[TRACE-RECOVERY] ${msg}`);
@@ -204,31 +205,60 @@ async function recoverGroup(client, deviceId, household, group, health) {
 
   // 1. Reload the same playlist from the start.
   const found = await findLoadedFavorite(client, household.id, group.id);
+  let startedInOneCall = false;
   if (found.favorite) {
+    // Fast way: one Sonos call reloads the playlist, sets shuffle and starts playing.
+    const { _objectType, ...modes } = playModes;
     const loadRes = await client.call(`/groups/${encodeURIComponent(group.id)}/favorites`, {
       method: 'POST',
       body: JSON.stringify({
         favoriteId: found.favorite.id,
         queueAction: 'REPLACE',
         action: 'REPLACE',
-        playOnCompletion: false
+        playOnCompletion: true,
+        playModes: modes
       })
     });
-    log(`${label} reload playlist "${found.favorite.name}" -> http ${loadRes.status} ${loadRes.ok ? '' : (await loadRes.text().catch(() => '')).slice(0, 160)}`);
+    startedInOneCall = loadRes.ok;
+    log(`${label} reload playlist "${found.favorite.name}" + shuffle + play in one call -> http ${loadRes.status} ${loadRes.ok ? '' : (await loadRes.text().catch(() => '')).slice(0, 160)}`);
+
+    if (!loadRes.ok) {
+      // Fall back to the plain reload (no play, no modes), then the separate steps below.
+      const plainRes = await client.call(`/groups/${encodeURIComponent(group.id)}/favorites`, {
+        method: 'POST',
+        body: JSON.stringify({
+          favoriteId: found.favorite.id,
+          queueAction: 'REPLACE',
+          action: 'REPLACE',
+          playOnCompletion: false
+        })
+      });
+      log(`${label} fallback reload playlist -> http ${plainRes.status} ${plainRes.ok ? '' : (await plainRes.text().catch(() => '')).slice(0, 160)}`);
+    }
   } else {
     log(`${label} could not reload playlist (${found.error}); continuing with shuffle + play on the current queue`);
   }
 
-  // 2. Shuffle on.
-  const modeRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/playMode`, {
-    method: 'POST',
-    body: JSON.stringify({ playModes })
-  });
-  log(`${label} shuffle on -> http ${modeRes.status} ${modeRes.ok ? '' : (await modeRes.text().catch(() => '')).slice(0, 160)}`);
+  if (startedInOneCall) {
+    // Safety net: if it did not start by itself, press play (a short wait, so music is not delayed).
+    await sleep(1500);
+    const check = await readPlayback(client, group.id);
+    if (!check.ok || check.raw.includes('IDLE')) {
+      const playRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/play`, { method: 'POST' });
+      log(`${label} still idle after the one-call reload; pressed play -> http ${playRes.status}`);
+    }
+  } else {
+    // 2. Shuffle on.
+    const modeRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/playMode`, {
+      method: 'POST',
+      body: JSON.stringify({ playModes })
+    });
+    log(`${label} shuffle on -> http ${modeRes.status} ${modeRes.ok ? '' : (await modeRes.text().catch(() => '')).slice(0, 160)}`);
 
-  // 3. Play.
-  const playRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/play`, { method: 'POST' });
-  log(`${label} play -> http ${playRes.status} ${playRes.ok ? '' : (await playRes.text().catch(() => '')).slice(0, 160)}`);
+    // 3. Play.
+    const playRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/play`, { method: 'POST' });
+    log(`${label} play -> http ${playRes.status} ${playRes.ok ? '' : (await playRes.text().catch(() => '')).slice(0, 160)}`);
+  }
 
   await sleep(SETTLE_WAIT_MS);
 
@@ -313,13 +343,6 @@ async function checkGroup(client, deviceId, household, group) {
       return;
     }
 
-    const now = Date.now();
-    const recent = (health.recoveries || []).filter((t) => now - new Date(t).getTime() < RECOVERY_WINDOW_MS);
-    if (recent.length >= MAX_RECOVERIES) {
-      log(`${label} stalled again but already recovered ${recent.length}x in the last 10 min; leaving it alone.`);
-      return;
-    }
-
     log(`${label} confirmed stalled. Recovering (reload playlist, shuffle, play, keep volumes).`);
     await recoverGroup(client, deviceId, household, group, health);
   } finally {
@@ -398,8 +421,38 @@ const FAST_MAX_WAIT_MS = 9 * 1000; // give up waiting for Sonos to give up after
 const FAST_IDLE_CONFIRMATIONS = 2; // consecutive IDLE reads before acting
 const SELF_RECOVERED_MS = 3000; // PLAYING this far into a track = Sonos fixed itself
 
-export async function recoverAfterError(groupId, householdId) {
+// The event receiver sets playback_health.error_burst_at when it sees 3+ playbackErrors for a group
+// within a few seconds. In every failure so far that cascade ended with Sonos giving up (IDLE) 1-5s
+// later, so we do not wait for that.
+async function readBurstAt(deviceId, groupId) {
+  const { data } = await supabase
+    .from('playback_health')
+    .select('error_burst_at')
+    .eq('device_id', deviceId)
+    .eq('group_id', groupId)
+    .maybeSingle();
+  return data?.error_burst_at ? new Date(data.error_burst_at).getTime() : 0;
+}
+
+const errorTimes = new Map(); // per warm instance; the DB flag is what the background function reads
+const BURST_COUNT = 3;
+const BURST_WINDOW_MS = 3000;
+export async function noteError(groupId) {
+  const deviceId = RECOVERY_DEVICE_IDS[0];
+  if (!deviceId || !groupId) return;
+  const now = Date.now();
+  const times = (errorTimes.get(groupId) || []).filter((t) => now - t < BURST_WINDOW_MS);
+  times.push(now);
+  errorTimes.set(groupId, times);
+  if (times.length === BURST_COUNT) {
+    await saveHealth(deviceId, groupId, { error_burst_at: new Date(now).toISOString() });
+    log(`error burst: ${BURST_COUNT} playbackErrors within ${BURST_WINDOW_MS / 1000}s for ${String(groupId).slice(0, 24)}`);
+  }
+}
+
+export async function recoverAfterError(groupId, householdId, errorAt) {
   const t0 = Date.now();
+  const burstSince = (Number(errorAt) || t0) - 2000;
   for (const deviceId of RECOVERY_DEVICE_IDS) {
     const tokens = await loadTokens(deviceId);
     if (!tokens?.access_token) continue;
@@ -435,6 +488,7 @@ export async function recoverAfterError(groupId, householdId) {
     try {
       log(`${label} playbackError seen (+${Date.now() - t0}ms after start). Watching for Sonos to give up.`);
       let idleReads = 0;
+      let cascade = false;
       let last = 'no reads';
       while (Date.now() - t0 < FAST_MAX_WAIT_MS) {
         const s = await readPlayback(client, group.id);
@@ -454,24 +508,28 @@ export async function recoverAfterError(groupId, householdId) {
           }
           idleReads = s.raw.includes('IDLE') ? idleReads + 1 : 0;
           if (idleReads >= FAST_IDLE_CONFIRMATIONS) break;
+
+          // Not idle yet: has the receiver flagged an error burst (3+ errors in 3s)? Then Sonos is
+          // about to give up, so go now instead of waiting for it.
+          if (!s.raw.includes('PLAYING') || (s.positionMillis ?? 0) < SELF_RECOVERED_MS) {
+            const burstAt = await readBurstAt(deviceId, group.id);
+            if (burstAt >= burstSince) {
+              cascade = true;
+              break;
+            }
+          }
         }
         await sleep(FAST_POLL_MS);
       }
 
-      if (idleReads < FAST_IDLE_CONFIRMATIONS) {
+      if (!cascade && idleReads < FAST_IDLE_CONFIRMATIONS) {
         log(`${label} did not go idle within ${FAST_MAX_WAIT_MS / 1000}s (last: ${last}); the regular checks will pick it up if it stalls.`);
         return;
       }
 
       const health = (await loadHealth(deviceId, group.id)) || { recoveries: [], last_volumes: null };
-      const now = Date.now();
-      const recent = (health.recoveries || []).filter((t) => now - new Date(t).getTime() < RECOVERY_WINDOW_MS);
-      if (recent.length >= MAX_RECOVERIES) {
-        log(`${label} idle again but already recovered ${recent.length}x in the last 10 min; leaving it alone.`);
-        return;
-      }
 
-      log(`${label} idle after playbackError (+${Date.now() - t0}ms). Recovering now (reload playlist, shuffle, play, keep volumes).`);
+      log(`${label} ${cascade ? 'error burst' : 'idle after playbackError'} (+${Date.now() - t0}ms). Recovering now (reload playlist, shuffle, play, keep volumes).`);
       await recoverGroup(client, deviceId, household, group, health);
       log(`${label} recovery finished (+${Date.now() - t0}ms total).`);
     } finally {
@@ -503,7 +561,7 @@ export async function startRecoveryFromError({ groupId, householdId, origin }) {
     const res = await fetch(`${siteUrl}/.netlify/functions/playback-recovery-background`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupId, householdId }),
+      body: JSON.stringify({ groupId, householdId, errorAt: now }),
       signal: controller.signal
     });
     log(`playbackError for ${String(groupId).slice(0, 24)}: started background recovery -> http ${res.status}`);

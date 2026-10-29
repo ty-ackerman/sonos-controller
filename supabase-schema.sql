@@ -63,9 +63,12 @@ CREATE TABLE IF NOT EXISTS playback_health (
   recoveries JSONB NOT NULL DEFAULT '[]'::jsonb,
   last_volumes JSONB,
   recovering_until TIMESTAMP WITH TIME ZONE,
+  error_burst_at TIMESTAMP WITH TIME ZONE,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   PRIMARY KEY (device_id, group_id)
 );
+-- For databases created before error_burst_at existed:
+ALTER TABLE playback_health ADD COLUMN IF NOT EXISTS error_burst_at TIMESTAMP WITH TIME ZONE;
 ALTER TABLE playback_health ENABLE ROW LEVEL SECURITY;
 
 -- Create indexes for better query performance

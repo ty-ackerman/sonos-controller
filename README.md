@@ -44,7 +44,7 @@ Sometimes Sonos hits several Spotify songs in a row that it can't play (for exam
 
 Three things watch for exactly that pattern, using the same code (`stallRecovery.js`):
 
-- **Fastest path (events):** Sonos tells the app the instant a song fails (a `playbackError` event, see "Diagnosing playback problems" below). The app starts the background function (`playback-recovery-background.js`) straight away, which checks the speaker every half second. As soon as Sonos gives up (idle on two checks in a row) it reloads the playlist, with no fixed waiting. If Sonos recovers on its own, or the group is paused, it does nothing.
+- **Fastest path (events):** Sonos tells the app the instant a song fails (a `playbackError` event, see "Diagnosing playback problems" below). The app starts the background function (`playback-recovery-background.js`) straight away, which checks the speaker every half second. As soon as Sonos gives up (idle on two checks in a row) it reloads the playlist, with no fixed waiting. If Sonos reports **three or more errors within three seconds** (a cascade, which in every failure so far ended with Sonos giving up), it doesn't even wait for that: it reloads right away. If Sonos recovers on its own, or the group is paused, it does nothing.
 - **Status poll:** while the Test page is open, the app checks the speaker every few seconds. If it sees "idle at the start" it starts the same background function.
 - **Backstop:** a scheduled function (`playback-recovery.js`) checks once a minute even if nobody has the page open, so the worst case is about a minute.
 
@@ -53,10 +53,10 @@ A lock in the database makes sure only one recovery runs at a time. When Sonos r
 1. Confirms it is still idle (the slower paths wait 2 seconds; the events path has already checked twice), so a slow start is not treated as a failure.
 2. **Reloads the playlist that was playing** (the same Spotify playlist, back to the start).
 3. Turns **shuffle on**, which makes a run of bad songs in a row much less likely. Other play modes are left as they were.
-4. Presses **play**.
+4. Starts **play**. Steps 2 to 4 are a single request to Sonos; if Sonos refuses that, the app falls back to doing them one at a time, and if the music still hasn't started after 1.5 seconds it presses play itself.
 5. Puts **every speaker's volume** back to what it was while the music was still playing (it saves these every minute while playing, so it is not fooled by anything the reload changes).
 
-Safety limits: it never touches a paused group, it recovers a group at most five times in 10 minutes (so a playlist full of bad songs can't loop forever), and every step is logged with `[TRACE-RECOVERY]`. If it can't match the loaded playlist to a saved favorite, it still turns on shuffle and presses play on the current queue. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. College and Leslieville are not covered yet.
+Safeguards: it never touches a paused group, and every step is logged with `[TRACE-RECOVERY]`. There is **no limit on how many times** it recovers a group, by choice: a playlist made entirely of unplayable songs would keep restarting until someone stops it. If it can't match the loaded playlist to a saved favorite, it still turns on shuffle and presses play on the current queue. It remembers when each group last played, and the speaker volumes, in the Supabase table `playback_health` (see `supabase-schema.sql`). Shuffle stays on afterwards. College and Leslieville are not covered yet.
 
 ## Diagnosing playback problems (logs)
 

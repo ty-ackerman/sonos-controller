@@ -15,7 +15,7 @@ export default async (req) => {
     body = null;
   }
   if (body?.groupId) {
-    await recoverAfterError(body.groupId, body.householdId);
+    await recoverAfterError(body.groupId, body.householdId, body.errorAt);
   } else {
     await runRecoveryCheck();
   }
