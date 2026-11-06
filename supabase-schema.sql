@@ -69,7 +69,15 @@ CREATE TABLE IF NOT EXISTS playback_health (
 );
 -- For databases created before error_burst_at existed:
 ALTER TABLE playback_health ADD COLUMN IF NOT EXISTS error_burst_at TIMESTAMP WITH TIME ZONE;
+-- Restart cap: when the app stopped restarting a playlist that would not play (30 minute cooldown), and
+-- the last playbackError Sonos reported (error code + reason), so a failure can be explained afterwards.
+ALTER TABLE playback_health ADD COLUMN IF NOT EXISTS gave_up_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE playback_health ADD COLUMN IF NOT EXISTS last_error JSONB;
 ALTER TABLE playback_health ENABLE ROW LEVEL SECURITY;
+
+-- The tokens table holds the Sonos logins, so the public (anon) key must not be able to read it.
+-- The server uses the service key, which bypasses RLS, so no policy is needed.
+ALTER TABLE tokens ENABLE ROW LEVEL SECURITY;
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_tokens_updated_at ON tokens(updated_at);

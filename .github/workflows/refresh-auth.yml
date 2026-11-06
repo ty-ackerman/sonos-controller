@@ -1,11 +1,11 @@
 name: Refresh Sonos Authentication
 
+# SWITCHED OFF (2026-11-06): the nightly schedule was removed on purpose.
+# The app now refreshes each location's Sonos login itself every time it is used, and this job had
+# been failing every night (and was then disabled by GitHub for inactivity) without anyone noticing.
+# It can still be run by hand from the Actions tab if a location ever needs a fresh login.
 on:
-  schedule:
-    # Run daily at midnight UTC
-    - cron: '0 0 * * *'
   workflow_dispatch:
-    # Allow manual trigger from GitHub Actions UI
 
 jobs:
   refresh-auth:

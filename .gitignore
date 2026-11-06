@@ -6,3 +6,10 @@ node_modules
 .playlist-vibes.json
 auth-error-screenshot.png
 auth-unexpected-screenshot.png
+
+# Local Netlify folder
+.netlify
+
+# Pasted/downloaded server logs (older ones contain Sonos login tokens)
+logs.txt
+*.log

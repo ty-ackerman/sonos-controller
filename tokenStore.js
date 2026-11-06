@@ -71,10 +71,8 @@ export async function saveTokens(tokens, deviceId) {
     deviceId: deviceId.substring(0, 8) + '...',
     hasAccessToken: !!tokens.access_token,
     hasRefreshToken: !!tokens.refresh_token,
-    expiresAt: tokens.expires_at,
-    accessTokenPreview: tokens.access_token ? `${tokens.access_token.substring(0, 20)}...` : null,
-    refreshTokenPreview: tokens.refresh_token ? `${tokens.refresh_token.substring(0, 20)}...` : null,
-    tokensObject: JSON.stringify(tokens, null, 2)
+    expiresAt: tokens.expires_at
+    // Never log the token values themselves, not even a preview: these logs are copied around.
   });
   
   // Validate that we have actual token values before saving
@@ -139,9 +137,7 @@ export async function saveTokens(tokens, deviceId) {
       device_id: toSave.device_id.substring(0, 8) + '...',
       hasAccessToken: !!toSave.access_token,
       hasRefreshToken: !!toSave.refresh_token,
-      expires_at: toSave.expires_at,
-      accessTokenPreview: toSave.access_token ? `${toSave.access_token.substring(0, 20)}...` : null,
-      refreshTokenPreview: toSave.refresh_token ? `${toSave.refresh_token.substring(0, 20)}...` : null
+      expires_at: toSave.expires_at
     });
 
     const { data: upsertData, error } = await supabase

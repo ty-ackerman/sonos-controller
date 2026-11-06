@@ -265,7 +265,7 @@ app.use('/sonos/events', (req, res) => {
         .catch((err) => console.warn('[TRACE-RECOVERY] could not start re-subscribe:', err.message))
     : signatureOk && type === 'playbackError'
     ? Promise.all([
-        noteError(h['x-sonos-target-value']),
+        noteError(h['x-sonos-target-value'], req.body),
         startRecoveryFromError({
           groupId: h['x-sonos-target-value'],
           householdId: h['x-sonos-household-id'],
@@ -468,12 +468,10 @@ app.get('/auth/status', async (req, res) => {
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Loading tokens from database...`);
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Device ID being used:`, deviceId);
     const tokens = await loadTokens(deviceId);
-    console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Raw tokens object:`, JSON.stringify(tokens, null, 2));
+    // Never log the token values themselves (not the raw object, not a preview): these logs get copied around.
     console.log(`[AUTH DEBUG ${timestamp}] [${requestId}] Tokens loaded:`, {
       hasAccessToken: !!tokens.access_token,
       hasRefreshToken: !!tokens.refresh_token,
-      accessTokenPreview: tokens.access_token ? `${tokens.access_token.substring(0, 20)}...` : null,
-      refreshTokenPreview: tokens.refresh_token ? `${tokens.refresh_token.substring(0, 20)}...` : null,
       expiresAt: tokens.expires_at,
       expiresAtDate: tokens.expires_at ? new Date(tokens.expires_at).toISOString() : null,
       expiresAtMs: tokens.expires_at,
@@ -1853,6 +1851,9 @@ app.post('/api/groups/:groupId/favorites/play', async (req, res) => {
 
     await sonosRequest(`/groups/${encodedGroupId}/playback/play`, { method: 'POST' }, req.deviceId);
 
+    // "Accepted" only means Sonos took the command. If the music then does not start, the reason shows
+    // up as a playbackError event ([TRACE-EVT]) and in the recovery log ("NOT PLAYING after reload").
+    console.log(`[TRACE-CMD] play favorite accepted by Sonos dev=${String(req.deviceId).replace('global-automation-', '')} fav=${String(favoriteId).slice(0, 24)} group=${String(groupId).slice(0, 24)}`);
     res.json({ status: 'ok', favoriteId });
   } catch (error) {
     handleProxyError(res, error, req.deviceId);
@@ -2571,8 +2572,8 @@ async function exchangeCodeForTokens(code, deviceId) {
     hasAccessToken: !!payload.access_token,
     hasRefreshToken: !!payload.refresh_token,
     expiresIn: payload.expires_in,
-    payloadKeys: Object.keys(payload),
-    payloadPreview: JSON.stringify(payload, null, 2).substring(0, 500)
+    payloadKeys: Object.keys(payload)
+    // No payload preview: it contains the access and refresh tokens.
   });
   
   const tokens = storeTokens(payload);
@@ -2580,8 +2581,7 @@ async function exchangeCodeForTokens(code, deviceId) {
     hasAccessToken: !!tokens.access_token,
     hasRefreshToken: !!tokens.refresh_token,
     expiresAt: tokens.expires_at,
-    expiresAtDate: new Date(tokens.expires_at).toISOString(),
-    tokensObject: JSON.stringify(tokens, null, 2)
+    expiresAtDate: new Date(tokens.expires_at).toISOString()
   });
   
   // Validate tokens before saving
@@ -2834,6 +2834,15 @@ async function sonosRequest(endpoint, options = {}, deviceId) {
 
   if (!response.ok) {
     const text = await response.text();
+    // Write down exactly what Sonos answered. Commands (play, load playlist, volume...) always;
+    // reads only when it is a server error or rate limit, so the 404s the status poll expects stay quiet.
+    const method = String(options.method || 'GET').toUpperCase();
+    if (method !== 'GET' || response.status >= 500 || response.status === 429) {
+      console.error(
+        `[TRACE-SONOS] ${method} ${String(endpoint).split('?')[0]} dev=${String(deviceId).replace('global-automation-', '')} ` +
+        `-> http ${response.status} ${String(text).slice(0, 400)}`
+      );
+    }
     throw Object.assign(new Error(text || 'Sonos API request failed'), { status: response.status });
   }
 

@@ -37,9 +37,17 @@ const RECENTLY_ACTIVE_MS = 150 * 1000; // group must have been playing within th
 const CONFIRM_WAIT_MS = 2 * 1000; // wait after spotting the pattern, then check it is still true
 const SETTLE_WAIT_MS = 4 * 1000; // let playback start before restoring volumes / verifying
 const LOCK_MS = 90 * 1000; // one recovery per group at a time
-// There is deliberately no limit on how often a group is recovered. Recoveries are still recorded
-// for the last 10 minutes (RECOVERY_WINDOW_MS) so they show up in playback_health for debugging.
+// Restart cap. Every playlist restart is recorded in playback_health.recoveries for 10 minutes
+// (RECOVERY_WINDOW_MS). After MAX_RESTARTS_PER_WINDOW restarts in that window the app stops restarting,
+// sends ONE urgent phone alert, and waits GIVE_UP_COOLDOWN_MS before trying again. Without this, a
+// speaker that accepts "load playlist" but never plays (for example when its Spotify link inside Sonos
+// has gone stale) was restarted every minute, all day, using up Sonos's 20,000 calls a day (College, 2026-11-06).
+// The count is cleared as soon as the group has played steadily for STEADY_PLAY_MS.
 const RECOVERY_WINDOW_MS = 10 * 60 * 1000;
+const MAX_RESTARTS_PER_WINDOW = 3;
+const GIVE_UP_COOLDOWN_MS = 30 * 60 * 1000;
+const STEADY_PLAY_MS = 60 * 1000;
+const LAST_ERROR_MAX_AGE_MS = 15 * 60 * 1000; // only quote a Sonos error that is this recent
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const log = (msg) => console.log(`[TRACE-RECOVERY] ${msg}`);
@@ -180,7 +188,7 @@ async function readPlayerVolumes(client, playerIds) {
 async function loadHealth(deviceId, groupId) {
   const { data, error } = await supabase
     .from('playback_health')
-    .select('last_active_at, recoveries, last_volumes')
+    .select('last_active_at, recoveries, last_volumes, gave_up_at, last_error')
     .eq('device_id', deviceId)
     .eq('group_id', groupId)
     .maybeSingle();
@@ -188,7 +196,16 @@ async function loadHealth(deviceId, groupId) {
     log(`could not read playback_health: ${error.message}`);
     return null;
   }
-  return data || { last_active_at: null, recoveries: [], last_volumes: null };
+  return data || { last_active_at: null, recoveries: [], last_volumes: null, gave_up_at: null, last_error: null };
+}
+
+// The most recent playbackError Sonos reported for this group (saved by the event receiver), as a
+// short readable string, or null if there is none recent. This is the real reason a song would not play.
+function describeLastError(health) {
+  const e = health?.last_error;
+  if (!e || !e.at || Date.now() - new Date(e.at).getTime() > LAST_ERROR_MAX_AGE_MS) return null;
+  const parts = [e.code, e.reason].filter(Boolean);
+  return parts.length ? parts.join(' - ').slice(0, 200) : String(e.raw || '').slice(0, 200) || null;
 }
 
 // Atomically take the "I am recovering this group" lock. Returns false if someone else holds it.
@@ -336,7 +353,7 @@ async function recoverGroup(client, deviceId, household, group, health) {
       })
     });
     startedInOneCall = loadRes.ok;
-    log(`${label} reload playlist "${found.favorite.name}" + shuffle + play in one call -> http ${loadRes.status} ${loadRes.ok ? '' : (await loadRes.text().catch(() => '')).slice(0, 160)}`);
+    log(`${label} reload playlist "${found.favorite.name}" + shuffle + play in one call -> http ${loadRes.status} ${loadRes.ok ? '' : (await loadRes.text().catch(() => '')).slice(0, 400)}`);
 
     if (!loadRes.ok) {
       // Fall back to the plain reload (no play, no modes), then the separate steps below.
@@ -349,7 +366,7 @@ async function recoverGroup(client, deviceId, household, group, health) {
           playOnCompletion: false
         })
       });
-      log(`${label} fallback reload playlist -> http ${plainRes.status} ${plainRes.ok ? '' : (await plainRes.text().catch(() => '')).slice(0, 160)}`);
+      log(`${label} fallback reload playlist -> http ${plainRes.status} ${plainRes.ok ? '' : (await plainRes.text().catch(() => '')).slice(0, 400)}`);
     }
   }
 
@@ -359,7 +376,7 @@ async function recoverGroup(client, deviceId, household, group, health) {
     const check = await readPlayback(client, group.id);
     if (!check.ok || check.raw.includes('IDLE')) {
       const playRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/play`, { method: 'POST' });
-      log(`${label} still idle after the one-call reload; pressed play -> http ${playRes.status}`);
+      log(`${label} still idle after the one-call reload; pressed play -> http ${playRes.status} ${playRes.ok ? '' : (await playRes.text().catch(() => '')).slice(0, 400)}`);
     }
   } else {
     // 2. Shuffle on.
@@ -367,11 +384,11 @@ async function recoverGroup(client, deviceId, household, group, health) {
       method: 'POST',
       body: JSON.stringify({ playModes })
     });
-    log(`${label} shuffle on -> http ${modeRes.status} ${modeRes.ok ? '' : (await modeRes.text().catch(() => '')).slice(0, 160)}`);
+    log(`${label} shuffle on -> http ${modeRes.status} ${modeRes.ok ? '' : (await modeRes.text().catch(() => '')).slice(0, 400)}`);
 
     // 3. Play.
     const playRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playback/play`, { method: 'POST' });
-    log(`${label} play -> http ${playRes.status} ${playRes.ok ? '' : (await playRes.text().catch(() => '')).slice(0, 160)}`);
+    log(`${label} play -> http ${playRes.status} ${playRes.ok ? '' : (await playRes.text().catch(() => '')).slice(0, 400)}`);
   }
 
   await sleep(SETTLE_WAIT_MS);
@@ -398,10 +415,25 @@ async function recoverGroup(client, deviceId, household, group, health) {
     `item=${after.ok ? after.itemId : '?'} pos=${after.ok ? after.positionMillis : '?'}`
   );
 
-  const now = Date.now();
-  const recent = (health.recoveries || []).filter((t) => now - new Date(t).getTime() < RECOVERY_WINDOW_MS);
-  recent.push(new Date(now).toISOString());
-  await saveHealth(deviceId, group.id, { recoveries: recent });
+  // Sonos said "ok" to the reload but the speaker is not playing: Sonos's answer to the command does not
+  // say why. Write down everything we can see so the reason is in the logs: what the speaker thinks it
+  // loaded, and the last playbackError Sonos reported (saved by the event receiver).
+  if (!after.ok || !after.raw.includes('PLAYING')) {
+    let loaded = 'unknown';
+    try {
+      const metaRes = await client.call(`/groups/${encodeURIComponent(group.id)}/playbackMetadata`);
+      if (metaRes.ok) {
+        const meta = await metaRes.json().catch(() => ({}));
+        loaded = `container="${meta.container?.name ?? '?'}" service=${meta.container?.service?.name ?? meta.container?.id?.serviceId ?? '?'} track="${meta.currentItem?.track?.name ?? '-'}"`;
+      } else {
+        loaded = `metadata http ${metaRes.status}`;
+      }
+    } catch (error) {
+      loaded = `metadata failed: ${error.message}`;
+    }
+    const fresh = await loadHealth(deviceId, group.id);
+    log(`${label} NOT PLAYING after reload. Speaker has: ${loaded}. Last Sonos playbackError: ${describeLastError(fresh) || 'none in the last 15 minutes'}`);
+  }
 
   return after;
 }
@@ -410,14 +442,63 @@ async function recoverGroup(client, deviceId, household, group, health) {
 // reloaded playlist can stall too, and Sonos can also drop straight to IDLE again (seen at 04:11).
 // Stops as soon as music is playing, someone paused it, or after MAX_RECOVERY_ATTEMPTS. Sends the
 // final "recovered" / "still not playing" alert once, so retries do not spam the phone.
-const MAX_RECOVERY_ATTEMPTS = 4;
-async function recoverWithRetries(client, deviceId, household, group, health) {
+const MAX_RECOVERY_ATTEMPTS = 3;
+
+// Decide whether another restart is allowed. Pure (no network), so it is easy to test.
+//   recent      : restart timestamps still inside the 10-minute window
+//   coolingDown : we already gave up on this group less than 30 minutes ago
+//   capped      : MAX_RESTARTS_PER_WINDOW restarts already happened in the window
+export function restartCapStatus(health, now = Date.now()) {
+  const recent = (health?.recoveries || []).filter((t) => now - new Date(t).getTime() < RECOVERY_WINDOW_MS);
+  const gaveUpAt = health?.gave_up_at ? new Date(health.gave_up_at).getTime() : 0;
+  return {
+    recent,
+    coolingDown: gaveUpAt > 0 && now - gaveUpAt < GIVE_UP_COOLDOWN_MS,
+    capped: recent.length >= MAX_RESTARTS_PER_WINDOW
+  };
+}
+
+// Stop restarting this group: remember when (so the 30-minute cooldown holds and the alert is sent only
+// once, even across separate serverless runs) and tell the phone what to check.
+async function giveUp(deviceId, group, recentCount) {
+  const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
+  const fresh = await loadHealth(deviceId, group.id);
+  const sonosSaid = describeLastError(fresh);
+  await saveHealth(deviceId, group.id, { gave_up_at: new Date().toISOString() });
+  log(`${label} GIVING UP: restarted the playlist ${recentCount} times in ${RECOVERY_WINDOW_MS / 60000} minutes and it still will not play. No more restarts for ${GIVE_UP_COOLDOWN_MS / 60000} minutes. Last Sonos playbackError: ${sonosSaid || 'none recorded'}`);
+  await notify(
+    `Sonos playlists will not start at ${prettyPlace(deviceId)}`,
+    `"${group.name}" was restarted ${recentCount} times in ${RECOVERY_WINDOW_MS / 60000} minutes and still will not play, so the app has stopped trying for ${GIVE_UP_COOLDOWN_MS / 60000} minutes. ` +
+      `Check the Spotify link in the Sonos app (Settings, Services and Voice), or play a playlist from the Sonos app to test.` +
+      (sonosSaid ? ` Sonos reported: ${sonosSaid}` : ''),
+    { priority: 'urgent', tags: 'rotating_light' }
+  );
+}
+
+export async function recoverWithRetries(client, deviceId, household, group, health) {
   const label = `${deviceId.replace('global-automation-', '')} "${group.name}"`;
   const startedAt = Date.now();
+
+  // Re-read the health row: the copy handed in can be a few seconds old, and the cap must see the latest.
+  const latest = (await loadHealth(deviceId, group.id)) || health;
+  const cap = restartCapStatus(latest);
+  if (cap.coolingDown) {
+    log(`${label} not restarting: gave up on it less than ${GIVE_UP_COOLDOWN_MS / 60000} minutes ago (see "GIVING UP" above).`);
+    return null;
+  }
+  if (cap.capped) {
+    await giveUp(deviceId, group, cap.recent.length);
+    return null;
+  }
+  const recent = cap.recent;
+
   let result = null;
   for (let attempt = 1; attempt <= MAX_RECOVERY_ATTEMPTS; attempt += 1) {
+    if (recent.length >= MAX_RESTARTS_PER_WINDOW) break; // cap reached part-way through
     result = await recoverGroup(client, deviceId, household, group, health);
     if (!result) return null; // not a saved playlist: recoverGroup did nothing
+    recent.push(new Date().toISOString());
+    await saveHealth(deviceId, group.id, { recoveries: recent });
     const pos = result.positionMillis ?? 0;
     const stuck = result.ok && (result.raw.includes('IDLE') || (result.raw.includes('BUFFERING') && pos < 1000));
     if (!stuck) break;
@@ -427,6 +508,14 @@ async function recoverWithRetries(client, deviceId, household, group, health) {
 
   const seconds = Math.round((Date.now() - startedAt) / 1000);
   const playingAgain = result.ok && result.raw.includes('PLAYING');
+
+  // Out of restarts and still not playing: stop, and send the one "check the Spotify link" alert
+  // instead of the generic one below.
+  if (!playingAgain && recent.length >= MAX_RESTARTS_PER_WINDOW) {
+    await giveUp(deviceId, group, recent.length);
+    return result;
+  }
+
   await notify(
     playingAgain ? `Sonos recovered at ${prettyPlace(deviceId)}` : `Sonos still not playing at ${prettyPlace(deviceId)}`,
     playingAgain
@@ -452,7 +541,13 @@ async function checkGroup(client, deviceId, household, group) {
   if (state.raw.includes('PLAYING') || state.raw.includes('BUFFERING')) {
     // Remember that it was healthy. (Volumes are no longer saved here: recovery reads the live volume,
     // and reading every speaker every minute at every location added a lot of Sonos calls.)
-    await saveHealth(deviceId, group.id, { last_active_at: nowIso });
+    // Played steadily for a while: whatever was wrong is over, so clear the restart count and any
+    // "gave up" cooldown. (Briefly playing right after a restart does not count, only a full minute.)
+    const playingSteadily = state.raw.includes('PLAYING') && (state.positionMillis ?? 0) >= STEADY_PLAY_MS;
+    await saveHealth(deviceId, group.id, {
+      last_active_at: nowIso,
+      ...(playingSteadily ? { recoveries: [], gave_up_at: null } : {})
+    });
     return;
   }
 
@@ -584,12 +679,36 @@ async function readBurstAt(deviceId, groupId) {
 const errorTimes = new Map(); // per warm instance; the DB flag is what the background function reads
 const BURST_COUNT = 3;
 const BURST_WINDOW_MS = 3000;
-export async function noteError(groupId) {
+// Pull the readable parts out of a Sonos playbackError event body (for example errorCode
+// "ERROR_PLAYBACK_FAILED" plus a reason). Exported so it can be tested.
+export function summarizePlaybackError(body, now = Date.now()) {
+  const b = body && typeof body === 'object' ? body : {};
+  return {
+    at: new Date(now).toISOString(),
+    code: typeof b.errorCode === 'string' ? b.errorCode.slice(0, 80) : null,
+    reason: typeof b.reason === 'string' ? b.reason.slice(0, 200) : null,
+    itemId: typeof b.itemId === 'string' ? b.itemId.slice(0, 120) : null,
+    raw: JSON.stringify(b).slice(0, 400)
+  };
+}
+
+export async function noteError(groupId, body) {
   if (!groupId) return;
   const now = Date.now();
   const times = (errorTimes.get(groupId) || []).filter((t) => now - t < BURST_WINDOW_MS);
   times.push(now);
   errorTimes.set(groupId, times);
+
+  // Remember what Sonos actually said, so a failure can be explained afterwards (the restart alert and
+  // the "NOT PLAYING after reload" log line quote it). One small write at the start of each burst only,
+  // because Sonos wants an answer to every event within about a second.
+  if (times.length === 1) {
+    const { error } = await supabase
+      .from('playback_health')
+      .update({ last_error: summarizePlaybackError(body, now) })
+      .eq('group_id', groupId);
+    if (error) log(`could not save the playbackError: ${error.message}`);
+  }
   if (times.length === BURST_COUNT) {
     // Which location owns this group? playback_health rows are keyed by (device, group); the
     // one-minute check creates the row for every group it sees. If none exists yet the early
