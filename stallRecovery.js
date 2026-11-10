@@ -25,10 +25,10 @@ const SONOS_CONTROL_BASE = 'https://api.ws.sonos.com/control/api/v1';
 const SONOS_CLIENT_ID = process.env.SONOS_CLIENT_ID;
 const SONOS_CLIENT_SECRET = process.env.SONOS_CLIENT_SECRET;
 
-// Locations that get recovery (all of them). The group id in a Sonos event is matched against each
-// location's groups to find which one it belongs to.
+// Locations that get recovery: College and Leslieville. The Test location is deliberately left out
+// (it is not monitored). The group id in a Sonos event is matched against each location's groups to
+// find which one it belongs to.
 export const RECOVERY_DEVICE_IDS = [
-  'global-automation-test',
   'global-automation-college',
   'global-automation-leslieville'
 ];
